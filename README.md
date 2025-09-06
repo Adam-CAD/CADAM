@@ -1,8 +1,8 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./public/Github Banner - Dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="./public/Github Banner - Light.png">
-    <img src="./public/Github Banner - Light.png" alt="CADAM Banner" width="100%"/>
+    <source media="(prefers-color-scheme: dark)" srcset="./public/Github-Banner-Dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="./public/Github-Banner-Light.png">
+    <img src="./public/Github-Banner-Light.png" alt="CADAM Banner" width="100%"/>
   </picture>
 
 </div>
