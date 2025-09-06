@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./public/adam-logo-full.svg" alt="CADAM Logo" width="600"/>
+  <img src="./public/Github Banner.png" alt="CADAM Banner" width="100%"/>
 </div>
 
 <h1 align="center">Text to CAD Web Application 🎯</h1>
