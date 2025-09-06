@@ -1,23 +1,81 @@
-# CADAM
+<div align="center">
+  <img src="./public/adam-logo-full.svg" alt="CADAM Logo" width="600"/>
+</div>
 
-A Text to CAD Web Application
+<h1 align="center">Text to CAD Web Application 🎯</h1>
 
-## What it does:
+<div align="center">
 
-- Generates parametric 3D models from natural language descriptions, with support for both text prompts and image references
-- Outputs OpenSCAD code with automatically extracted parameters that surface as interactive sliders for instant dimension tweaking
-- Separate agents for conversation and code generation; simple parameter tweaks bypass AI entirely using deterministic regex-based updates
-- Exports as .STL or .SCAD
-- Runs fully in-browser by compiling OpenSCAD to WebAssembly and integrating Three.js with React Three Fiber for 3D rendering
-- Supports BOSL, BOSL2, and MCAD libraries and custom font support (Geist) for text in models
+[![GitHub stars](https://img.shields.io/github/stars/Adam-CAD/CADAM?style=social)](https://github.com/Adam-CAD/CADAM/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/Adam-CAD/CADAM?style=social)](https://github.com/Adam-CAD/CADAM/network)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-18.3-blue.svg)](https://reactjs.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-Backend-green.svg)](https://supabase.com/)
+[![OpenSCAD](https://img.shields.io/badge/OpenSCAD-WASM-yellow.svg)](https://openscad.org/)
 
-## Prerequisites
+**🚀 Transform natural language into parametric 3D models instantly in your browser!**
+
+</div>
+
+---
+
+## ✨ Features
+
+- 🤖 **AI-Powered Generation** - Transform natural language and images into 3D models
+- 🎛️ **Parametric Controls** - Interactive sliders for instant dimension adjustments
+- 📦 **Multiple Export Formats** - Export as .STL or .SCAD files
+- 🌐 **Browser-Based** - Runs entirely in your browser using WebAssembly
+- 📚 **Library Support** - Includes BOSL, BOSL2, and MCAD libraries
+
+## 🎯 Key Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Natural Language Input** | Describe your 3D model in plain English |
+| **Image References** | Upload images to guide model generation |
+| **Real-time Preview** | See your model update instantly with Three.js |
+| **Parameter Extraction** | Automatically identifies adjustable dimensions |
+| **Smart Updates** | Efficient parameter changes without AI re-generation |
+| **Custom Fonts** | Built-in Geist font support for text in models |
+
+## 📸 Demo
+
+<!-- Add demo GIFs or screenshots here -->
+<!-- Example format:
+![CADAM Demo](./demo/demo.gif)
+
+### Example: Creating a parametric gear
+![Gear Example](./demo/gear-example.png)
+-->
+
+> 🎬 **Try it live:** [Coming Soon] <!-- Add your deployment URL here -->
+
+## 🚀 Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/Adam-CAD/CADAM.git
+cd CADAM
+
+# Install dependencies
+npm install
+
+# Start Supabase
+npx supabase start
+npx supabase functions serve --no-verify-jwt
+
+# Start the development server
+npm run dev
+```
+
+## 📋 Prerequisites
 
 - Node.js and npm
 - Supabase CLI
 - ngrok (for local webhook development)
 
-## Setting Up Environment Variables
+## 🔧 Setting Up Environment Variables
 
 ### 1. Frontend Environment:
 
@@ -38,7 +96,7 @@ A Text to CAD Web Application
   NGROK_URL="<NGROK URL>" # Your ngrok tunnel URL, e.g., https://xxxx-xx-xx-xxx-xx.ngrok.io
   ```
 
-## Setting Up ngrok for Local Development
+## 🌐 Setting Up ngrok for Local Development
 
 CADAM uses ngrok to send image URLs to Anthropic:
 
@@ -64,7 +122,7 @@ CADAM uses ngrok to send image URLs to Anthropic:
 
 4. Ensure `ENVIRONMENT="local"` is set in the same file.
 
-## Development Workflow
+## 💻 Development Workflow
 
 ### Install Dependencies
 
@@ -79,7 +137,27 @@ npx supabase start
 npx supabase functions serve --no-verify-jwt
 ```
 
-## Credits
+## 🛠️ Built With
+
+- **Frontend:** React 18 + TypeScript + Vite
+- **3D Rendering:** Three.js + React Three Fiber
+- **CAD Engine:** OpenSCAD WebAssembly
+- **Backend:** Supabase (PostgreSQL + Edge Functions)
+- **AI:** Anthropic Claude API
+- **Styling:** Tailwind CSS + shadcn/ui
+- **Libraries:** BOSL, BOSL2, MCAD
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 🙏 Credits
 
 This app wouldn't be possible without the work of:
 
@@ -89,7 +167,7 @@ This app wouldn't be possible without the work of:
 - [openscad-web-gui](https://github.com/seasick/openscad-web-gui)
 - [dingcad](https://github.com/yacineMTB/dingcad)
 
-## Licenses
+## 📄 License
 
 This distribution is licensed under the GNU General Public License v3.0 (GPLv3). See `LICENSE`.
 
@@ -99,3 +177,15 @@ Components and attributions:
 - This distribution includes unmodified binaries from OpenSCAD WASM under
   GPL v2 or later; distributed here under GPLv3 as part of the combined work.
   See `src/vendor/openscad-wasm/SOURCE-OFFER.txt`.
+
+---
+
+<div align="center">
+  
+**⭐ If you find CADAM useful, please consider giving it a star!**
+
+[![GitHub stars](https://img.shields.io/github/stars/Adam-CAD/CADAM?style=social)](https://github.com/Adam-CAD/CADAM/stargazers)
+
+Made with ❤️ for the 3D printing and CAD community
+
+</div>
