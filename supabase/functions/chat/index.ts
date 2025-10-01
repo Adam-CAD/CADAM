@@ -362,7 +362,7 @@ Deno.serve(async (req) => {
     });
 
     const stream = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20250929',
       system: PARAMETRIC_AGENT_PROMPT,
       max_tokens: 16000,
       messages: messagesToSend,
@@ -504,7 +504,7 @@ Deno.serve(async (req) => {
                     ];
 
                 const codeRequestConfig: MessageCreateParams = {
-                  model: 'claude-sonnet-4-20250514',
+                  model: 'claude-sonnet-4-5-20250929',
                   max_tokens: 16000,
                   system: STRICT_CODE_PROMPT,
                   messages: codeMessages,
