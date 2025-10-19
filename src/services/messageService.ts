@@ -16,7 +16,8 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { updateParameter } from '@/utils/parameterUtils';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { WorkerMessageType, WorkerResponseMessage } from '@/worker/types';
 
 function messageSentConversationUpdate(
   newMessage: Message,
@@ -500,6 +501,92 @@ export function useChangeParameters() {
     useUpdateMessageOptimisticMutation();
   const queryClient = useQueryClient();
   const { conversation } = useConversation();
+  const { mutateAsync: sendContentAsync } = useSendContentMutation({
+    conversation,
+  });
+  const preflightWorkerRef = useRef<Worker | null>(null);
+  const latestRequestRef = useRef<string | null>(null);
+  const createRequestId = useCallback(
+    () =>
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2),
+    [],
+  );
+
+  const ensurePreflightWorker = useCallback(() => {
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      return null;
+    }
+    if (!preflightWorkerRef.current) {
+      preflightWorkerRef.current = new Worker(
+        new URL('../worker/worker.ts', import.meta.url),
+        { type: 'module' },
+      );
+    }
+    return preflightWorkerRef.current;
+  }, []);
+
+  useEffect(
+    () => () => {
+      preflightWorkerRef.current?.terminate();
+      preflightWorkerRef.current = null;
+    },
+    [],
+  );
+
+  const runPreflight = useCallback(
+    async (code: string) => {
+      if (typeof window === 'undefined') return;
+      const worker = ensurePreflightWorker();
+      if (!worker) return;
+
+      const requestId = createRequestId();
+      return await new Promise<void>((resolve, reject) => {
+        let timeoutId = 0;
+
+        const handleMessage = (event: MessageEvent<WorkerResponseMessage>) => {
+          if (event.data.id !== requestId) return;
+          cleanup();
+          if (event.data.err) {
+            reject(event.data.err);
+          } else {
+            resolve();
+          }
+        };
+
+        const handleError = (event: ErrorEvent) => {
+          cleanup();
+          reject(event.error ?? new Error(event.message));
+        };
+
+        const cleanup = () => {
+          window.clearTimeout(timeoutId);
+          worker.removeEventListener('message', handleMessage);
+          worker.removeEventListener('error', handleError);
+        };
+
+        worker.addEventListener('message', handleMessage);
+        worker.addEventListener('error', handleError);
+
+        timeoutId = window.setTimeout(() => {
+          cleanup();
+          reject(new Error('OpenSCAD preflight timed out'));
+        }, 5000);
+
+        worker.postMessage({
+          id: requestId,
+          type: WorkerMessageType.PREVIEW,
+          data: {
+            code,
+            params: [],
+            fileType: 'stl',
+          },
+        });
+      });
+    },
+    [ensurePreflightWorker, createRequestId],
+  );
 
   return useCallback(
     (message: Message | null, updatedParameters: Parameter[]) => {
@@ -523,23 +610,75 @@ export function useChangeParameters() {
         },
       };
 
-      updateMessageOptimistic(
-        {
-          message: { ...message, content: newContent },
-        },
-        {
-          onError(_error, _variables, context) {
-            if (context?.oldMessages) {
-              queryClient.setQueryData(
-                ['messages', conversation.id],
-                context.oldMessages,
-              );
+      const processUpdate = async () => {
+        const artifactCode = newContent.artifact?.code;
+        if (!artifactCode) return;
+
+        const requestId = createRequestId();
+        latestRequestRef.current = requestId;
+
+        try {
+          await runPreflight(artifactCode);
+          if (latestRequestRef.current !== requestId) return;
+        } catch (error) {
+          if (latestRequestRef.current !== requestId) return;
+          console.error('OpenSCAD preflight failed', error);
+          const formattedError =
+            typeof error === 'object' && error !== null && 'stdErr' in error
+              ? Array.isArray((error as { stdErr?: string[] }).stdErr)
+                ? (error as { stdErr?: string[] }).stdErr!.join('\n')
+                : String((error as { stdErr?: string }).stdErr ?? '')
+              : error instanceof Error
+                ? error.message
+                : 'Unknown OpenSCAD error';
+
+          try {
+            await sendContentAsync({
+              text: 'Fix parameter adjustment',
+              error: formattedError,
+              model: message.content.model ?? 'fast',
+            });
+          } catch (sendError) {
+            console.error('Failed to send auto-fix request', sendError);
+          } finally {
+            if (latestRequestRef.current === requestId) {
+              latestRequestRef.current = null;
             }
+          }
+          return;
+        }
+
+        updateMessageOptimistic(
+          {
+            message: { ...message, content: newContent },
           },
-        },
-      );
+          {
+            onError(_error, _variables, context) {
+              if (context?.oldMessages) {
+                queryClient.setQueryData(
+                  ['messages', conversation.id],
+                  context.oldMessages,
+                );
+              }
+            },
+          },
+        );
+
+        if (latestRequestRef.current === requestId) {
+          latestRequestRef.current = null;
+        }
+      };
+
+      void processUpdate();
     },
-    [updateMessageOptimistic, queryClient, conversation.id],
+    [
+      updateMessageOptimistic,
+      queryClient,
+      conversation.id,
+      runPreflight,
+      sendContentAsync,
+      createRequestId,
+    ],
   );
 }
 

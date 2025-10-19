@@ -4,6 +4,7 @@ import {
   ParameterRange,
   ParameterType,
 } from '@shared/types.ts';
+import { escapeRegExp } from '@shared/parameter-utils.ts';
 
 export default function parseParameters(script: string): Parameter[] {
   // Limit the script to the upper part of the file. We don't want to parse the
@@ -13,7 +14,7 @@ export default function parseParameters(script: string): Parameter[] {
 
   const parameters: Record<string, Parameter> = {};
   const parameterRegex =
-    /^([a-z0-9A-Z_$]+)\s*=\s*([^;]+);[\t\f\cK ]*(\/\/[^\n]*)?/gm; // TODO: Use AST parser instead of regex
+    /^([a-z0-9A-Z_$]+)\s*=\s*([\s\S]*?);[ \t\f\cK]*(\/\/[^\n]*)?/gm; // TODO: Use AST parser instead of regex
   const groupRegex = /^\/\*\s*\[([^\]]+)\]\s*\*\//gm;
 
   const groupSections: { id: string; group: string; code: string }[] = [
@@ -56,6 +57,7 @@ export default function parseParameters(script: string): Parameter[] {
     while ((match = parameterRegex.exec(groupSection.code)) !== null) {
       const name = match[1];
       const value = match[2];
+      const trimmedValue = value.trim();
       let typeAndValue:
         | { value: Parameter['value']; type: Parameter['type'] }
         | undefined;
@@ -77,11 +79,18 @@ export default function parseParameters(script: string): Parameter[] {
       // Check if the value is another variable or an expression. If so, we can continue to the next
       // parameter because everything after this variable (including itself) is not a parameter. Also
       // check if the value is a string that contains a newline. If so, we will also abort the parsing
-      if (
-        value !== 'true' && // true and false are valid values
-        value !== 'false' &&
-        (value.match(/^[a-zA-Z_]/) || value.split('\n').length > 1)
-      ) {
+      const isBooleanLiteral =
+        trimmedValue === 'true' || trimmedValue === 'false';
+      const isArrayLiteral =
+        trimmedValue.startsWith('[') && trimmedValue.endsWith(']');
+      const isSimpleLiteral =
+        /^-?\d+(\.\d+)?$/.test(trimmedValue) || /^".*"$/.test(trimmedValue);
+
+      if (!isBooleanLiteral && !isArrayLiteral && !isSimpleLiteral) {
+        continue;
+      }
+
+      if (!isArrayLiteral && /^[a-zA-Z_]/.test(trimmedValue)) {
         continue;
       }
 
@@ -196,7 +205,8 @@ function convertType(rawValue: string): {
     const arrayValue = rawValue
       .slice(1, -1)
       .split(',')
-      .map((item) => item.trim());
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
 
     if (
       arrayValue.length > 0 &&
@@ -231,9 +241,4 @@ function convertType(rawValue: string): {
     // Throw an error if the value is not a number, boolean, or string
     throw new Error(`Invalid value: ${rawValue}`);
   }
-}
-
-// https://stackoverflow.com/a/6969486/1706846
-function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }

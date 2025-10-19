@@ -1,4 +1,8 @@
 import { Parameter } from '@shared/types';
+import {
+  buildParameterAssignmentRegex,
+  serializeParameterValue,
+} from '@shared/parameter-utils';
 
 /**
  * Calculates intuitive min and max values for a parameter based on its default value
@@ -172,56 +176,14 @@ export function validateParameterValue(
 }
 
 export function updateParameter(code: string, param: Parameter): string {
-  const escapedName = escapeRegExp(param.name);
-  const regex = new RegExp(
-    `^\\s*(${escapedName}\\s*=\\s*)[^;]+;([\\t\\f\\cK ]*\\/\\/[^\n]*)?`,
-    'm',
+  const regex = buildParameterAssignmentRegex(param.name);
+  if (!regex.test(code)) return code;
+
+  const serialized = serializeParameterValue(param.type, param.value);
+
+  return code.replace(
+    regex,
+    (_match, prefix: string, _current: string, suffix: string | undefined) =>
+      `${prefix}${serialized}${suffix || ';'}`,
   );
-  // Default to assuming the type is number
-  if (!param.type) {
-    return code.replace(regex, `$1${param.value};$2`);
-  }
-  switch (param.type) {
-    case 'string':
-      return code.replace(
-        regex,
-        `$1"${escapeReplacement(escapeQuotes(param.value as string))}";$2`,
-      );
-    case 'number':
-      return code.replace(regex, `$1${param.value};$2`);
-    case 'boolean':
-      return code.replace(regex, `$1${param.value};$2`);
-    case 'string[]':
-      return code.replace(
-        regex,
-        `$1[${(param.value as string[])
-          .map((value) => escapeReplacement(escapeQuotes(value)))
-          .map((value) => `"${value}"`)
-          .join(',')}];$2`,
-      );
-    case 'number[]':
-      return code.replace(
-        regex,
-        `$1[${(param.value as number[]).join(',')}];$2`,
-      );
-    case 'boolean[]':
-      return code.replace(
-        regex,
-        `$1[${(param.value as boolean[]).join(',')}];$2`,
-      );
-    default:
-      return code;
-  }
-}
-
-export function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-}
-
-export function escapeReplacement(string: string) {
-  return string.replace(/\$/g, '$$$$');
-}
-
-export function escapeQuotes(string: string) {
-  return string.replace(/"/g, '\\"');
 }
