@@ -537,9 +537,13 @@ export function useChangeParameters() {
 
   const runPreflight = useCallback(
     async (code: string) => {
-      if (typeof window === 'undefined') return;
+      if (typeof window === 'undefined') {
+        return Promise.resolve();
+      }
       const worker = ensurePreflightWorker();
-      if (!worker) return;
+      if (!worker) {
+        return Promise.resolve();
+      }
 
       const requestId = createRequestId();
       return await new Promise<void>((resolve, reject) => {
@@ -592,6 +596,7 @@ export function useChangeParameters() {
     (message: Message | null, updatedParameters: Parameter[]) => {
       if (!message) return;
 
+      const previousContent = message.content;
       let newCode = message.content.artifact?.code ?? '';
       updatedParameters.forEach((param) => {
         if (param.name.length > 0) {
@@ -610,19 +615,63 @@ export function useChangeParameters() {
         },
       };
 
-      const processUpdate = async () => {
-        const artifactCode = newContent.artifact?.code;
-        if (!artifactCode) return;
+      updateMessageOptimistic(
+        {
+          message: { ...message, content: newContent },
+        },
+        {
+          onError(_error, _variables, context) {
+            if (context?.oldMessages) {
+              queryClient.setQueryData(
+                ['messages', conversation.id],
+                context.oldMessages,
+              );
+            }
+          },
+        },
+      );
 
-        const requestId = createRequestId();
-        latestRequestRef.current = requestId;
+      const artifactCode = newContent.artifact?.code;
+      if (!artifactCode) {
+        return;
+      }
 
-        try {
-          await runPreflight(artifactCode);
+      const requestId = createRequestId();
+      latestRequestRef.current = requestId;
+
+      runPreflight(artifactCode)
+        .then(() => {
+          if (latestRequestRef.current === requestId) {
+            latestRequestRef.current = null;
+          }
+        })
+        .catch(async (error) => {
           if (latestRequestRef.current !== requestId) return;
-        } catch (error) {
-          if (latestRequestRef.current !== requestId) return;
+          latestRequestRef.current = null;
           console.error('OpenSCAD preflight failed', error);
+
+          updateMessageOptimistic(
+            {
+              message: { ...message, content: previousContent },
+            },
+            {
+              onError(revertError, _variables, context) {
+                if (revertError) {
+                  console.error(
+                    'Failed to revert message after preflight error',
+                    revertError,
+                  );
+                }
+                if (context?.oldMessages) {
+                  queryClient.setQueryData(
+                    ['messages', conversation.id],
+                    context.oldMessages,
+                  );
+                }
+              },
+            },
+          );
+
           const formattedError =
             typeof error === 'object' && error !== null && 'stdErr' in error
               ? Array.isArray((error as { stdErr?: string[] }).stdErr)
@@ -640,36 +689,8 @@ export function useChangeParameters() {
             });
           } catch (sendError) {
             console.error('Failed to send auto-fix request', sendError);
-          } finally {
-            if (latestRequestRef.current === requestId) {
-              latestRequestRef.current = null;
-            }
           }
-          return;
-        }
-
-        updateMessageOptimistic(
-          {
-            message: { ...message, content: newContent },
-          },
-          {
-            onError(_error, _variables, context) {
-              if (context?.oldMessages) {
-                queryClient.setQueryData(
-                  ['messages', conversation.id],
-                  context.oldMessages,
-                );
-              }
-            },
-          },
-        );
-
-        if (latestRequestRef.current === requestId) {
-          latestRequestRef.current = null;
-        }
-      };
-
-      void processUpdate();
+        });
     },
     [
       updateMessageOptimistic,
