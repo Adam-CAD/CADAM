@@ -19,7 +19,6 @@ import parseParameters from '../_shared/parseParameter.ts';
 import { formatUserMessage } from '../_shared/messageUtils.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
-// Helper to stream updated assistant message rows
 function streamMessage(
   controller: ReadableStreamDefaultController,
   message: Message,
@@ -27,12 +26,10 @@ function streamMessage(
   controller.enqueue(new TextEncoder().encode(JSON.stringify(message) + '\n'));
 }
 
-// Helper to escape regex special characters
 function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Helper to mark a tool as error and avoid duplication
 function markToolAsError(content: Content, toolId: string): Content {
   return {
     ...content,
@@ -85,7 +82,6 @@ async function generateTitleFromMessages(
     console.error('Error generating object title:', error);
   }
 
-  // Fallbacks
   let lastUserMessage: MessageParam | undefined;
   for (let i = messagesToSend.length - 1; i >= 0; i--) {
     if (messagesToSend[i].role === 'user') {
@@ -115,7 +111,54 @@ async function generateTitleFromMessages(
   return 'Adam Object';
 }
 
-// Outer agent system prompt (conversational + tool-using)
+async function generateConversationTitle(
+  anthropic: Anthropic,
+  messagesToSend: MessageParam[],
+): Promise<string> {
+  try {
+    const firstUserMessage = messagesToSend.find((m) => m.role === 'user');
+    if (!firstUserMessage) return 'New Conversation';
+
+    let messageText = '';
+    if (typeof firstUserMessage.content === 'string') {
+      messageText = firstUserMessage.content;
+    } else if (Array.isArray(firstUserMessage.content)) {
+      const textBlock = firstUserMessage.content.find((b) => b.type === 'text');
+      if (textBlock && 'text' in textBlock) {
+        messageText = textBlock.text;
+      }
+    }
+
+    if (!messageText) return 'New Conversation';
+
+    const truncatedMessage = messageText.slice(0, 500);
+
+    const response = await anthropic.messages.create({
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 50,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a brief title (max 50 characters) for a 3D CAD conversation starting with: "${truncatedMessage}". Be specific about what they want to create. No quotes or end punctuation. Examples: "Parametric Phone Stand", "Custom Gear Assembly", "Modular Desk Organizer"`,
+        },
+      ],
+    });
+
+    if (Array.isArray(response.content) && response.content.length > 0) {
+      const textContent = response.content.find((c) => c.type === 'text');
+      if (textContent && 'text' in textContent) {
+        let title = textContent.text.trim().replace(/^["']|["']$/g, '');
+        if (title.length > 50) title = title.substring(0, 47) + '...';
+        return title;
+      }
+    }
+  } catch (error) {
+    console.error('Error generating conversation title:', error);
+  }
+
+  return 'New Conversation';
+}
+
 const PARAMETRIC_AGENT_PROMPT = `You are Adam, an AI CAD editor that creates and modifies OpenSCAD models.
 Speak back to the user briefly (one or two sentences), then use tools to make changes.
 Prefer using tools to update the model rather than returning full code directly.
@@ -135,8 +178,6 @@ Guidelines:
 - Keep text concise and helpful. Ask at most 1 follow-up question when truly needed.
 - Pass the user's request directly to the tool without modification (e.g., if user says "a mug", pass "a mug" to build_parametric_model).`;
 
-// Tool: code generation (calls Claude internally to produce clean OpenSCAD with parameters)
-// Tool: apply parameter changes (no LLM needed, patch code deterministically)
 const tools: Anthropic.Messages.ToolUnion[] = [
   {
     name: 'build_parametric_model',
@@ -174,7 +215,6 @@ const tools: Anthropic.Messages.ToolUnion[] = [
   },
 ];
 
-// Strict prompt for producing only OpenSCAD (no suggestion requirement)
 const STRICT_CODE_PROMPT = `You are Adam, an AI CAD editor that creates and modifies OpenSCAD models. You assist users by chatting with them and making changes to their CAD in real-time. You understand that users can see a live preview of the model in a viewport on the right side of the screen while you make changes.
  
 When a user sends a message, you will reply with a response that contains only the most expert code for OpenSCAD according to a given prompt. Make sure that the syntax of the code is correct and that all parts are connected as a 3D printable object. Always write code with changeable parameters. Never include parameters to adjust color. Initialize and declare the variables at the start of the code. Do not write any other text or comments in the response. If I ask about anything other than code for the OpenSCAD platform, only return a text containing '404'. Always ensure your responses are consistent with previous responses. Never include extra text in the response. Use any provided OpenSCAD documentation or context in the conversation to inform your responses.
@@ -293,7 +333,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Insert placeholder assistant message that we will stream updates into
   let content: Content = { model };
   const { data: newMessageData, error: newMessageError } = await supabaseClient
     .from('messages')
@@ -341,7 +380,6 @@ Deno.serve(async (req) => {
               conversationId,
             );
           }
-          // Assistant messages: send code or text from history as plain text
           return {
             role: 'assistant' as const,
             content: [
@@ -361,6 +399,43 @@ Deno.serve(async (req) => {
       apiKey: Deno.env.get('ANTHROPIC_API_KEY') ?? '',
     });
 
+    const isFirstMessage =
+      messages.filter((m) => m.role === 'assistant').length === 0;
+
+    if (isFirstMessage) {
+      generateConversationTitle(anthropic, messagesToSend)
+        .then(async (conversationTitle) => {
+          const { data: currentConversation } = await supabaseClient
+            .from('conversations')
+            .select('title')
+            .eq('id', conversationId)
+            .single();
+
+          if (
+            currentConversation &&
+            (!currentConversation.title ||
+              currentConversation.title.trim() === '')
+          ) {
+            const { error: updateError } = await supabaseClient
+              .from('conversations')
+              .update({ title: conversationTitle })
+              .eq('id', conversationId);
+
+            if (updateError) {
+              console.error(
+                'Failed to update conversation title:',
+                updateError,
+              );
+            } else {
+              console.log('Conversation title updated to:', conversationTitle);
+            }
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to generate conversation title:', error);
+        });
+    }
+
     const stream = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       system: PARAMETRIC_AGENT_PROMPT,
@@ -378,7 +453,6 @@ Deno.serve(async (req) => {
           input?: string;
         } | null = null;
 
-        // Utility to mark all pending tools as error when finalizing on failure/cancel
         const markAllToolsError = () => {
           if (content.toolCalls) {
             content = {
@@ -446,13 +520,11 @@ Deno.serve(async (req) => {
                   continue;
                 }
 
-                // Prepare a focused request to produce code only
                 const userRequest =
                   toolInput.text ||
                   newMessage.content.text ||
                   'Create a printable model';
 
-                // For simple requests, use minimal context to avoid confusion
                 const isSimpleRequest =
                   !toolInput.baseCode &&
                   !toolInput.error &&
@@ -545,7 +617,6 @@ Deno.serve(async (req) => {
                   title = 'Adam Object';
 
                 if (!code) {
-                  // mark tool as error
                   content = markToolAsError(content, currentToolUse?.id);
                 } else {
                   const artifact: ParametricArtifact = {
@@ -580,7 +651,6 @@ Deno.serve(async (req) => {
                   continue;
                 }
 
-                // Determine base code to update (current streaming artifact or latest from history)
                 let baseCode = content.artifact?.code;
                 if (!baseCode) {
                   const lastArtifactMsg = [...messages]
@@ -602,13 +672,11 @@ Deno.serve(async (req) => {
                   continue;
                 }
 
-                // Patch parameters deterministically
                 let patchedCode = baseCode;
                 const currentParams = parseParameters(baseCode);
                 for (const upd of toolInput.updates) {
                   const target = currentParams.find((p) => p.name === upd.name);
                   if (!target) continue;
-                  // Coerce value based on existing type
                   let coerced: string | number | boolean = upd.value;
                   try {
                     if (target.type === 'number') coerced = Number(upd.value);
@@ -616,7 +684,7 @@ Deno.serve(async (req) => {
                       coerced = String(upd.value) === 'true';
                     else if (target.type === 'string')
                       coerced = String(upd.value);
-                    else coerced = upd.value; // arrays not supported in simple tool yet
+                    else coerced = upd.value;
                   } catch (_) {
                     coerced = upd.value;
                   }

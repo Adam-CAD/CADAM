@@ -34,16 +34,13 @@ export function PromptView() {
     },
   });
 
-  // Trigger fade in on mount
   useEffect(() => {
-    // Use requestAnimationFrame to ensure the initial render is complete
     const frame = requestAnimationFrame(() => {
       setIsLoaded(true);
     });
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  // Helper function to get time-based greeting (memoized for performance)
   const getTimeBasedGreeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) {
@@ -53,18 +50,17 @@ export function PromptView() {
     } else {
       return 'Good evening';
     }
-  }, []); // Empty dependency array means it only calculates once per page load
+  }, []);
 
   const { mutate: handleGenerate } = useMutation({
     mutationFn: async (content: Content) => {
-      // Create conversation immediately with 'New Conversation'
       const { data: conversation, error: conversationError } = await supabase
         .from('conversations')
         .insert([
           {
             id: newConversationId,
             user_id: user?.id ?? '',
-            title: 'New Conversation',
+            title: '',
           },
         ])
         .select()

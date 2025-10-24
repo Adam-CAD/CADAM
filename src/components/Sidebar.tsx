@@ -20,10 +20,10 @@ export function Sidebar({ isSidebarOpen }: SidebarProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Get 10 most recent conversations
   const { data: recentConversations } = useQuery<Conversation[]>({
     queryKey: ['conversations', 'recent'],
     initialData: [],
+    refetchInterval: 2000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('conversations')
@@ -171,7 +171,7 @@ export function Sidebar({ isSidebarOpen }: SidebarProps) {
                           >
                             <li key={conversation.id}>
                               <span className="line-clamp-1 text-ellipsis text-nowrap rounded-md p-1 text-xs font-medium text-adam-neutral-400 transition-colors duration-200 ease-in-out [@media(hover:hover)]:hover:bg-adam-neutral-950 [@media(hover:hover)]:hover:text-adam-neutral-10">
-                                {conversation.title}
+                                {conversation.title || 'Untitled'}
                               </span>
                             </li>
                           </Link>
