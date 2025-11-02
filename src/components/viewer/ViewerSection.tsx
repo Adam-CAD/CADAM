@@ -4,7 +4,11 @@ import Loader from './Loader';
 import { OpenSCADViewer } from './OpenSCADViewer';
 import { useIsLoading } from '@/services/messageService';
 
-export function ViewerSection() {
+type ViewerSectionProps = {
+  code?: string;
+};
+
+export function ViewerSection({ code }: ViewerSectionProps) {
   const isLoading = useIsLoading();
   const { currentMessage: message } = useCurrentMessage();
 
@@ -19,7 +23,9 @@ export function ViewerSection() {
           {message?.content.images && Array.isArray(message.content.images) && (
             <ImageGallery imageIds={message.content.images} />
           )}
-          {message?.content.artifact?.code && <OpenSCADViewer />}
+          {(code || message?.content.artifact?.code) && (
+            <OpenSCADViewer code={code} />
+          )}
         </div>
       )}
     </div>

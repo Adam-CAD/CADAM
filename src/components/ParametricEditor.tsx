@@ -17,6 +17,7 @@ import { ViewerSection } from '@/components/viewer/ViewerSection';
 import { ParameterSection } from '@/components/parameter/ParameterSection';
 import { useBlob } from '@/contexts/BlobContext';
 import { useColor } from '@/contexts/ColorContext';
+import { OpenSCADCodeEditor } from '@/components/code/OpenSCADCodeEditor';
 
 const PANEL_SIZES = {
   CHAT: {
@@ -47,6 +48,9 @@ export function ParametricEditor() {
   const parameterPanelRef = useRef<ImperativePanelHandle>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [code, setCode] = useState('');
+  const [debouncedCode, setDebouncedCode] = useState('');
+  const [isCodeDirty, setIsCodeDirty] = useState(false);
 
   const { data: messages = [] } = useMessagesQuery();
 
@@ -86,6 +90,22 @@ export function ParametricEditor() {
       setCurrentMessage(lastMessage);
     }
   }, [lastMessage, setCurrentMessage]);
+
+  useEffect(() => {
+    const nextCode = currentMessage?.content.artifact?.code ?? '';
+    setCode(nextCode);
+    setDebouncedCode(nextCode);
+    setIsCodeDirty(false);
+  }, [currentMessage?.content.artifact?.code, currentMessage?.id]);
+
+  useEffect(() => {
+    if (!isCodeDirty) return;
+    const handle = setTimeout(() => {
+      setDebouncedCode(code);
+      setIsCodeDirty(false);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [code, isCodeDirty]);
 
   // Update container width on resize
   const setContainerRef = useCallback((element: HTMLDivElement) => {
@@ -192,6 +212,13 @@ export function ParametricEditor() {
     }
   }, []);
 
+  const handleCodeChange = useCallback((next: string) => {
+    setCode(next);
+    setIsCodeDirty(true);
+  }, []);
+
+  const currentCode = debouncedCode || code;
+
   return (
     <div
       className="flex h-full w-full overflow-hidden bg-[#292828]"
@@ -256,7 +283,35 @@ export function ParametricEditor() {
           id="preview-panel"
           order={1}
         >
-          <ViewerSection />
+          <PanelGroup direction="vertical" className="h-full">
+            <Panel defaultSize={35} minSize={15} id="code-editor-panel">
+              <div className="h-full w-full bg-adam-bg-secondary-dark p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-adam-text-secondary">
+                    OpenSCAD Source
+                  </span>
+                  {isCodeDirty && (
+                    <span className="text-xs text-adam-blue">Compiling…</span>
+                  )}
+                </div>
+                <div className="h-[calc(100%-1.5rem)] w-full">
+                  <OpenSCADCodeEditor
+                    value={code}
+                    onChange={handleCodeChange}
+                  />
+                </div>
+              </div>
+            </Panel>
+            <PanelResizeHandle className="relative h-2 cursor-row-resize bg-adam-neutral-900" />
+            <Panel
+              defaultSize={65}
+              minSize={35}
+              id="viewer-panel"
+              className="min-h-[200px]"
+            >
+              <ViewerSection code={currentCode} />
+            </Panel>
+          </PanelGroup>
         </Panel>
         {hasArtifact && (
           <>

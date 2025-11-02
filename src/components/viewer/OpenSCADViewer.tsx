@@ -1,5 +1,5 @@
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ThreeScene } from '@/components/viewer/ThreeScene';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { BufferGeometry } from 'three';
@@ -13,7 +13,11 @@ import { Content } from '@shared/types';
 import { useSendContentMutation } from '@/services/messageService';
 import { useBlob } from '@/contexts/BlobContext';
 
-export function OpenSCADViewer() {
+type OpenSCADViewerProps = {
+  code?: string;
+};
+
+export function OpenSCADViewer({ code }: OpenSCADViewerProps) {
   const { conversation } = useConversation();
   const { currentMessage } = useCurrentMessage();
   const { setBlob } = useBlob();
@@ -21,13 +25,21 @@ export function OpenSCADViewer() {
   const [geometry, setGeometry] = useState<BufferGeometry | null>(null);
   const { mutate: sendMessage } = useSendContentMutation({ conversation });
 
-  const scadCode = currentMessage?.content.artifact?.code;
+  const scadCode = useMemo(() => {
+    if (code && code.trim().length > 0) {
+      return code;
+    }
+    return currentMessage?.content.artifact?.code;
+  }, [code, currentMessage?.content.artifact?.code]);
 
   useEffect(() => {
-    if (scadCode) {
+    if (scadCode && scadCode.trim().length > 0) {
       compileScad(scadCode);
+    } else {
+      setGeometry(null);
+      setBlob(null);
     }
-  }, [scadCode, compileScad]);
+  }, [scadCode, compileScad, setBlob]);
 
   useEffect(() => {
     setBlob(output ?? null);
