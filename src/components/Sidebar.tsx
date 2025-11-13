@@ -7,10 +7,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSettings } from '@/contexts/SettingsContext';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@tanstack/react-query';
 import { ConditionalWrapper } from './ConditionalWrapper';
 import { Conversation } from '@shared/types';
+import { Switch } from '@/components/ui/switch';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -19,6 +21,12 @@ interface SidebarProps {
 export function Sidebar({ isSidebarOpen }: SidebarProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const {
+    isDevMode,
+    setDevMode,
+    useExperimentalEditor,
+    setUseExperimentalEditor,
+  } = useSettings();
 
   // Get 10 most recent conversations
   const { data: recentConversations } = useQuery<Conversation[]>({
@@ -223,6 +231,36 @@ export function Sidebar({ isSidebarOpen }: SidebarProps) {
               </Button>
             </Link>
           </ConditionalWrapper>
+        </div>
+        <div className="border-t border-adam-neutral-900 px-4 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-adam-text-secondary">
+            Settings
+          </p>
+          <div className="mt-3 space-y-3 text-sm text-adam-text-primary">
+            <div className="flex items-center justify-between gap-3">
+              <span>Developer mode</span>
+              <Switch
+                checked={isDevMode}
+                onCheckedChange={(checked) => setDevMode(checked)}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className={
+                  isDevMode
+                    ? 'text-adam-text-primary'
+                    : 'text-adam-text-secondary'
+                }
+              >
+                CodeMirror editor
+              </span>
+              <Switch
+                checked={useExperimentalEditor}
+                onCheckedChange={(checked) => setUseExperimentalEditor(checked)}
+                disabled={!isDevMode}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

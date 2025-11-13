@@ -18,6 +18,8 @@ import { ParameterSection } from '@/components/parameter/ParameterSection';
 import { useBlob } from '@/contexts/BlobContext';
 import { useColor } from '@/contexts/ColorContext';
 import { OpenSCADCodeEditor } from '@/components/code/OpenSCADCodeEditor';
+import { useSettings } from '@/contexts/SettingsContext';
+import { Textarea } from '@/components/ui/textarea';
 
 const PANEL_SIZES = {
   CHAT: {
@@ -41,6 +43,7 @@ export function ParametricEditor() {
   const { currentMessage, setCurrentMessage } = useCurrentMessage();
   const { setBlob } = useBlob();
   const { setColor } = useColor();
+  const { useExperimentalEditor } = useSettings();
   const [isParametersPanelCollapsed, setIsParametersPanelCollapsed] =
     useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
@@ -295,10 +298,18 @@ export function ParametricEditor() {
                   )}
                 </div>
                 <div className="h-[calc(100%-1.5rem)] w-full">
-                  <OpenSCADCodeEditor
-                    value={code}
-                    onChange={handleCodeChange}
-                  />
+                  {useExperimentalEditor ? (
+                    <OpenSCADCodeEditor
+                      value={code}
+                      onChange={handleCodeChange}
+                    />
+                  ) : (
+                    <Textarea
+                      value={code}
+                      onChange={(event) => handleCodeChange(event.target.value)}
+                      className="h-full min-h-[240px] resize-none rounded-md border border-adam-neutral-800 bg-adam-neutral-950 font-mono text-xs text-adam-text-primary"
+                    />
+                  )}
                 </div>
               </div>
             </Panel>

@@ -13,6 +13,7 @@ import { HistoryView } from '@/views/HistoryView.tsx';
 import EditorView from '@/views/EditorView.tsx';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthProvider.tsx';
+import { SettingsProvider } from '@/contexts/SettingsContext.tsx';
 import { Toaster } from '@/components/ui/toaster.tsx';
 import { TooltipProvider } from '@/components/ui/tooltip.tsx';
 
@@ -51,13 +52,15 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider delayDuration={0}>
-          <Toaster />
-          <RouterProvider
-            router={router}
-            future={{ v7_startTransition: true }}
-          />
-        </TooltipProvider>
+        <SettingsProvider>
+          <TooltipProvider delayDuration={0}>
+            <Toaster />
+            <RouterProvider
+              router={router}
+              future={{ v7_startTransition: true }}
+            />
+          </TooltipProvider>
+        </SettingsProvider>
       </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
