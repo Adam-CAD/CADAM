@@ -6,6 +6,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
 
 export default function App() {
   const { isLoading } = useAuth();
@@ -14,6 +16,21 @@ export default function App() {
     localStorage.getItem('sidebarOpen') !== 'false',
   );
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
+
+  // Register global keyboard shortcuts
+  useKeyboardShortcuts({
+    handlers: [
+      {
+        action: 'toggle-sidebar',
+        handler: () => setIsSidebarOpen((prev) => !prev),
+      },
+      {
+        action: 'show-shortcuts',
+        handler: () => setShowShortcutsDialog(true),
+      },
+    ],
+  });
 
   useEffect(() => {
     // Function to check if the viewport width is mobile-sized
@@ -70,6 +87,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Keyboard Shortcuts Help Dialog */}
+      <KeyboardShortcutsDialog
+        open={showShortcutsDialog}
+        onOpenChange={setShowShortcutsDialog}
+      />
     </div>
   );
 }

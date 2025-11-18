@@ -11,6 +11,7 @@ import { ErrorView } from '@/views/ErrorView.tsx';
 import { PromptView } from '@/views/PromptView.tsx';
 import { HistoryView } from '@/views/HistoryView.tsx';
 import EditorView from '@/views/EditorView.tsx';
+import { SharedConversationView } from '@/views/SharedConversationView.tsx';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthProvider.tsx';
 import { Toaster } from '@/components/ui/toaster.tsx';
@@ -39,6 +40,11 @@ const router = createBrowserRouter(
           path: '/history',
           errorElement: <ErrorView />,
           element: <HistoryView />,
+        },
+        {
+          path: '/shared/:token',
+          element: <SharedConversationView />,
+          errorElement: <ErrorView />,
         },
         { path: '*', element: <Navigate to="/" replace /> },
       ],

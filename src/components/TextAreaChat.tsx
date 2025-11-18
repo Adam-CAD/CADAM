@@ -18,6 +18,7 @@ import { Textarea } from './ui/textarea';
 import { Avatar } from './ui/avatar';
 import { useItemSelection } from '@/hooks/useItemSelection';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 interface TextAreaChatProps {
   onSubmit: (content: Content) => void;
@@ -60,6 +61,16 @@ function TextAreaChat({
   // Refs for the two hot-zones
   const topDropZoneRef = useRef<HTMLDivElement>(null);
   const textAreaContainerZoneRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard shortcuts for chat
+  useKeyboardShortcuts({
+    handlers: [
+      {
+        action: 'focus-chat-input',
+        handler: () => textareaRef.current?.focus(),
+      },
+    ],
+  });
 
   // Animation variants for image thumbnails
   const itemAnimationVariants = {
