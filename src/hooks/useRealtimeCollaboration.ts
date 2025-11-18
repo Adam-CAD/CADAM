@@ -80,6 +80,12 @@ export function useRealtimeCollaboration({
     [conversationId, enabled],
   );
 
+  // Store onParameterChange in a ref to avoid recreating the effect
+  const onParameterChangeRef = useRef(onParameterChange);
+  useEffect(() => {
+    onParameterChangeRef.current = onParameterChange;
+  }, [onParameterChange]);
+
   // Set up real-time channel
   useEffect(() => {
     if (!conversationId || !enabled) {
@@ -96,7 +102,7 @@ export function useRealtimeCollaboration({
 
     // Handle parameter changes from other users
     channel.on('broadcast', { event: 'parameter_change' }, ({ payload }) => {
-      onParameterChange?.(payload as ParameterChangeEvent);
+      onParameterChangeRef.current?.(payload as ParameterChangeEvent);
     });
 
     // Handle presence (who's online)
@@ -150,7 +156,7 @@ export function useRealtimeCollaboration({
       setIsConnected(false);
       setCollaborators({});
     };
-  }, [conversationId, enabled, onParameterChange]);
+  }, [conversationId, enabled]);
 
   return {
     collaborators: Object.values(collaborators),
