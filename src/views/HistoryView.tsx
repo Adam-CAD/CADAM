@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, Plus } from 'lucide-react';
+import { MessageSquare, Plus, LayoutGrid, List } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,10 +13,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Content, Conversation } from '@shared/types';
 import { HistoryConversation } from '@/types/misc';
 import { ConversationCard } from '@/components/history/ConversationCard';
+import { VisualCard } from '@/components/history/VisualCard';
 import { RenameDialogDrawer } from '@/components/history/RenameDialogDrawer';
 
 export function HistoryView() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'visual'>('list');
   const [editingConversation, setEditingConversation] =
     useState<Conversation | null>(null);
   const [newTitle, setNewTitle] = useState('');
@@ -44,7 +46,6 @@ export function HistoryView() {
             `*, first_message:messages(content), messagesCount:messages(count)`,
           )
           .eq('user_id', user?.id ?? '')
-          // Updated at is the primary sorting
           .order('updated_at', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(1, { referencedTable: 'first_message' });
@@ -59,7 +60,6 @@ export function HistoryView() {
             : { text: '' };
         const messageCount = conv.messagesCount?.[0]?.count ?? 0;
 
-        // Ensure first_message has both text and images if they exist
         const formattedFirstMessage = {
           text: firstMessageContent.text ?? '',
           images: firstMessageContent.images ?? [],
@@ -244,7 +244,38 @@ export function HistoryView() {
             <h1 className="flex items-center gap-2 px-2 text-2xl font-medium text-adam-neutral-10">
               Past Creations
             </h1>
+
+            {/* View Toggle */}
+            <div className="flex items-center gap-2 rounded-lg border border-adam-neutral-700 bg-adam-background-2 p-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className={`h-8 px-3 ${
+                  viewMode === 'list'
+                    ? 'bg-adam-neutral-950 text-adam-neutral-50'
+                    : 'text-adam-neutral-400 hover:bg-transparent hover:text-adam-neutral-50'
+                }`}
+              >
+                <List className="mr-2 h-4 w-4" />
+                List
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('visual')}
+                className={`h-8 px-3 ${
+                  viewMode === 'visual'
+                    ? 'bg-adam-neutral-950 text-adam-neutral-50'
+                    : 'text-adam-neutral-400 hover:bg-transparent hover:text-adam-neutral-50'
+                }`}
+              >
+                <LayoutGrid className="mr-2 h-4 w-4" />
+                Visual
+              </Button>
+            </div>
           </div>
+
           <div className="relative mt-4">
             <Input
               placeholder="Search generations..."
@@ -293,7 +324,24 @@ export function HistoryView() {
                   </>
                 )}
               </div>
+            ) : viewMode === 'visual' ? (
+              // Visual Grid View
+              <div className="grid gap-6 py-4 pb-48 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                {filteredConversations.map((conversation) => (
+                  <VisualCard
+                    key={conversation.id}
+                    conversation={conversation}
+                    onDelete={(id) => deleteConversation.mutate(id)}
+                    onRename={(_id, title) => {
+                      setEditingConversation(conversation);
+                      setNewTitle(title);
+                      setOpen(true);
+                    }}
+                  />
+                ))}
+              </div>
             ) : (
+              // List View (Original)
               <div className="space-y-8 py-4 pb-48">
                 {Object.entries(conversationGroups).map(([date, convs]) => {
                   let dateString;

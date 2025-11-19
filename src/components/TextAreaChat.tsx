@@ -57,6 +57,10 @@ function TextAreaChat({
   const { toast } = useToast();
   const { images, setImages } = useItemSelection();
 
+  // Check if current model supports thinking
+  const selectedModelConfig = PARAMETRIC_MODELS.find((m) => m.id === model);
+  const supportsThinking = selectedModelConfig?.supportsThinking ?? false;
+
   // Refs for the two hot-zones
   const topDropZoneRef = useRef<HTMLDivElement>(null);
   const textAreaContainerZoneRef = useRef<HTMLDivElement>(null);
@@ -110,6 +114,7 @@ function TextAreaChat({
       ...(input.trim() !== '' && { text: input.trim() }),
       ...(images.length > 0 && { images: images.map((img) => img.id) }),
       model: model,
+      thinking: supportsThinking, // Automatically enable thinking for models that support it
     };
     onSubmit(content);
     setInput('');
@@ -281,12 +286,6 @@ function TextAreaChat({
     setIsDragHover(false);
   };
 
-  useEffect(() => {
-    if (images.length > 1 && model !== 'quality') {
-      setModel('quality');
-    }
-  }, [images, setModel, model]);
-
   const handleItemsChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedItems = event.target.files;
     if (selectedItems && selectedItems.length > 0) {
@@ -436,8 +435,8 @@ function TextAreaChat({
               ? 'h-0 border-transparent bg-transparent opacity-0'
               : isDragging
                 ? isDragHover
-                  ? 'h-20 border-[#FF2D92] bg-[rgba(255,44,145,0.24)] opacity-100' // Hot-pink, full height
-                  : 'h-20 border-[#B83C78] bg-[rgba(255,44,145,0.12)] opacity-100' // Intermediate, full height
+                  ? 'h-20 border-[#00A6FF] bg-[rgba(0,166,255,0.24)] opacity-100' // Blue, full height
+                  : 'h-20 border-[#0077B7] bg-[rgba(0,166,255,0.12)] opacity-100' // Intermediate blue, full height
                 : images.length > 0
                   ? 'h-20 border-adam-neutral-700 bg-adam-neutral-950 opacity-100'
                   : 'h-0 border-transparent bg-transparent opacity-0',
@@ -476,13 +475,13 @@ function TextAreaChat({
                 <Images
                   className="h-5 w-5"
                   style={{
-                    color: isDragHover ? '#FF2D92' : 'rgba(255, 44, 145, 0.85)',
+                    color: isDragHover ? '#00A6FF' : 'rgba(0, 166, 255, 0.85)',
                   }}
                 />
                 <p
                   className="text-sm font-normal"
                   style={{
-                    color: isDragHover ? '#FF2D92' : 'rgba(255, 44, 145, 0.85)',
+                    color: isDragHover ? '#00A6FF' : 'rgba(0, 166, 255, 0.85)',
                   }}
                 >
                   Add more images here
@@ -500,13 +499,13 @@ function TextAreaChat({
                 <Images
                   className="h-5 w-5"
                   style={{
-                    color: isDragHover ? '#FF2D92' : 'rgba(255, 44, 145, 0.85)',
+                    color: isDragHover ? '#00A6FF' : 'rgba(0, 166, 255, 0.85)',
                   }}
                 />
                 <p
                   className="text-sm font-normal"
                   style={{
-                    color: isDragHover ? '#FF2D92' : 'rgba(255, 44, 145, 0.85)',
+                    color: isDragHover ? '#00A6FF' : 'rgba(0, 166, 255, 0.85)',
                   }}
                 >
                   Drop images and 3D models here

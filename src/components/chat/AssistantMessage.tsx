@@ -47,7 +47,7 @@ export function AssistantMessage({
   const { mutate: restoreMessage } = useRestoreMessageMutation();
   const { mutate: retryMessage } = useRetryMessageMutation();
   const isLoading = useIsLoading();
-  const model = message.content.model ?? 'fast';
+  const model = message.content.model ?? 'anthropic/claude-sonnet-4.5';
 
   const changeLeaf = useCallback(
     (messageId: string) => {

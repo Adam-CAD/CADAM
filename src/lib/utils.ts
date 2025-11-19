@@ -8,13 +8,30 @@ export function cn(...inputs: ClassValue[]) {
 
 export const PARAMETRIC_MODELS: ModelConfig[] = [
   {
-    id: 'fast',
-    name: 'Adam',
-    description: 'Fast responses, optimized for iterative part design',
+    id: 'google/gemini-3-pro-preview',
+    name: 'Gemini 3 Pro',
+    description: 'Latest Google model with excellent multi-modal capabilities',
+    provider: 'Google',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
   },
   {
-    id: 'quality',
-    name: 'Adam Pro',
-    description: 'Enhanced capabilities takes longer to think',
+    id: 'anthropic/claude-sonnet-4.5',
+    name: 'Claude Sonnet 4.5',
+    description: 'Latest Anthropic model with reliable CAD generation',
+    provider: 'Anthropic',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
+    id: 'openai/gpt-5.1',
+    name: 'GPT-5.1',
+    description: 'Most advanced OpenAI model',
+    provider: 'OpenAI',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
   },
 ];

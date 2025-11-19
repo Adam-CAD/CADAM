@@ -8,6 +8,7 @@ import { useConversation } from '@/services/conversationService';
 import { AssistantLoading } from '@/components/chat/AssistantLoading';
 import { ChatTitle } from '@/components/chat/ChatTitle';
 import { TreeNode } from '@shared/Tree';
+import { PARAMETRIC_MODELS } from '@/lib/utils';
 import {
   useIsLoading,
   useSendContentMutation,
@@ -20,9 +21,19 @@ interface ChatSectionProps {
 export function ChatSection({ messages }: ChatSectionProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { conversation } = useConversation();
-  const [model, setModel] = useState<Model>('fast');
+  const [model, setModel] = useState<Model>(PARAMETRIC_MODELS[0].id);
   const isLoading = useIsLoading();
   const { mutate: sendMessage } = useSendContentMutation({ conversation });
+
+  // Sync model selection with the conversation history (last used model)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant');
+      if (lastAssistantMessage?.content?.model) {
+        setModel(lastAssistantMessage.content.model);
+      }
+    }
+  }, [messages]);
 
   const scrollToBottom = useCallback(() => {
     if (scrollAreaRef.current) {

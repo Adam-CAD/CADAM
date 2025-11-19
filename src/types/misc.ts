@@ -15,6 +15,10 @@ export interface ModelConfig {
   id: Model;
   name: string;
   description: string;
+  provider?: string;
+  supportsTools?: boolean;
+  supportsThinking?: boolean;
+  supportsVision?: boolean;
 }
 
 export interface MessageItem {

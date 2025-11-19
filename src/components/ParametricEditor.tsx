@@ -128,13 +128,11 @@ export function ParametricEditor() {
     if (containerWidth === 0)
       return { defaultSize: 25, minSize: 15, maxSize: 30 };
 
-    // Calculate space taken by other panels at their minimums
     const chatMinPixels = PANEL_SIZES.CHAT.MIN;
     const previewMinPixels = (PANEL_SIZES.PREVIEW.MIN / 100) * containerWidth;
     const availableForParameters =
       containerWidth - chatMinPixels - previewMinPixels;
 
-    // Use the smaller of our desired max (308px) or available space
     const maxPixelsAvailable = Math.min(
       PANEL_SIZES.PARAMETERS.MAX,
       availableForParameters,
@@ -142,18 +140,21 @@ export function ParametricEditor() {
 
     const minSize = (PANEL_SIZES.PARAMETERS.MIN / containerWidth) * 100;
     const maxSize = (maxPixelsAvailable / containerWidth) * 100;
+
+    const adjustedMaxSize = Math.max(maxSize, minSize);
+    const adjustedMinSize = Math.min(minSize, adjustedMaxSize);
+
     const defaultSize = Math.min(
-      Math.max(PANEL_SIZES.PARAMETERS.DEFAULT, minSize),
-      maxSize,
+      Math.max(PANEL_SIZES.PARAMETERS.DEFAULT, adjustedMinSize),
+      adjustedMaxSize,
     );
 
     return {
       defaultSize,
-      minSize,
-      maxSize,
+      minSize: adjustedMinSize,
+      maxSize: adjustedMaxSize,
     };
   }, [containerWidth]);
-
   const hasArtifact = useMemo(
     () => !!currentMessage?.content.artifact,
     [currentMessage],
@@ -198,9 +199,9 @@ export function ParametricEditor() {
       ref={setContainerRef}
     >
       <PanelGroup
+        key={hasArtifact ? 'with-params' : 'no-params'}
         direction="horizontal"
         className="h-full w-full"
-        autoSaveId="editor-panels"
       >
         <Panel
           collapsible
