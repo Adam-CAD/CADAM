@@ -157,6 +157,11 @@ function escapeString(value: string): string {
 function normaliseArrayInput(raw: unknown): unknown[] | null {
   if (Array.isArray(raw)) return raw;
 
+  // Note: Whitespace handling
+  // - We filter out empty strings to handle trailing commas (e.g. "[1, 2,]")
+  // - Whitespace within items (e.g. " 2 ") is preserved here but handled during coercion:
+  //   - number/boolean coercion trims whitespace
+  //   - string coercion handles quotes via stripQuotes which trims whitespace
   if (typeof raw === 'string') {
     const trimmed = raw.trim();
     if (trimmed === '') return [];

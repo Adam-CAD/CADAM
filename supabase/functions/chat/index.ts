@@ -1,13 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
-import { Anthropic } from 'npm:@anthropic-ai/sdk@0.53.0';
-import {
-  ContentBlockParam,
-  MessageCreateParams,
-  MessageParam,
-} from 'npm:@anthropic-ai/sdk@0.53.0/resources/messages';
-
-
 import {
   Message,
   Model,
@@ -21,11 +13,7 @@ import Tree from '@shared/Tree.ts';
 import parseParameters from '../_shared/parseParameter.ts';
 import { formatUserMessage } from '../_shared/messageUtils.ts';
 import { corsHeaders } from '../_shared/cors.ts';
-import {
-  buildParameterAssignmentRegex,
-  coerceParameterValue,
-  serializeParameterValue,
-} from '@shared/parameter-utils.ts';
+import { escapeRegExp } from '@shared/parameter-utils.ts';
 
 // OpenRouter API configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -610,35 +598,6 @@ Deno.serve(async (req) => {
                     }
                   }
 
-
-                // Patch parameters deterministically
-                let patchedCode = baseCode;
-                const currentParams = parseParameters(baseCode);
-                for (const upd of toolInput.updates) {
-                  const target = currentParams.find((p) => p.name === upd.name);
-                  if (!target) continue;
-
-                  const coerced = coerceParameterValue(target, upd.value);
-                  if (coerced === null) continue;
-
-                  const regex = buildParameterAssignmentRegex(target.name);
-                  if (!regex.test(patchedCode)) continue;
-
-                  const nextValue = serializeParameterValue(
-                    target.type,
-                    coerced,
-                  );
-
-                  patchedCode = patchedCode.replace(
-                    regex,
-                    (
-                      _match,
-                      prefix: string,
-                      _current: string,
-                      suffix: string | undefined,
-                    ) => `${prefix}${nextValue}${suffix || ';'}`,
-                  );
-
                   // Check if tool call is complete (when we get finish_reason)
                   if (
                     chunk.choices?.[0]?.finish_reason === 'tool_calls' &&
@@ -649,7 +608,6 @@ Deno.serve(async (req) => {
                   }
                 } catch (e) {
                   console.error('Error parsing SSE chunk:', e);
-
                 }
               }
             }

@@ -86,6 +86,9 @@ export default function parseParameters(script: string): Parameter[] {
       const isSimpleLiteral =
         /^-?\d+(\.\d+)?$/.test(trimmedValue) || /^".*"$/.test(trimmedValue);
 
+      // Skip if not a literal value we can parse (e.g. variable references like "a = b")
+      // This prevents breaking on complex expressions, but means we don't support
+      // parameters defined by reference to other variables.
       if (!isBooleanLiteral && !isArrayLiteral && !isSimpleLiteral) {
         continue;
       }

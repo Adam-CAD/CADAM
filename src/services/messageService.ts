@@ -19,10 +19,7 @@ import { updateParameter } from '@/utils/parameterUtils';
 
 import { useCallback, useEffect, useRef } from 'react';
 import { WorkerMessageType, WorkerResponseMessage } from '@/worker/types';
-
-import { useCallback } from 'react';
 import { PARAMETRIC_MODELS } from '@/lib/utils';
-
 
 function messageSentConversationUpdate(
   newMessage: Message,
@@ -457,7 +454,6 @@ export function useEditMessageMutation() {
   });
 }
 
-
 export function useRetryMessageMutation() {
   const { conversation, updateConversationAsync } = useConversation();
 
@@ -522,6 +518,7 @@ export function useChangeParameters() {
   });
   const preflightWorkerRef = useRef<Worker | null>(null);
   const latestRequestRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const createRequestId = useCallback(
     () =>
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -552,7 +549,7 @@ export function useChangeParameters() {
   );
 
   const runPreflight = useCallback(
-    async (code: string) => {
+    async (code: string, signal?: AbortSignal) => {
       if (typeof window === 'undefined') {
         return Promise.resolve();
       }
@@ -580,14 +577,21 @@ export function useChangeParameters() {
           reject(event.error ?? new Error(event.message));
         };
 
+        const handleAbort = () => {
+          cleanup();
+          reject(new DOMException('Aborted', 'AbortError'));
+        };
+
         const cleanup = () => {
           window.clearTimeout(timeoutId);
           worker.removeEventListener('message', handleMessage);
           worker.removeEventListener('error', handleError);
+          signal?.removeEventListener('abort', handleAbort);
         };
 
         worker.addEventListener('message', handleMessage);
         worker.addEventListener('error', handleError);
+        signal?.addEventListener('abort', handleAbort);
 
         timeoutId = window.setTimeout(() => {
           cleanup();
@@ -652,16 +656,23 @@ export function useChangeParameters() {
         return;
       }
 
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      const { signal } = abortControllerRef.current;
+
       const requestId = createRequestId();
       latestRequestRef.current = requestId;
 
-      runPreflight(artifactCode)
+      runPreflight(artifactCode, signal)
         .then(() => {
           if (latestRequestRef.current === requestId) {
             latestRequestRef.current = null;
           }
         })
         .catch(async (error) => {
+          if (error.name === 'AbortError') return;
           if (latestRequestRef.current !== requestId) return;
           latestRequestRef.current = null;
           console.error('OpenSCAD preflight failed', error);
