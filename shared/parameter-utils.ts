@@ -172,9 +172,15 @@ function normaliseArrayInput(raw: unknown): unknown[] | null {
         // Fallback to manual split
       }
 
-      return inner.split(',').map((item) => item.trim());
+      return inner
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
     }
-    return trimmed.split(',').map((item) => item.trim());
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
   }
 
   return null;

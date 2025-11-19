@@ -14,7 +14,7 @@ export default function parseParameters(script: string): Parameter[] {
 
   const parameters: Record<string, Parameter> = {};
   const parameterRegex =
-    /^([a-z0-9A-Z_$]+)\s*=\s*([\s\S]*?);[ \t\f\cK]*(\/\/[^\n]*)?/gm; // TODO: Use AST parser instead of regex
+    /^([a-z0-9A-Z_$]+)\s*=\s*([\s\S]*?);[ \t\f\v]*(\/\/[^\n]*)?/gm; // TODO: Use AST parser instead of regex
   const groupRegex = /^\/\*\s*\[([^\]]+)\]\s*\*\//gm;
 
   const groupSections: { id: string; group: string; code: string }[] = [

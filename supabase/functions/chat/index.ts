@@ -1,10 +1,10 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { Anthropic } from 'https://esm.sh/@anthropic-ai/sdk@0.53.0';
+import { Anthropic } from 'npm:@anthropic-ai/sdk@0.53.0';
 import {
   ContentBlockParam,
   MessageCreateParams,
   MessageParam,
-} from 'https://esm.sh/@anthropic-ai/sdk@0.53.0/resources/messages.d.mts';
+} from 'npm:@anthropic-ai/sdk@0.53.0/resources/messages';
 import {
   Message,
   Model,

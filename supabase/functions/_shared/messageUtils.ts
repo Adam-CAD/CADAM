@@ -1,6 +1,6 @@
 import { CoreMessage } from '@shared/types.ts';
 import { SupabaseClient } from './supabaseClient.ts';
-import { ContentBlockParam } from 'https://esm.sh/@anthropic-ai/sdk@0.53.0/resources/messages.d.mts';
+import { ContentBlockParam } from 'npm:@anthropic-ai/sdk@0.53.0/resources/messages';
 
 /**
  * Reformats a Supabase signed URL to use the correct host (local ngrok or production)
