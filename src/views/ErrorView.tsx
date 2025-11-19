@@ -1,8 +1,12 @@
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useRouteError } from 'react-router-dom';
 
 export function ErrorView() {
   const navigate = useNavigate();
+  const error = useRouteError() as Error;
+
+  // Log error to console for debugging
+  console.error('Route error:', error);
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-adam-bg-secondary-dark">
@@ -14,6 +18,16 @@ export function ErrorView() {
         <br />
         Please feel free to reach out to us so that we can resolve this issue.
       </p>
+      {error && (
+        <details className="max-w-lg rounded bg-adam-neutral-800 p-4 text-sm">
+          <summary className="cursor-pointer text-adam-neutral-400">
+            Error details
+          </summary>
+          <pre className="mt-2 overflow-auto text-xs text-red-400">
+            {error.message || String(error)}
+          </pre>
+        </details>
+      )}
       <Button onClick={() => navigate('/')}>Go to Home</Button>
     </div>
   );

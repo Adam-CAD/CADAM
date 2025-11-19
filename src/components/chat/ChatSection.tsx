@@ -12,6 +12,9 @@ import {
   useIsLoading,
   useSendContentMutation,
 } from '@/services/messageService';
+import { ShareButton } from '@/components/ShareButton';
+import { CollaboratorsIndicator } from '@/components/CollaboratorsIndicator';
+import { useRealtimeCollaboration } from '@/hooks/useRealtimeCollaboration';
 
 interface ChatSectionProps {
   messages: TreeNode<Message>[];
@@ -23,6 +26,12 @@ export function ChatSection({ messages }: ChatSectionProps) {
   const [model, setModel] = useState<Model>('fast');
   const isLoading = useIsLoading();
   const { mutate: sendMessage } = useSendContentMutation({ conversation });
+
+  // Real-time collaboration for this conversation
+  const { collaborators, isConnected } = useRealtimeCollaboration({
+    conversationId: conversation?.id,
+    enabled: (conversation as any)?.is_public === true, // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
 
   const scrollToBottom = useCallback(() => {
     if (scrollAreaRef.current) {
@@ -72,6 +81,22 @@ export function ChatSection({ messages }: ChatSectionProps) {
           <div className="min-w-0 flex-1">
             <ChatTitle />
           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <CollaboratorsIndicator
+            collaborators={collaborators}
+            isConnected={isConnected}
+          />
+          {conversation && (
+            <ShareButton
+              conversationId={conversation.id}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              isPublic={(conversation as any).is_public}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              shareToken={(conversation as any).share_token}
+              collaboratorCount={collaborators.length}
+            />
+          )}
         </div>
       </div>
       <ScrollArea

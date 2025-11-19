@@ -22,6 +22,9 @@ import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
 import { downloadSTLFile, downloadOpenSCADFile } from '@/utils/downloadUtils';
 import { useChangeParameters } from '@/services/messageService';
 import { useBlob } from '@/contexts/BlobContext';
+import { useRealtimeCollaboration } from '@/hooks/useRealtimeCollaboration';
+import { useConversation } from '@/services/conversationService';
+import { useParams } from 'react-router-dom';
 
 export function ParameterSection() {
   const { blob } = useBlob();
@@ -29,6 +32,8 @@ export function ParameterSection() {
   const { currentMessage } = useCurrentMessage();
   const parameters = currentMessage?.content.artifact?.parameters ?? [];
   const [selectedFormat, setSelectedFormat] = useState<'stl' | 'scad'>('stl');
+  const { id: conversationId } = useParams<{ id: string }>();
+  const { conversation } = useConversation();
 
   // Debounce timer for compilation
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -74,6 +79,18 @@ export function ParameterSection() {
     );
 
     debouncedSubmit(updatedParameters);
+
+    // Broadcast to collaborators if sharing is enabled
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((conversation as any)?.is_public && isConnected) {
+      // Only broadcast single values, not arrays
+      if (typeof validatedValue !== 'object') {
+        broadcastParameterChange(
+          param.name,
+          validatedValue as string | number | boolean,
+        );
+      }
+    }
   };
 
   const handleDownload = () => {
@@ -96,6 +113,22 @@ export function ParameterSection() {
 
   const isDownloadDisabled =
     selectedFormat === 'stl' ? !blob : !currentMessage?.content.artifact?.code;
+
+  // Real-time collaboration
+  const { isConnected, broadcastParameterChange } = useRealtimeCollaboration({
+    conversationId,
+    onParameterChange: (event) => {
+      // When a collaborator changes a parameter, update locally
+      const updatedParameters = parameters.map((p) =>
+        p.name === event.parameterName ? { ...p, value: event.newValue } : p,
+      );
+      // Apply the change without debouncing (it's already been changed remotely)
+      if (currentMessage) {
+        changeParameters(currentMessage, updatedParameters);
+      }
+    },
+    enabled: (conversation as any)?.is_public === true, // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
 
   return (
     <div className="h-full w-full max-w-full border-l border-gray-200/20 bg-adam-bg-secondary-dark dark:border-gray-800">
