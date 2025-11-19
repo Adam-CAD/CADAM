@@ -13,7 +13,11 @@ import Tree from '@shared/Tree.ts';
 import parseParameters from '../_shared/parseParameter.ts';
 import { formatUserMessage } from '../_shared/messageUtils.ts';
 import { corsHeaders } from '../_shared/cors.ts';
-import { escapeRegExp } from '@shared/parameter-utils.ts';
+import {
+  buildParameterAssignmentRegex,
+  coerceParameterValue,
+  serializeParameterValue,
+} from '@shared/parameter-utils.ts';
 
 // OpenRouter API configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -819,33 +823,28 @@ Deno.serve(async (req) => {
               return;
             }
 
-            // Patch parameters deterministically
+            // Patch parameters deterministically using shared helpers
             let patchedCode = baseCode;
             const currentParams = parseParameters(baseCode);
             for (const upd of toolInput.updates) {
               const target = currentParams.find((p) => p.name === upd.name);
               if (!target) continue;
-              // Coerce value based on existing type
-              let coerced: string | number | boolean = upd.value;
-              try {
-                if (target.type === 'number') coerced = Number(upd.value);
-                else if (target.type === 'boolean')
-                  coerced = String(upd.value) === 'true';
-                else if (target.type === 'string') coerced = String(upd.value);
-                else coerced = upd.value;
-              } catch (_) {
-                coerced = upd.value;
-              }
+
+              const coerced = coerceParameterValue(target, upd.value);
+              if (coerced === null) continue;
+
+              const regex = buildParameterAssignmentRegex(target.name);
+              if (!regex.test(patchedCode)) continue;
+
+              const nextValue = serializeParameterValue(target.type, coerced);
               patchedCode = patchedCode.replace(
-                new RegExp(
-                  `^\\s*(${escapeRegExp(target.name)}\\s*=\\s*)[^;]+;([\\t\\f\\cK ]*\\/\\/[^\\n]*)?`,
-                  'm',
-                ),
-                (_, g1: string, g2: string) => {
-                  if (target.type === 'string')
-                    return `${g1}"${String(coerced).replace(/"/g, '\\"')}";${g2 || ''}`;
-                  return `${g1}${coerced};${g2 || ''}`;
-                },
+                regex,
+                (
+                  _match: string,
+                  prefix: string,
+                  _current: string,
+                  suffix: string | undefined,
+                ) => `${prefix}${nextValue}${suffix || ';'}`,
               );
             }
 
