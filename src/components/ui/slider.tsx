@@ -1,3 +1,48 @@
+/**
+ * Adam-Quality Slider Component
+ *
+ * An enhanced slider component with improved UX features inspired by adam.new:
+ *
+ * **Key Features:**
+ * - Improved hit targets (44px touch area, 20px thumb)
+ * - Progressive hover states (track → range → thumb scaling)
+ * - Enhanced keyboard navigation (arrows, PageUp/Down, Home/End, Shift for fine control)
+ * - Animated reset-to-default marker with tooltip
+ * - Separate desktop (jump-to-click) vs mobile (relative drag) behaviors
+ * - Smooth spring-like animations on value changes
+ * - Full accessibility (ARIA labels, focus indicators, keyboard support)
+ *
+ * **Usage:**
+ * ```tsx
+ * <Slider
+ *   min={0}
+ *   max={100}
+ *   step={1}
+ *   value={[currentValue]}
+ *   defaultValue={[50]}
+ *   onValueChange={([newValue]) => setValue(newValue)}
+ *   onValueCommit={([finalValue]) => saveValue(finalValue)}
+ * />
+ * ```
+ *
+ * **Props:**
+ * - `value`: Current value (array format: `[number]`)
+ * - `defaultValue`: Original/reset value for the marker
+ * - `min`, `max`, `step`: Range configuration
+ * - `variant`: 'default' (rounded corners) or 'capsule' (fully rounded)
+ * - `defaultMarkerStyle`: 'dot' (circular) or 'line' (vertical bar)
+ * - `hideDefaultMarker`: Hide the reset marker
+ *
+ * **Keyboard Controls:**
+ * - Arrow keys: Increment/decrement by `step`
+ * - Shift + Arrows: Fine adjustment (0.1× step)
+ * - PageUp/PageDown: Jump by 10% of range
+ * - Home/End: Jump to min/max
+ *
+ * **Pointer Behavior:**
+ * - Desktop (fine pointer): Click jumps to position, drag adjusts smoothly
+ * - Mobile (coarse pointer): Relative drag from current position (no jumps)
+ */
 import * as React from 'react';
 import * as SliderPrimitive from '@radix-ui/react-slider';
 
@@ -32,7 +77,10 @@ const Slider = React.forwardRef<
     const [startX, setStartX] = React.useState(0);
     const [startValue, setStartValue] = React.useState(0);
     const [isAnimating, setIsAnimating] = React.useState(false);
+    const [isHoveringTrack, setIsHoveringTrack] = React.useState(false);
+    const [isHoveringMarker, setIsHoveringMarker] = React.useState(false);
     const trackRef = React.useRef<HTMLDivElement>(null);
+    const thumbRef = React.useRef<HTMLDivElement>(null);
     const lastValueRef = React.useRef<number>(
       Array.isArray(value) ? (value?.[0] ?? 0) : (value ?? 0),
     );
@@ -309,6 +357,75 @@ const Slider = React.forwardRef<
       }, 300);
     };
 
+    // Enhanced keyboard navigation
+    const handleKeyDown = (event: React.KeyboardEvent) => {
+      // Let Radix handle its default navigation, but intercept for enhancements
+      const isHandledKey = [
+        'ArrowRight',
+        'ArrowUp',
+        'ArrowLeft',
+        'ArrowDown',
+        'PageUp',
+        'PageDown',
+        'Home',
+        'End',
+      ].includes(event.key);
+
+      if (!isHandledKey) return;
+
+      // Prevent default to stop Radix's built-in behavior
+      event.preventDefault();
+      event.stopPropagation();
+
+      let newValue = currentValue;
+      const valueRange = max - min;
+      const largeStep = valueRange * 0.1; // 10% for PageUp/PageDown
+      const fineStep = step * 0.1; // Fine adjustment with Shift
+
+      switch (event.key) {
+        case 'ArrowRight':
+        case 'ArrowUp':
+          newValue = currentValue + (event.shiftKey ? fineStep : step);
+          break;
+        case 'ArrowLeft':
+        case 'ArrowDown':
+          newValue = currentValue - (event.shiftKey ? fineStep : step);
+          break;
+        case 'PageUp':
+          newValue = currentValue + largeStep;
+          break;
+        case 'PageDown':
+          newValue = currentValue - largeStep;
+          break;
+        case 'Home':
+          newValue = min;
+          break;
+        case 'End':
+          newValue = max;
+          break;
+      }
+
+      // Clamp and snap to step
+      newValue = Math.max(min, Math.min(max, newValue));
+      if (step > 0) {
+        newValue = Math.round(newValue / step) * step;
+      }
+
+      // Round based on step precision
+      const decimals =
+        step >= 1 ? 0 : Math.max(0, -Math.floor(Math.log10(step)));
+      newValue =
+        Math.round(newValue * Math.pow(10, decimals)) / Math.pow(10, decimals);
+
+      lastValueRef.current = newValue;
+      if (onValueChange) {
+        onValueChange([newValue]);
+      }
+      if (onValueCommit) {
+        onValueCommit([newValue]);
+      }
+    };
+
     // Prevent default Radix behavior
     const handleRadixValueChange = () => {
       // Do nothing - we handle our own value changes
@@ -318,10 +435,15 @@ const Slider = React.forwardRef<
       <SliderPrimitive.Root
         ref={ref}
         className={cn(
-          'group relative flex h-8 w-full touch-none select-none items-center',
+          'group relative flex w-full touch-none select-none items-center',
+          // Larger hit area: 44px minimum for touch accessibility
+          'h-11 py-2.5',
+          // Enhanced focus ring
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2',
           className,
         )}
         onValueChange={handleRadixValueChange}
+        onKeyDown={handleKeyDown}
         value={[currentValue]}
         min={min}
         max={max}
@@ -331,16 +453,22 @@ const Slider = React.forwardRef<
         <SliderPrimitive.Track
           ref={trackRef}
           className={cn(
-            'relative h-6 w-full grow cursor-pointer overflow-hidden transition-all',
+            'relative w-full grow cursor-pointer overflow-visible transition-all duration-200',
+            // Base height: 24px, expands to 28px on interaction
+            'h-6',
             variant === 'capsule'
               ? 'rounded-full bg-sky-500/20'
               : 'rounded-[8px] bg-sky-500/20',
-            (isDragging || isPointerDown) && 'h-7',
+            // Expand on drag or hover for better visual feedback
+            (isDragging || isPointerDown) && 'h-7 bg-sky-500/25',
+            isHoveringTrack && !isDragging && '[@media(hover:hover)]:h-[26px]',
           )}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
+          onMouseEnter={() => setIsHoveringTrack(true)}
+          onMouseLeave={() => setIsHoveringTrack(false)}
         >
           <SliderPrimitive.Range
             className={cn(
@@ -350,36 +478,125 @@ const Slider = React.forwardRef<
                 ? 'transition-all duration-300 ease-out'
                 : smoothAnimate && !isDragging
                   ? 'transition-all duration-150 ease-out'
-                  : 'transition-colors',
+                  : 'transition-colors duration-200',
+              // Progressive hover states
               !isDragging &&
                 !isPointerDown &&
-                '[@media(hover:hover)]:group-hover:bg-sky-100/50',
+                isHoveringTrack &&
+                '[@media(hover:hover)]:bg-sky-100/50',
               (isDragging || isPointerDown) && '!bg-sky-200/50',
               isAnimating && '!bg-sky-200/50',
             )}
           />
-          {/* Default value marker */}
+
+          {/* Visual thumb indicator for better targeting */}
+          <div
+            ref={thumbRef}
+            className={cn(
+              'absolute top-1/2 -translate-x-1/2 -translate-y-1/2',
+              'h-5 w-5 rounded-full',
+              'bg-white shadow-md',
+              'pointer-events-none',
+              'transition-all duration-200',
+              // Scale up on hover or drag
+              isHoveringTrack &&
+                !isDragging &&
+                !isPointerDown &&
+                '[@media(hover:hover)]:scale-110',
+              (isDragging || isPointerDown) && 'scale-125 shadow-lg',
+              // Add subtle glow on active state
+              (isDragging || isPointerDown) && 'ring-2 ring-sky-400/50',
+              // Smooth spring-like animation on reset
+              isAnimating && 'scale-110',
+            )}
+            style={{
+              left: `${((currentValue - min) / (max - min)) * 100}%`,
+            }}
+            aria-hidden="true"
+          />
+          {/* Default value marker - Enhanced with pulse animation and better hover */}
           {!hideDefaultMarker &&
             currentValue !== defaultVal &&
             (defaultMarkerStyle === 'dot' ? (
               <div
-                className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-white opacity-60 shadow-[0_0_8px_rgba(0,0,0,0.5)] transition-all hover:h-2.5 hover:w-2.5 hover:opacity-100"
+                className={cn(
+                  'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer',
+                  'h-2.5 w-2.5 rounded-full bg-white',
+                  'shadow-[0_0_10px_rgba(0,0,0,0.6)]',
+                  'transition-all duration-200',
+                  'opacity-70',
+                  // Pulse animation to draw attention
+                  'animate-pulse',
+                  // Enhanced hover state
+                  isHoveringMarker && [
+                    'scale-150',
+                    'opacity-100',
+                    'shadow-[0_0_12px_rgba(14,165,233,0.6)]',
+                    'ring-2 ring-sky-400/40',
+                  ],
+                )}
                 style={{ left: `${defaultPosition}%` }}
                 onClick={handleDefaultMarkerClick}
+                onMouseEnter={() => setIsHoveringMarker(true)}
+                onMouseLeave={() => setIsHoveringMarker(false)}
                 title={`Reset to default (${defaultVal})`}
+                role="button"
+                aria-label={`Reset to default value ${defaultVal}`}
+                tabIndex={-1}
               >
-                {/* Invisible wider click area */}
-                <div className="absolute inset-0 h-full w-3 -translate-x-1/2 cursor-pointer" />
+                {/* Larger hit area for easier clicking (16px touch target) */}
+                <div
+                  className="absolute -inset-2 cursor-pointer"
+                  aria-hidden="true"
+                />
+
+                {/* Tooltip on hover */}
+                {isHoveringMarker && (
+                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">
+                    Reset to {defaultVal}
+                    <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                  </div>
+                )}
               </div>
             ) : (
               <div
-                className="absolute bottom-[2px] top-[2px] w-[2px] -translate-x-1/2 cursor-pointer rounded-full bg-white opacity-40 shadow-[0_0_8px_rgba(0,0,0,0.5)] transition-all hover:w-[4px] hover:opacity-100"
+                className={cn(
+                  'absolute bottom-[2px] top-[2px] -translate-x-1/2 cursor-pointer',
+                  'w-[2px] rounded-full bg-white',
+                  'shadow-[0_0_10px_rgba(0,0,0,0.6)]',
+                  'transition-all duration-200',
+                  'opacity-50',
+                  // Pulse animation
+                  'animate-pulse',
+                  // Enhanced hover state
+                  isHoveringMarker && [
+                    'w-1',
+                    'opacity-100',
+                    'shadow-[0_0_12px_rgba(14,165,233,0.6)]',
+                  ],
+                )}
                 style={{ left: `${defaultPosition}%` }}
                 onClick={handleDefaultMarkerClick}
+                onMouseEnter={() => setIsHoveringMarker(true)}
+                onMouseLeave={() => setIsHoveringMarker(false)}
                 title={`Reset to default (${defaultVal})`}
+                role="button"
+                aria-label={`Reset to default value ${defaultVal}`}
+                tabIndex={-1}
               >
-                {/* Invisible wider click area */}
-                <div className="absolute -left-1.5 -right-1.5 bottom-0 top-0 cursor-pointer" />
+                {/* Larger hit area */}
+                <div
+                  className="absolute -left-2 -right-2 bottom-0 top-0 cursor-pointer"
+                  aria-hidden="true"
+                />
+
+                {/* Tooltip on hover */}
+                {isHoveringMarker && (
+                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">
+                    Reset to {defaultVal}
+                    <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                  </div>
+                )}
               </div>
             ))}
         </SliderPrimitive.Track>
