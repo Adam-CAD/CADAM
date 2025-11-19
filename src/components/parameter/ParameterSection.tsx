@@ -22,6 +22,8 @@ import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
 import { downloadSTLFile, downloadOpenSCADFile } from '@/utils/downloadUtils';
 import { useChangeParameters } from '@/services/messageService';
 import { useBlob } from '@/contexts/BlobContext';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { formatKeyCombo } from '@/types/keyboard';
 
 export function ParameterSection() {
   const { blob } = useBlob();
@@ -96,6 +98,22 @@ export function ParameterSection() {
 
   const isDownloadDisabled =
     selectedFormat === 'stl' ? !blob : !currentMessage?.content.artifact?.code;
+
+  // Register keyboard shortcuts for downloads
+  useKeyboardShortcuts({
+    handlers: [
+      {
+        action: 'download-stl',
+        handler: handleDownloadSTL,
+        enabled: !!blob,
+      },
+      {
+        action: 'download-scad',
+        handler: handleDownloadOpenSCAD,
+        enabled: !!currentMessage?.content.artifact?.code,
+      },
+    ],
+  });
 
   return (
     <div className="h-full w-full max-w-full border-l border-gray-200/20 bg-adam-bg-secondary-dark dark:border-gray-800">
@@ -174,20 +192,34 @@ export function ParameterSection() {
                   disabled={!blob}
                   className="cursor-pointer text-adam-text-primary"
                 >
-                  <span className="text-sm">.STL</span>
-                  <span className="ml-3 text-xs text-adam-text-primary/60">
-                    3D Printing
-                  </span>
+                  <div className="flex flex-1 items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="text-sm">.STL</span>
+                      <span className="ml-3 text-xs text-adam-text-primary/60">
+                        3D Printing
+                      </span>
+                    </div>
+                    <kbd className="ml-4 rounded bg-adam-neutral-700 px-2 py-0.5 font-mono text-xs text-adam-neutral-400">
+                      {formatKeyCombo('mod+d')}
+                    </kbd>
+                  </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => setSelectedFormat('scad')}
                   disabled={!currentMessage?.content.artifact?.code}
                   className="cursor-pointer text-adam-text-primary"
                 >
-                  <span className="text-sm">.SCAD</span>
-                  <span className="ml-3 text-xs text-adam-text-primary/60">
-                    OpenSCAD Code
-                  </span>
+                  <div className="flex flex-1 items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="text-sm">.SCAD</span>
+                      <span className="ml-3 text-xs text-adam-text-primary/60">
+                        OpenSCAD Code
+                      </span>
+                    </div>
+                    <kbd className="ml-4 rounded bg-adam-neutral-700 px-2 py-0.5 font-mono text-xs text-adam-neutral-400">
+                      {formatKeyCombo('mod+s')}
+                    </kbd>
+                  </div>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
