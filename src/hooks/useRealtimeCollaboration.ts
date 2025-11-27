@@ -69,9 +69,7 @@ export function useRealtimeCollaboration({
 
   // Broadcast a parameter change to all collaborators
   const broadcastParameterChange = useCallback(
-      if (!channelRef.current || !conversationId || !enabled) return;
-
-      const userId = userIdRef.current;
+    async (parameterName: string, newValue: number | string | boolean) => {
       if (!channelRef.current || !conversationId || !enabled) return;
 
       const userId = userIdRef.current;
@@ -90,6 +88,7 @@ export function useRealtimeCollaboration({
       });
     },
     [conversationId, enabled],
+  );
   );
 
   // Store onParameterChange in a ref to avoid recreating the effect
