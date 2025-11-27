@@ -58,7 +58,7 @@ export function useKeyboardShortcuts({
         (event.key === 'k' || event.key === '/') &&
         (event.metaKey || event.ctrlKey);
 
-      // Save/Download shortcuts (Cmd/Ctrl+S, Cmd/Ctrl+D) that work in input fields
+      // Save/Download shortcuts (Cmd/Ctrl+Shift+S, Cmd/Ctrl+D) that work in input fields
       const isSaveOrDownload =
         ((event.key === 's' || event.key === 'S') &&
           (event.metaKey || event.ctrlKey) &&
