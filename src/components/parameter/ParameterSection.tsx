@@ -109,7 +109,7 @@ export function ParameterSection() {
   useEffect(() => {
     downloadSTLRef.current = handleDownloadSTL;
     downloadSCADRef.current = handleDownloadOpenSCAD;
-  }, [handleDownloadSTL, handleDownloadOpenSCAD]);
+  });
 
   useKeyboardShortcuts({
     handlers: [
