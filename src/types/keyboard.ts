@@ -135,10 +135,10 @@ export const matchesShortcut = (
   const key = parts[parts.length - 1];
   const modifiers = parts.slice(0, -1);
 
-  // Check if the pressed key matches
-  // Special case: '/' key might appear as '?' when Shift is pressed
+  // For special characters like '/', use event.code to avoid Shift key conflicts
+  // '/' requires Shift on most keyboards (appears as '?'), so we check the code instead
   const keyMatches =
-    event.key.toLowerCase() === key || (key === '/' && event.key === '?');
+    key === '/' ? event.code === 'Slash' : event.key.toLowerCase() === key;
 
   if (!keyMatches) return false;
 
@@ -151,8 +151,9 @@ export const matchesShortcut = (
   const hasMod = isMac() ? event.metaKey : event.ctrlKey;
 
   // Match the required modifiers
+  // For '/' key, ignore Shift since it's required to type '/' on most keyboards
   const modMatches = needsMod === hasMod;
-  const shiftMatches = needsShift === event.shiftKey;
+  const shiftMatches = key === '/' ? true : needsShift === event.shiftKey;
   const altMatches = needsAlt === event.altKey;
 
   return modMatches && shiftMatches && altMatches;
