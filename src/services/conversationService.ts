@@ -15,7 +15,7 @@ const defaultConversation: Conversation = {
   share_token: null,
 };
 
-export function useConversation() {
+export function useConversation(options?: { enabled?: boolean }) {
   const { id: conversationId } = useParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -23,7 +23,7 @@ export function useConversation() {
   const { data: conversation, isLoading: isConversationLoading } =
     useQuery<Conversation>({
       queryKey: ['conversation', conversationId],
-      enabled: !!conversationId,
+      enabled: !!conversationId && (options?.enabled ?? true),
       refetchOnMount: false,
       queryFn: async () => {
         if (!conversationId) {
@@ -116,11 +116,14 @@ export function useConversation() {
  * Hook for accessing public conversations via ID (for shared links)
  * Does not require authentication - relies on RLS policies for security
  */
-export function usePublicConversation(conversationId: string | undefined) {
+export function usePublicConversation(
+  conversationId: string | undefined,
+  options?: { enabled?: boolean },
+) {
   const { data: conversation, isLoading: isConversationLoading } =
     useQuery<Conversation>({
       queryKey: ['public-conversation', conversationId],
-      enabled: !!conversationId,
+      enabled: !!conversationId && (options?.enabled ?? true),
       refetchOnMount: false,
       queryFn: async () => {
         if (!conversationId) {

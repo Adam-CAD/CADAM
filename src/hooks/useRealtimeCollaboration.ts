@@ -55,6 +55,9 @@ export function useRealtimeCollaboration({
   const userColorRef = useRef<string>(
     USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)],
   );
+  const anonymousNameRef = useRef<string>(
+    `Anonymous ${Math.random().toString(36).substring(2, 6)}`,
+  );
 
   // Broadcast a parameter change to all collaborators
   const broadcastParameterChange = useCallback(
