@@ -22,10 +22,9 @@ export default function App() {
   const toggleSidebarRef = useRef(() => setIsSidebarOpen((prev) => !prev));
   const showShortcutsRef = useRef(() => setShowShortcutsDialog(true));
 
-  useEffect(() => {
-    toggleSidebarRef.current = () => setIsSidebarOpen((prev) => !prev);
-    showShortcutsRef.current = () => setShowShortcutsDialog(true);
-  }, []);
+  // Update refs during render to ensure they have the latest handlers
+  toggleSidebarRef.current = () => setIsSidebarOpen((prev) => !prev);
+  showShortcutsRef.current = () => setShowShortcutsDialog(true);
 
   useKeyboardShortcuts({
     handlers: [

@@ -62,7 +62,7 @@ export function useKeyboardShortcuts({
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable;
 
-      // Find matching shortcut with O(1) lookup
+      // Find matching shortcut by iterating through the shortcuts map
       let matchedShortcut: KeyboardShortcut | undefined;
       for (const [key, shortcut] of shortcutMap) {
         if (matchesShortcut(event, key)) {

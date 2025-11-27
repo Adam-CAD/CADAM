@@ -55,7 +55,7 @@ Platform-aware keyboard shortcuts with intelligent input field detection:
 
 ## Performance
 
-- Keyboard shortcuts: O(1) lookup with Map-based matching
+- Keyboard shortcuts: Efficient Map-based matching with early exit on first match
 - No memory leaks: Proper cleanup in useEffect return functions
 
 ---
