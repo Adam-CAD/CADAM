@@ -89,15 +89,15 @@ export function ParameterSection() {
     }
   };
 
-  const handleDownloadSTL = () => {
+  const handleDownloadSTL = useCallback(() => {
     if (!blob) return;
     downloadSTLFile(blob, currentMessage);
-  };
+  }, [blob, currentMessage]);
 
-  const handleDownloadOpenSCAD = () => {
+  const handleDownloadOpenSCAD = useCallback(() => {
     if (!currentMessage?.content.artifact?.code) return;
     downloadOpenSCADFile(currentMessage.content.artifact.code, currentMessage);
-  };
+  }, [currentMessage]);
 
   const isDownloadDisabled =
     selectedFormat === 'stl' ? !blob : !currentMessage?.content.artifact?.code;
