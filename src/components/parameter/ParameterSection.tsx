@@ -102,17 +102,25 @@ export function ParameterSection() {
   const isDownloadDisabled =
     selectedFormat === 'stl' ? !blob : !currentMessage?.content.artifact?.code;
 
-  // Register keyboard shortcuts for downloads
+  // Register keyboard shortcuts for downloads using refs to avoid stale closures
+  const downloadSTLRef = useRef(handleDownloadSTL);
+  const downloadSCADRef = useRef(handleDownloadOpenSCAD);
+
+  useEffect(() => {
+    downloadSTLRef.current = handleDownloadSTL;
+    downloadSCADRef.current = handleDownloadOpenSCAD;
+  }, [handleDownloadSTL, handleDownloadOpenSCAD]);
+
   useKeyboardShortcuts({
     handlers: [
       {
         action: 'download-stl',
-        handler: handleDownloadSTL,
+        handler: () => downloadSTLRef.current(),
         enabled: !!blob,
       },
       {
         action: 'download-scad',
-        handler: handleDownloadOpenSCAD,
+        handler: () => downloadSCADRef.current(),
         enabled: !!currentMessage?.content.artifact?.code,
       },
     ],
@@ -220,7 +228,7 @@ export function ParameterSection() {
                       </span>
                     </div>
                     <kbd className="ml-4 rounded bg-adam-neutral-700 px-2 py-0.5 font-mono text-xs text-adam-neutral-400">
-                      {formatKeyCombo('mod+s')}
+                      {formatKeyCombo('mod+shift+s')}
                     </kbd>
                   </div>
                 </DropdownMenuItem>

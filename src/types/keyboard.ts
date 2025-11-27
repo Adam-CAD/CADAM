@@ -52,7 +52,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     action: 'download-scad',
     label: 'Download OpenSCAD',
     description: 'Download the OpenSCAD source code',
-    key: 'mod+s',
+    key: 'mod+shift+s',
     category: 'Files',
   },
   {
