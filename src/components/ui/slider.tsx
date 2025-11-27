@@ -448,8 +448,22 @@ const Slider = React.forwardRef<
       if (onValueChange) {
         onValueChange([newValue]);
       }
-      if (onValueCommit) {
-        onValueCommit([newValue]);
+    };
+
+    const handleKeyUp = (event: React.KeyboardEvent) => {
+      const isHandledKey = [
+        'ArrowRight',
+        'ArrowUp',
+        'ArrowLeft',
+        'ArrowDown',
+        'PageUp',
+        'PageDown',
+        'Home',
+        'End',
+      ].includes(event.key);
+
+      if (isHandledKey && onValueCommit) {
+        onValueCommit([lastValueRef.current]);
       }
     };
 
@@ -471,6 +485,7 @@ const Slider = React.forwardRef<
         )}
         onValueChange={handleRadixValueChange}
         onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
         value={[currentValue]}
         min={min}
         max={max}
