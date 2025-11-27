@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS "public"."conversations" (
     "user_id" "uuid" NOT NULL,
     "title" "text" NOT NULL,
     "current_message_leaf_id" "uuid",
-    "share_token" "text",
+    "share_token" "text" UNIQUE,
     "is_public" boolean DEFAULT false
 );
 
@@ -25,7 +25,24 @@ CREATE INDEX IF NOT EXISTS conversations_updated_at_idx ON "public"."conversatio
 
 CREATE INDEX IF NOT EXISTS conversations_user_id_idx ON "public"."conversations" USING btree (user_id);
 
+CREATE INDEX IF NOT EXISTS conversations_share_token_idx ON "public"."conversations" USING btree (share_token) WHERE share_token IS NOT NULL;
 
-CREATE POLICY "Users can manage their own conversations" ON "public"."conversations" USING ( (SELECT "auth"."uid"()) = "user_id" );
+
+-- RLS Policies for shared conversations
+CREATE POLICY "Allow read access via share token"
+ON "public"."conversations" FOR SELECT
+USING (
+  -- Owner can always read
+  auth.uid() = user_id
+  OR
+  -- Anyone with valid share token can read if public
+  (is_public = true AND share_token IS NOT NULL)
+);
+
+CREATE POLICY "Users can manage own conversations"
+ON "public"."conversations"
+FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
 
 ALTER TABLE "public"."conversations" ENABLE ROW LEVEL SECURITY;
