@@ -39,6 +39,8 @@ export type Database = {
           created_at: string | null;
           current_message_leaf_id: string | null;
           id: string;
+          is_public: boolean | null;
+          share_token: string | null;
           title: string;
           updated_at: string | null;
           user_id: string;
@@ -47,6 +49,8 @@ export type Database = {
           created_at?: string | null;
           current_message_leaf_id?: string | null;
           id?: string;
+          is_public?: boolean | null;
+          share_token?: string | null;
           title: string;
           updated_at?: string | null;
           user_id: string;
@@ -55,6 +59,8 @@ export type Database = {
           created_at?: string | null;
           current_message_leaf_id?: string | null;
           id?: string;
+          is_public?: boolean | null;
+          share_token?: string | null;
           title?: string;
           updated_at?: string | null;
           user_id?: string;
@@ -101,7 +107,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      generate_share_token: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
     };
     Enums: {
       [_ in never]: never;

@@ -43,17 +43,19 @@ export function ShareButton({
   // Generate share link mutation
   const generateShareLink = useMutation({
     mutationFn: async () => {
-      // Generate a random share token
-      const token =
-        Math.random().toString(36).substring(2, 9) +
-        Math.random().toString(36).substring(2, 9);
+      // Use the database's secure token generator
+      const { data: token, error: tokenError } = await supabase.rpc(
+        'generate_share_token',
+      );
+
+      if (tokenError) throw tokenError;
 
       const { error } = await supabase
         .from('conversations')
         .update({
           share_token: token,
           is_public: true,
-        } as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+        })
         .eq('id', conversationId);
 
       if (error) throw error;
@@ -87,7 +89,7 @@ export function ShareButton({
         .update({
           share_token: null,
           is_public: false,
-        } as any) // eslint-disable-line @typescript-eslint/no-explicit-any
+        })
         .eq('id', conversationId);
     },
     onSuccess: () => {

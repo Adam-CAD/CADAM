@@ -81,8 +81,7 @@ export function ParameterSection() {
     debouncedSubmit(updatedParameters);
 
     // Broadcast to collaborators if sharing is enabled
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((conversation as any)?.is_public && isConnected) {
+    if (conversation?.is_public && isConnected) {
       // Only broadcast single values, not arrays
       if (typeof validatedValue !== 'object') {
         broadcastParameterChange(
@@ -127,7 +126,7 @@ export function ParameterSection() {
         changeParameters(currentMessage, updatedParameters);
       }
     },
-    enabled: (conversation as any)?.is_public === true, // eslint-disable-line @typescript-eslint/no-explicit-any
+    enabled: conversation?.is_public === true,
   });
 
   return (
