@@ -48,6 +48,15 @@ import * as SliderPrimitive from '@radix-ui/react-slider';
 
 import { cn } from '@/lib/utils';
 
+// Memoized tooltip component to prevent re-renders
+const MarkerTooltip = React.memo(({ value }: { value: number }) => (
+  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">
+    Reset to {value}
+    <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+  </div>
+));
+MarkerTooltip.displayName = 'MarkerTooltip';
+
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
@@ -569,12 +578,7 @@ const Slider = React.forwardRef<
                 />
 
                 {/* Tooltip on hover */}
-                {isHoveringMarker && (
-                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">
-                    Reset to {defaultVal}
-                    <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
-                  </div>
-                )}
+                {isHoveringMarker && <MarkerTooltip value={defaultVal} />}
               </div>
             ) : (
               <div
@@ -609,12 +613,7 @@ const Slider = React.forwardRef<
                 />
 
                 {/* Tooltip on hover */}
-                {isHoveringMarker && (
-                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">
-                    Reset to {defaultVal}
-                    <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
-                  </div>
-                )}
+                {isHoveringMarker && <MarkerTooltip value={defaultVal} />}
               </div>
             ))}
         </SliderPrimitive.Track>

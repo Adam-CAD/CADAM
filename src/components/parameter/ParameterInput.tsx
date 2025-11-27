@@ -32,13 +32,10 @@ function ParameterInputBase({
     setParamState((prev) => ({ ...prev, value }));
   }, []);
 
-  const handleValueCommit = useCallback(
-    (value: Parameter['value']) => {
-      setParamState((prev) => ({ ...prev, value }));
-      handleCommit(paramState, value);
-    },
-    [handleCommit, paramState],
-  );
+  const handleValueCommit = (value: Parameter['value']) => {
+    setParamState((prev) => ({ ...prev, value }));
+    handleCommit(paramState, value);
+  };
 
   if (!paramState.type || paramState.type === 'number') {
     return (

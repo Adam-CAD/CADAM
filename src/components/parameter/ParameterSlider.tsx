@@ -47,10 +47,7 @@ function ParameterSliderBase({
       className="w-full"
       defaultMarkerStyle="line"
       onValueChange={([newValue]) => onValueChange(newValue)}
-      onValueCommit={([newValue]) => {
-        onValueCommit(newValue);
-        onValueChange(newValue);
-      }}
+      onValueCommit={([newValue]) => onValueCommit(newValue)}
       min={min}
       max={max}
       value={[Number(param.value)]}
