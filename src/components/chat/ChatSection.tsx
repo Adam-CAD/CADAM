@@ -33,6 +33,18 @@ export function ChatSection({ messages }: ChatSectionProps) {
     enabled: conversation?.is_public === true,
   });
 
+  // Sync model selection with the conversation history (last used model)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastAssistantMessage = [...messages]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+      if (lastAssistantMessage?.content?.model) {
+        setModel(lastAssistantMessage.content.model);
+      }
+    }
+  }, [messages]);
+
   const scrollToBottom = useCallback(() => {
     if (scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector(
