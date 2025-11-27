@@ -35,11 +35,7 @@ export function OrthographicPerspectiveToggle({
         </Tooltip>
       </TooltipProvider>
 
-      <Switch
-        checked={isOrthographic}
-        onCheckedChange={onToggle}
-        className="data-[state=checked]:bg-adam-blue"
-      />
+      <Switch checked={isOrthographic} onCheckedChange={onToggle} />
 
       <TooltipProvider delayDuration={300}>
         <Tooltip>

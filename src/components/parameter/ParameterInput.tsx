@@ -90,7 +90,6 @@ export function ParameterInput({
           name={paramState.name}
           checked={Boolean(paramState.value)}
           onCheckedChange={(checked) => handleValueCommit(checked)}
-          className="bg-adam-blue"
         />
       </div>
     );
@@ -274,7 +273,6 @@ export function ParameterInput({
                     ),
                   )
                 }
-                className="bg-adam-blue"
               />
             ))}
           </div>

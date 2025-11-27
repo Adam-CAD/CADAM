@@ -134,7 +134,7 @@ function FixWithAIButton({
             'border-adam-blue/30 text-adam-text-primary',
             'transition-all duration-300 ease-in-out',
             'hover:border-adam-blue/70 hover:bg-adam-blue/50 hover:text-white',
-            'hover:shadow-[0_0_25px_rgba(249,115,184,0.4)]',
+            'hover:shadow-[0_0_25px_rgba(0,166,255,0.4)]',
             'focus:outline-none focus:ring-2 focus:ring-adam-blue/30',
           )}
           onClick={() => {

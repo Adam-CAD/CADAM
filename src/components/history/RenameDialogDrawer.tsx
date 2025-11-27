@@ -64,7 +64,7 @@ export function RenameDialogDrawer({
             value={newTitle}
             onChange={(e) => onNewTitleChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="border-2 border-adam-background-2 bg-adam-background-2 pl-6 text-base shadow-[0_0_0px_rgba(255,50,150,0)] ring-0 transition-[border-color,box-shadow] duration-300 ease-in-out hover:border-adam-background-2 hover:shadow-[0_0_4px_rgba(255,50,150,0.9),0_0_5px_rgba(255,50,150,0.7)] focus:border-adam-blue focus:outline-none"
+            className="border-2 border-adam-background-2 bg-adam-background-2 pl-6 text-base shadow-[0_0_0px_rgba(0,166,255,0)] ring-0 transition-[border-color,box-shadow] duration-300 ease-in-out hover:border-adam-background-2 hover:shadow-[0_0_4px_rgba(0,166,255,0.9),0_0_5px_rgba(0,166,255,0.7)] focus:border-adam-blue focus:outline-none"
             placeholder="Conversation name"
           />
         </div>

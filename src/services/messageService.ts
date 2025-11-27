@@ -17,6 +17,7 @@ import {
 } from '@tanstack/react-query';
 import { updateParameter } from '@/utils/parameterUtils';
 import { useCallback } from 'react';
+import { PARAMETRIC_MODELS } from '@/lib/utils';
 
 function messageSentConversationUpdate(
   newMessage: Message,
@@ -155,10 +156,12 @@ export function useParametricChatMutation({
       model,
       messageId,
       conversationId,
+      thinking,
     }: {
       model: Model;
       messageId: string;
       conversationId: string;
+      thinking?: boolean;
     }) => {
       const newMessageId = crypto.randomUUID();
       let initialized = false;
@@ -179,6 +182,7 @@ export function useParametricChatMutation({
             messageId,
             model,
             newMessageId,
+            thinking,
           }),
         },
       );
@@ -356,9 +360,10 @@ export function useSendContentMutation({
       });
 
       await sendToParametricChat({
-        model: content.model ?? 'fast',
+        model: content.model ?? 'anthropic/claude-sonnet-4.5',
         messageId: userMessage.id,
         conversationId: conversation.id,
+        thinking: content.thinking,
       });
     },
   });
@@ -435,9 +440,10 @@ export function useEditMessageMutation() {
       });
 
       sendToParametricChat({
-        model: updatedMessage.content.model ?? 'fast',
+        model: updatedMessage.content.model ?? 'anthropic/claude-sonnet-4.5',
         messageId: userMessage.id,
         conversationId: conversation.id,
+        thinking: updatedMessage.content.thinking,
       });
     },
     onError: (error) => {
@@ -445,6 +451,7 @@ export function useEditMessageMutation() {
     },
   });
 }
+
 
 export function useRetryMessageMutation() {
   const { conversation, updateConversationAsync } = useConversation();
@@ -465,10 +472,15 @@ export function useRetryMessageMutation() {
         current_message_leaf_id: id,
       });
 
+      // Lookup thinking support for the selected model
+      const modelConfig = PARAMETRIC_MODELS.find((m) => m.id === model);
+      const thinking = modelConfig?.supportsThinking ?? false;
+
       sendToParametricChat({
         model: model,
         messageId: id,
         conversationId: conversation.id,
+        thinking,
       });
     },
     onError: (error) => {
@@ -514,7 +526,7 @@ export function useChangeParameters() {
 
       const newContent: Content = {
         text: message.content.text ?? '',
-        model: message.content.model ?? 'fast',
+        model: message.content.model ?? 'anthropic/claude-sonnet-4.5',
         artifact: {
           title: message.content.artifact?.title ?? '',
           version: message.content.artifact?.version ?? '',

@@ -24,3 +24,7 @@ enable_anonymous_sign_ins = true
 [functions.chat]
 enabled = true
 verify_jwt = true
+
+[functions.title-generator]
+enabled = true
+verify_jwt = true

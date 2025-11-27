@@ -10,6 +10,7 @@ import { MessageItem } from '@/types/misc';
 import { cn } from '@/lib/utils';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
 import { useSendContentMutation } from '@/services/messageService';
+import { generateConversationTitle } from '@/services/conversationService';
 
 export function PromptView() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export function PromptView() {
   const { isSidebarOpen } = useOutletContext<{ isSidebarOpen: boolean }>();
   const queryClient = useQueryClient();
 
-  const [model, setModel] = useState<Model>('fast');
+  const [model, setModel] = useState<Model>('google/gemini-3-pro-preview');
   const [isLoaded, setIsLoaded] = useState(false);
   const [images, setImages] = useState<MessageItem[]>([]);
 
@@ -73,6 +74,28 @@ export function PromptView() {
       if (conversationError) throw conversationError;
 
       sendMessage(content);
+
+      // Generate title in the background (don't await)
+      // Note: We don't need to check if a title exists because this is strictly for new conversations
+      // where the title is initialized to "New Conversation"
+      generateConversationTitle(conversation.id, content)
+        .then(async (title) => {
+          // Update conversation with generated title
+          await supabase
+            .from('conversations')
+            .update({ title })
+            .eq('id', conversation.id);
+
+          // Invalidate queries to refresh UI
+          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          queryClient.invalidateQueries({
+            queryKey: ['conversation', conversation.id],
+          });
+        })
+        .catch((error) => {
+          console.error('Failed to generate title:', error);
+          // Don't show error to user, just log it
+        });
 
       return {
         conversationId: conversation.id,
