@@ -16,6 +16,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthProvider.tsx';
 import { Toaster } from '@/components/ui/toaster.tsx';
 import { TooltipProvider } from '@/components/ui/tooltip.tsx';
+import { BASE_PATH } from '@/constants';
 
 const queryClient = new QueryClient();
 
@@ -50,7 +51,7 @@ const router = createBrowserRouter(
       ],
     },
   ],
-  { future: { v7_relativeSplatPath: true }, basename: '/cadam' },
+  { future: { v7_relativeSplatPath: true }, basename: BASE_PATH },
 );
 
 createRoot(document.getElementById('root')!).render(

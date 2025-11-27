@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { BASE_PATH } from '@/constants';
 
 interface ShareButtonProps {
   conversationId: string;
@@ -72,10 +73,12 @@ export function ShareButton({
           'Anyone with this link can view and interact with this design.',
       });
     },
-    onError: () => {
+    onError: (error) => {
+      console.error('Failed to create share link:', error);
       toast({
         title: 'Failed to create share link',
-        description: 'Please try again.',
+        description:
+          error instanceof Error ? error.message : 'Please try again.',
         variant: 'destructive',
       });
     },
@@ -105,7 +108,7 @@ export function ShareButton({
   });
 
   const shareUrl = shareToken
-    ? `${window.location.origin}/cadam/shared/${shareToken}`
+    ? `${window.location.origin}${BASE_PATH}/shared/${shareToken}`
     : '';
 
   const copyToClipboard = async () => {

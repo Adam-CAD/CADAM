@@ -110,18 +110,22 @@ export function useRealtimeCollaboration({
 
     // Handle presence (who's online)
     channel.on('presence', { event: 'sync' }, () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const state = channel.presenceState() as Record<string, any[]>;
-      const presences: Record<string, CollaboratorPresence> = {};
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const state = channel.presenceState() as Record<string, any[]>;
+        const presences: Record<string, CollaboratorPresence> = {};
 
-      Object.entries(state).forEach(([userId, presenceArray]) => {
-        const presence = presenceArray[0] as CollaboratorPresence;
-        if (presence) {
-          presences[userId] = presence;
-        }
-      });
+        Object.entries(state).forEach(([userId, presenceArray]) => {
+          const presence = presenceArray[0] as CollaboratorPresence;
+          if (presence) {
+            presences[userId] = presence;
+          }
+        });
 
-      setCollaborators(presences);
+        setCollaborators(presences);
+      } catch (error) {
+        console.error('Failed to sync presence:', error);
+      }
     });
 
     // Track own presence
@@ -133,7 +137,7 @@ export function useRealtimeCollaboration({
         userId,
         userName:
           userId === 'anonymous'
-            ? `Anonymous ${Math.random().toString(36).substring(2, 6)}`
+            ? anonymousNameRef.current
             : `User ${userId.slice(0, 6)}`,
         color: userColorRef.current,
         lastSeen: Date.now(),
