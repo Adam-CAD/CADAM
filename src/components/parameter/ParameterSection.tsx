@@ -39,11 +39,17 @@ export function ParameterSection() {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingParametersRef = useRef<Parameter[] | null>(null);
 
-  // Cleanup debounce timer on unmount
+  // Debounce timer for remote parameter changes (from collaborators)
+  const remoteDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup debounce timers on unmount
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (remoteDebounceTimerRef.current) {
+        clearTimeout(remoteDebounceTimerRef.current);
       }
     };
   }, []);
@@ -117,14 +123,24 @@ export function ParameterSection() {
   const { isConnected, broadcastParameterChange } = useRealtimeCollaboration({
     conversationId,
     onParameterChange: (event) => {
-      // When a collaborator changes a parameter, update locally
+      // When a collaborator changes a parameter, update locally with debouncing
+      // This prevents excessive recompilation for expensive models
       const updatedParameters = parameters.map((p) =>
         p.name === event.parameterName ? { ...p, value: event.newValue } : p,
       );
-      // Apply the change without debouncing (it's already been changed remotely)
-      if (currentMessage) {
-        changeParameters(currentMessage, updatedParameters);
+
+      // Clear existing remote debounce timer
+      if (remoteDebounceTimerRef.current) {
+        clearTimeout(remoteDebounceTimerRef.current);
       }
+
+      // Debounce remote changes (300ms) to batch rapid updates
+      remoteDebounceTimerRef.current = setTimeout(() => {
+        if (currentMessage) {
+          changeParameters(currentMessage, updatedParameters);
+        }
+        remoteDebounceTimerRef.current = null;
+      }, 300);
     },
     enabled: conversation?.is_public === true,
   });
