@@ -89,7 +89,6 @@ export function useRealtimeCollaboration({
     },
     [conversationId, enabled],
   );
-  );
 
   // Store onParameterChange in a ref to avoid recreating the effect
   const onParameterChangeRef = useRef(onParameterChange);

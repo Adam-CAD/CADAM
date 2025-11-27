@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Loader2 } from 'lucide-react';
+import { BASE_PATH } from '@/constants';
 
 export function SharedConversationView() {
   const { token } = useParams<{ token: string }>();
@@ -73,7 +74,7 @@ export function SharedConversationView() {
             {error || 'This share link is invalid or has expired.'}
           </p>
           <a
-            href="/cadam"
+            href={BASE_PATH}
             className="inline-block rounded bg-adam-blue px-4 py-2 text-sm font-medium text-white hover:bg-adam-blue/90"
           >
             Go to CADAM
