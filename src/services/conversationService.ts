@@ -155,16 +155,21 @@ export function usePublicConversation(
 /**
  * Hook that unifies authenticated and public conversation fetching
  * Automatically selects the appropriate method based on auth status
+ * Only runs the appropriate hook based on authentication state to avoid duplicate queries
  */
 export function useUnifiedConversation(conversationId?: string) {
   const { user } = useAuth();
   const { id: paramId } = useParams();
   const targetId = conversationId || paramId;
 
-  const authenticatedData = useConversation({ enabled: !!user });
-  const publicData = usePublicConversation(targetId, { enabled: !user });
+  // Only enable the hook that matches the auth state to prevent duplicate queries
+  const isAuthenticated = !!user;
+  const authenticatedData = useConversation({ enabled: isAuthenticated });
+  const publicData = usePublicConversation(targetId, {
+    enabled: !isAuthenticated,
+  });
 
-  return user ? authenticatedData : publicData;
+  return isAuthenticated ? authenticatedData : publicData;
 }
 
 export async function generateConversationTitle(
