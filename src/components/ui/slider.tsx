@@ -221,7 +221,7 @@ const Slider = React.forwardRef<
       }
 
       // Capture pointer for smooth dragging
-      (event.target as Element).setPointerCapture(event.pointerId);
+      event.currentTarget.setPointerCapture(event.pointerId);
     };
 
     const handlePointerMove = (event: React.PointerEvent) => {
@@ -342,7 +342,7 @@ const Slider = React.forwardRef<
         onValueCommit([lastValueRef.current]);
       }
 
-      (event.target as Element).releasePointerCapture(event.pointerId);
+      event.currentTarget.releasePointerCapture(event.pointerId);
     };
 
     const handlePointerCancel = () => {
