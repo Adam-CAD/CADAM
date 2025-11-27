@@ -5,8 +5,9 @@
  * Supports platform-specific modifiers and prevents conflicts with input fields.
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import {
+  type KeyboardShortcut,
   type KeyboardShortcutHandler,
   KEYBOARD_SHORTCUTS,
   matchesShortcut,
@@ -38,6 +39,15 @@ export function useKeyboardShortcuts({
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
+  // Build a Map from key combination to shortcut for O(1) lookup
+  const shortcutMap = useMemo(() => {
+    const map = new Map<string, KeyboardShortcut>();
+    KEYBOARD_SHORTCUTS.forEach((shortcut) => {
+      map.set(shortcut.key, shortcut);
+    });
+    return map;
+  }, []);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (!enabled || event.defaultPrevented) return;
@@ -52,44 +62,35 @@ export function useKeyboardShortcuts({
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable;
 
-      // Global shortcuts that work even in input fields (Cmd/Ctrl+K, Cmd/Ctrl+/)
-      // Note: '/' might appear as '?' when pressed with Shift
-      const isGlobalShortcut =
-        (event.key === 'k' || event.key === '/') &&
-        (event.metaKey || event.ctrlKey);
+      // Find matching shortcut with O(1) lookup
+      let matchedShortcut: KeyboardShortcut | undefined;
+      for (const [key, shortcut] of shortcutMap) {
+        if (matchesShortcut(event, key)) {
+          matchedShortcut = shortcut;
+          break;
+        }
+      }
 
-      // Save/Download shortcuts (Cmd/Ctrl+Shift+S, Cmd/Ctrl+D) that work in input fields
-      const isSaveOrDownload =
-        ((event.key === 's' || event.key === 'S') &&
-          (event.metaKey || event.ctrlKey) &&
-          event.shiftKey) ||
-        ((event.key === 'd' || event.key === 'D') &&
-          (event.metaKey || event.ctrlKey));
+      if (!matchedShortcut) return;
 
-      // Block shortcuts in input fields, except for global and save/download shortcuts
-      if (isInputField && !isGlobalShortcut && !isSaveOrDownload) {
+      // Check if this shortcut works in input fields
+      if (isInputField && !matchedShortcut.worksInInputFields) {
         return;
       }
 
-      // Find and execute matching shortcut
-      for (const shortcut of KEYBOARD_SHORTCUTS) {
-        if (matchesShortcut(event, shortcut.key)) {
-          // Find handler for this action
-          const handler = handlersRef.current.find(
-            (h) => h.action === shortcut.action && h.enabled !== false,
-          );
+      // Find handler for this action
+      const handler = handlersRef.current.find(
+        (h) => h.action === matchedShortcut!.action && h.enabled !== false,
+      );
 
-          if (handler) {
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-            handler.handler();
-            return;
-          }
-        }
+      if (handler) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        handler.handler();
       }
     },
-    [enabled],
+    [enabled, shortcutMap],
   );
 
   useEffect(() => {

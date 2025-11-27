@@ -26,6 +26,8 @@ export interface KeyboardShortcut {
   category: 'General' | 'Files' | 'Navigation';
   /** Whether this shortcut is enabled */
   enabled?: boolean;
+  /** Whether this shortcut works in input fields (e.g. Cmd+K) */
+  worksInInputFields?: boolean;
 }
 
 export interface KeyboardShortcutHandler {
@@ -47,6 +49,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Download the current model as STL file',
     key: 'mod+d',
     category: 'Files',
+    worksInInputFields: true,
   },
   {
     action: 'download-scad',
@@ -54,6 +57,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Download the OpenSCAD source code',
     key: 'mod+shift+s',
     category: 'Files',
+    worksInInputFields: true,
   },
   {
     action: 'submit-message',
@@ -75,6 +79,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Display this keyboard shortcuts help',
     key: 'mod+/',
     category: 'General',
+    worksInInputFields: true,
   },
   {
     action: 'focus-chat-input',
@@ -82,6 +87,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     description: 'Jump to the chat input field',
     key: 'mod+k',
     category: 'Navigation',
+    worksInInputFields: true,
   },
 ];
 
@@ -133,9 +139,9 @@ export const matchesShortcut = (
   const key = parts[parts.length - 1];
   const modifiers = parts.slice(0, -1);
 
-  // For special characters like '/', we check event.key to support all layouts correctly.
-  // Note: On US keyboards, '/' is unshifted. On German, it's Shift+7.
-  // By checking event.key, we ensure we match the character '/' regardless of how it was produced.
+  // We use event.key to match the actual character produced.
+  // Note: This works best on US keyboards. On other layouts (e.g., German where '/' requires Shift+7),
+  // the shift modifier handling below provides partial support but may not be perfect for all keys.
   const keyMatches = event.key.toLowerCase() === key;
 
   if (!keyMatches) return false;
@@ -154,7 +160,7 @@ export const matchesShortcut = (
   // while still allowing 'mod+shift+/' to be distinct if defined.
   const modMatches = needsMod === hasMod;
   const shiftMatches =
-    key === '/' && !needsShift ? true : needsShift === event.shiftKey;
+    (key === '/' && !needsShift) || needsShift === event.shiftKey;
   const altMatches = needsAlt === event.altKey;
 
   return modMatches && shiftMatches && altMatches;

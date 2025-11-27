@@ -106,10 +106,9 @@ export function ParameterSection() {
   const downloadSTLRef = useRef(handleDownloadSTL);
   const downloadSCADRef = useRef(handleDownloadOpenSCAD);
 
-  useEffect(() => {
-    downloadSTLRef.current = handleDownloadSTL;
-    downloadSCADRef.current = handleDownloadOpenSCAD;
-  }, [handleDownloadSTL, handleDownloadOpenSCAD]);
+  // Update refs during render to ensure they have the latest handlers
+  downloadSTLRef.current = handleDownloadSTL;
+  downloadSCADRef.current = handleDownloadOpenSCAD;
 
   useKeyboardShortcuts({
     handlers: [
