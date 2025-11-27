@@ -136,7 +136,9 @@ export const matchesShortcut = (
   const modifiers = parts.slice(0, -1);
 
   // Check if the pressed key matches
-  const keyMatches = event.key.toLowerCase() === key;
+  // Special case: '/' key might appear as '?' when Shift is pressed
+  const keyMatches =
+    event.key.toLowerCase() === key || (key === '/' && event.key === '?');
 
   if (!keyMatches) return false;
 
@@ -148,22 +150,10 @@ export const matchesShortcut = (
   // Check if the required modifier is pressed
   const hasMod = isMac() ? event.metaKey : event.ctrlKey;
 
-  // Ensure ONLY the specified modifiers are pressed
-  // On Mac: check metaKey for mod, ignore ctrlKey
-  // On Windows/Linux: check ctrlKey for mod, ignore metaKey
+  // Match the required modifiers
   const modMatches = needsMod === hasMod;
   const shiftMatches = needsShift === event.shiftKey;
   const altMatches = needsAlt === event.altKey;
 
-  // Also ensure the "other" modifier key isn't pressed
-  // (e.g., on Mac, Ctrl shouldn't be pressed for mod shortcuts)
-  const noExtraModifiers = isMac()
-    ? !needsMod
-      ? !event.metaKey
-      : true
-    : !needsMod
-      ? !event.ctrlKey
-      : true;
-
-  return modMatches && shiftMatches && altMatches && noExtraModifiers;
+  return modMatches && shiftMatches && altMatches;
 };

@@ -42,34 +42,45 @@ export function useKeyboardShortcuts({
     (event: KeyboardEvent) => {
       if (!enabled) return;
 
-      // Don't trigger shortcuts when user is typing in an input/textarea
-      const target = event.target as HTMLElement;
+      // Type guard for event target
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      // Check if user is typing in an input/textarea
       const isInputField =
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable;
 
-      // Exception: Allow Cmd/Ctrl+K and Cmd/Ctrl+/ even in input fields
+      // Global shortcuts that work even in input fields (Cmd/Ctrl+K, Cmd/Ctrl+/)
+      // Note: '/' might appear as '?' when pressed with Shift
       const isGlobalShortcut =
-        (event.key === 'k' || event.key === '/') &&
+        (event.key === 'k' ||
+          event.key === '/' ||
+          event.key === '?' ||
+          event.key === 'K') &&
         (event.metaKey || event.ctrlKey);
 
-      if (isInputField && !isGlobalShortcut) {
-        // Still allow shortcuts that explicitly use Cmd/Ctrl+S, Cmd/Ctrl+D, etc.
-        // but only if they're NOT editing text (to prevent browser save dialog)
-        const isSaveOrDownload =
-          (event.key === 's' || event.key === 'd') &&
-          (event.metaKey || event.ctrlKey);
+      // Save/Download shortcuts (Cmd/Ctrl+S, Cmd/Ctrl+D) that work in input fields
+      const isSaveOrDownload =
+        (event.key === 's' ||
+          event.key === 'd' ||
+          event.key === 'S' ||
+          event.key === 'D') &&
+        (event.metaKey || event.ctrlKey);
 
+      // Block shortcuts in input fields, except for global and save/download shortcuts
+      if (isInputField && !isGlobalShortcut) {
         if (isSaveOrDownload) {
-          // Allow these shortcuts and prevent browser default
+          // Allow save/download shortcuts and prevent browser default behavior
           event.preventDefault();
         } else {
+          // Block all other shortcuts in input fields
           return;
         }
       }
 
-      // Find matching shortcut
+      // Find and execute matching shortcut
       for (const shortcut of KEYBOARD_SHORTCUTS) {
         if (matchesShortcut(event, shortcut.key)) {
           // Find handler for this action
