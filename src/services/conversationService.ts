@@ -151,3 +151,18 @@ export function usePublicConversation(
     isConversationLoading,
   };
 }
+
+/**
+ * Hook that unifies authenticated and public conversation fetching
+ * Automatically selects the appropriate method based on auth status
+ */
+export function useUnifiedConversation(conversationId?: string) {
+  const { user } = useAuth();
+  const { id: paramId } = useParams();
+  const targetId = conversationId || paramId;
+
+  const authenticatedData = useConversation({ enabled: !!user });
+  const publicData = usePublicConversation(targetId, { enabled: !user });
+
+  return user ? authenticatedData : publicData;
+}
