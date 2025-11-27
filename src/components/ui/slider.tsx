@@ -90,6 +90,8 @@ const Slider = React.forwardRef<
     const [isPointerDown, setIsPointerDown] = React.useState(false);
     const [smoothAnimate, setSmoothAnimate] = React.useState(false);
     const smoothAnimateTimeoutRef = React.useRef<number | null>(null);
+    const animationTimeoutRef = React.useRef<number | null>(null);
+    const markerAnimationTimeoutRef = React.useRef<number | null>(null);
     const pointerDownXRef = React.useRef<number>(0);
     const DRAG_DETECTION_PX = 4;
 
@@ -114,14 +116,19 @@ const Slider = React.forwardRef<
         !isDragging
       ) {
         setIsAnimating(true);
-        setTimeout(() => {
+        // Clear any existing animation timeout
+        if (animationTimeoutRef.current) {
+          clearTimeout(animationTimeoutRef.current);
+        }
+        animationTimeoutRef.current = window.setTimeout(() => {
           setIsAnimating(false);
+          animationTimeoutRef.current = null;
         }, 300);
       }
       prevValueRef.current = currentValue;
     }, [currentValue, defaultVal, isDragging]);
 
-    // Cleanup effect to cancel any pending animation frames
+    // Cleanup effect to cancel any pending animation frames and timeouts
     React.useEffect(() => {
       return () => {
         if (rafIdRef.current) {
@@ -129,6 +136,12 @@ const Slider = React.forwardRef<
         }
         if (smoothAnimateTimeoutRef.current) {
           clearTimeout(smoothAnimateTimeoutRef.current);
+        }
+        if (animationTimeoutRef.current) {
+          clearTimeout(animationTimeoutRef.current);
+        }
+        if (markerAnimationTimeoutRef.current) {
+          clearTimeout(markerAnimationTimeoutRef.current);
         }
       };
     }, []);
@@ -352,8 +365,13 @@ const Slider = React.forwardRef<
       }
 
       // Reset animation state after animation completes
-      setTimeout(() => {
+      // Clear any existing marker animation timeout
+      if (markerAnimationTimeoutRef.current) {
+        clearTimeout(markerAnimationTimeoutRef.current);
+      }
+      markerAnimationTimeoutRef.current = window.setTimeout(() => {
         setIsAnimating(false);
+        markerAnimationTimeoutRef.current = null;
       }, 300);
     };
 
