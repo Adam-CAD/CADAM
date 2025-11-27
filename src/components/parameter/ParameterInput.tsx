@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Parameter } from '@shared/types';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -9,7 +9,7 @@ import {
 import { ParameterSlider } from '@/components/parameter/ParameterSlider';
 import { Label } from '@/components/ui/label';
 
-export function ParameterInput({
+function ParameterInputBase({
   param,
   handleCommit,
 }: {
@@ -22,20 +22,23 @@ export function ParameterInput({
     setParamState(param);
   }, [param]);
 
-  const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onEnter = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.currentTarget.blur();
     }
-  };
+  }, []);
 
-  const handleValueChange = (value: Parameter['value']) => {
-    setParamState({ ...paramState, value });
-  };
+  const handleValueChange = useCallback((value: Parameter['value']) => {
+    setParamState((prev) => ({ ...prev, value }));
+  }, []);
 
-  const handleValueCommit = (value: Parameter['value']) => {
-    setParamState({ ...paramState, value });
-    handleCommit(paramState, value);
-  };
+  const handleValueCommit = useCallback(
+    (value: Parameter['value']) => {
+      setParamState((prev) => ({ ...prev, value }));
+      handleCommit(paramState, value);
+    },
+    [handleCommit, paramState],
+  );
 
   if (!paramState.type || paramState.type === 'number') {
     return (
@@ -283,3 +286,5 @@ export function ParameterInput({
     }
   }
 }
+
+export const ParameterInput = React.memo(ParameterInputBase);
