@@ -130,7 +130,7 @@ export function useRealtimeCollaboration({
         userId,
         userName:
           userId === 'anonymous'
-            ? `Anonymous ${Math.random().toString(36).substring(2, 6)}`
+            ? anonymousNameRef.current
             : `User ${userId.slice(0, 6)}`,
         color: userColorRef.current,
         lastSeen: Date.now(),
