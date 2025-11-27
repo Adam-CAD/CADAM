@@ -48,15 +48,6 @@ import * as SliderPrimitive from '@radix-ui/react-slider';
 
 import { cn } from '@/lib/utils';
 
-// Memoized tooltip component to prevent re-renders
-const MarkerTooltip = React.memo(({ value }: { value: number }) => (
-  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg">
-    Reset to {value}
-    <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
-  </div>
-));
-MarkerTooltip.displayName = 'MarkerTooltip';
-
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
@@ -450,6 +441,9 @@ const Slider = React.forwardRef<
       }
     };
 
+    // Note: onValueChange is called on keydown to provide immediate visual feedback (slider movement).
+    // This is cheap as it only updates local React state.
+    // Expensive operations (like OpenSCAD recompilation) are handled in onKeyUp via onValueCommit.
     const handleKeyUp = (event: React.KeyboardEvent) => {
       const isHandledKey = [
         'ArrowRight',
@@ -562,7 +556,7 @@ const Slider = React.forwardRef<
             (defaultMarkerStyle === 'dot' ? (
               <div
                 className={cn(
-                  'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer',
+                  'group/marker absolute top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer',
                   'h-2.5 w-2.5 rounded-full bg-white',
                   'shadow-[0_0_10px_rgba(0,0,0,0.6)]',
                   'transition-all duration-200',
@@ -592,13 +586,16 @@ const Slider = React.forwardRef<
                   aria-hidden="true"
                 />
 
-                {/* Tooltip on hover */}
-                {isHoveringMarker && <MarkerTooltip value={defaultVal} />}
+                {/* Tooltip - Always rendered but hidden with opacity to prevent DOM thrashing */}
+                <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover/marker:opacity-100">
+                  Reset to {defaultVal}
+                  <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                </div>
               </div>
             ) : (
               <div
                 className={cn(
-                  'absolute bottom-[2px] top-[2px] -translate-x-1/2 cursor-pointer',
+                  'group/marker absolute bottom-[2px] top-[2px] -translate-x-1/2 cursor-pointer',
                   'w-[2px] rounded-full bg-white',
                   'shadow-[0_0_10px_rgba(0,0,0,0.6)]',
                   'transition-all duration-200',
@@ -627,8 +624,11 @@ const Slider = React.forwardRef<
                   aria-hidden="true"
                 />
 
-                {/* Tooltip on hover */}
-                {isHoveringMarker && <MarkerTooltip value={defaultVal} />}
+                {/* Tooltip - Always rendered but hidden with opacity to prevent DOM thrashing */}
+                <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity duration-200 group-hover/marker:opacity-100">
+                  Reset to {defaultVal}
+                  <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+                </div>
               </div>
             ))}
         </SliderPrimitive.Track>
