@@ -133,13 +133,10 @@ export const matchesShortcut = (
   const key = parts[parts.length - 1];
   const modifiers = parts.slice(0, -1);
 
-  // For special characters like '/', use event.code to avoid Shift key conflicts
-  // Note: On US keyboards, '/' is unshifted, but on some international layouts it requires Shift.
-  // We check event.key to support all layouts correctly.
-  const keyMatches =
-    key === '/'
-      ? event.code === 'Slash' || event.key === '/'
-      : event.key.toLowerCase() === key;
+  // For special characters like '/', we check event.key to support all layouts correctly.
+  // Note: On US keyboards, '/' is unshifted. On German, it's Shift+7.
+  // By checking event.key, we ensure we match the character '/' regardless of how it was produced.
+  const keyMatches = event.key.toLowerCase() === key;
 
   if (!keyMatches) return false;
 
