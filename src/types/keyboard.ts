@@ -89,8 +89,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
  * Check if we're on macOS
  */
 export const isMac = () =>
-  typeof navigator !== 'undefined' &&
-  /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
 
 /**
  * Get the modifier key for the current platform

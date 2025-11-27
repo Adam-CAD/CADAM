@@ -91,6 +91,7 @@ export function useKeyboardShortcuts({
           if (handler) {
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation();
             handler.handler();
             return;
           }
