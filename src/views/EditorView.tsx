@@ -6,9 +6,13 @@ import { MessageItem } from '@/types/misc';
 import { useEffect, useState } from 'react';
 import { CurrentMessageContext } from '@/contexts/CurrentMessageContext';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
-import { useConversation } from '@/services/conversationService';
+import {
+  useConversation,
+  usePublicConversation,
+} from '@/services/conversationService';
 import { BlobContext } from '@/contexts/BlobContext';
 import { ColorContext } from '@/contexts/ColorContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function EditorView() {
   const { id: conversationId } = useParams();
@@ -17,7 +21,17 @@ export default function EditorView() {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [color, setColor] = useState<string>('#00A6FF');
   const navigate = useNavigate();
-  const { conversation, isConversationLoading } = useConversation();
+  const { user } = useAuth();
+
+  // Use appropriate hook based on authentication status
+  // Authenticated users use useConversation (with user_id filter)
+  // Anonymous users use usePublicConversation (public conversations only)
+  const authenticatedData = useConversation();
+  const publicData = usePublicConversation(conversationId);
+
+  const { conversation, isConversationLoading } = user
+    ? authenticatedData
+    : publicData;
 
   useEffect(() => {
     if (!conversationId) {

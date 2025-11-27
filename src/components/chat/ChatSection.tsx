@@ -30,7 +30,7 @@ export function ChatSection({ messages }: ChatSectionProps) {
   // Real-time collaboration for this conversation
   const { collaborators, isConnected } = useRealtimeCollaboration({
     conversationId: conversation?.id,
-    enabled: (conversation as any)?.is_public === true, // eslint-disable-line @typescript-eslint/no-explicit-any
+    enabled: conversation?.is_public === true,
   });
 
   const scrollToBottom = useCallback(() => {
@@ -90,10 +90,8 @@ export function ChatSection({ messages }: ChatSectionProps) {
           {conversation && (
             <ShareButton
               conversationId={conversation.id}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              isPublic={(conversation as any).is_public}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              shareToken={(conversation as any).share_token}
+              isPublic={conversation.is_public ?? undefined}
+              shareToken={conversation.share_token}
               collaboratorCount={collaborators.length}
             />
           )}

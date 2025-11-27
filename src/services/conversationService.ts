@@ -111,3 +111,40 @@ export function useConversation() {
     updateConversationAsync,
   };
 }
+
+/**
+ * Hook for accessing public conversations via ID (for shared links)
+ * Does not require authentication - relies on RLS policies for security
+ */
+export function usePublicConversation(conversationId: string | undefined) {
+  const { data: conversation, isLoading: isConversationLoading } =
+    useQuery<Conversation>({
+      queryKey: ['public-conversation', conversationId],
+      enabled: !!conversationId,
+      refetchOnMount: false,
+      queryFn: async () => {
+        if (!conversationId) {
+          throw new Error('Conversation ID is required');
+        }
+
+        // Fetch by ID only - RLS policies will enforce public access rules
+        const { data, error } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationId)
+          .eq('is_public', true)
+          .limit(1)
+          .single();
+
+        if (error) {
+          throw error;
+        }
+        return data;
+      },
+    });
+
+  return {
+    conversation: conversation ?? defaultConversation,
+    isConversationLoading,
+  };
+}

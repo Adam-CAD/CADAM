@@ -39,8 +39,7 @@ export function SharedConversationView() {
           return;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setConversationId((data as any).id);
+        setConversationId(data.id);
       } catch (err) {
         setError('Failed to load shared conversation');
         console.error(err);
