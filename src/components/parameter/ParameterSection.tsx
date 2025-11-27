@@ -83,7 +83,7 @@ export function ParameterSection() {
     // Broadcast to collaborators if sharing is enabled
     if (conversation?.is_public && isConnected) {
       // Only broadcast single values, not arrays
-      if (typeof validatedValue !== 'object') {
+      if (!Array.isArray(validatedValue)) {
         broadcastParameterChange(
           param.name,
           validatedValue as string | number | boolean,
