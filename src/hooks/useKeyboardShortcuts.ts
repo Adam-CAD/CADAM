@@ -55,18 +55,12 @@ export function useKeyboardShortcuts({
       // Global shortcuts that work even in input fields (Cmd/Ctrl+K, Cmd/Ctrl+/)
       // Note: '/' might appear as '?' when pressed with Shift
       const isGlobalShortcut =
-        (event.key === 'k' ||
-          event.key === '/' ||
-          event.key === '?' ||
-          event.key === 'K') &&
+        (event.key === 'k' || event.key === '/' || event.key === '?') &&
         (event.metaKey || event.ctrlKey);
 
       // Save/Download shortcuts (Cmd/Ctrl+S, Cmd/Ctrl+D) that work in input fields
       const isSaveOrDownload =
-        (event.key === 's' ||
-          event.key === 'd' ||
-          event.key === 'S' ||
-          event.key === 'D') &&
+        (event.key === 's' || event.key === 'd') &&
         (event.metaKey || event.ctrlKey);
 
       // Block shortcuts in input fields, except for global and save/download shortcuts

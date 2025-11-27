@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { PanelLeft } from 'lucide-react';
+import { PanelLeft, Loader2 } from 'lucide-react';
 
 import { Sidebar } from '@/components/Sidebar';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsDialog } from '@/components/KeyboardShortcutsDialog';
+
+import { useAuth } from '@/contexts/AuthContext';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 export default function App() {
   const { isLoading } = useAuth();

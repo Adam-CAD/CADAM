@@ -113,8 +113,7 @@ export const formatKeyCombo = (key: string): string => {
         return isMac() ? '⌥' : 'Alt';
       case 'enter':
         return isMac() ? '↵' : 'Enter';
-      case '/':
-        return '?'; // Show as ? since it requires Shift
+
       default:
         return part.toUpperCase();
     }

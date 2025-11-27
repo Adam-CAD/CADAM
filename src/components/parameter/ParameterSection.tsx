@@ -2,7 +2,6 @@ import { RefreshCcw, Download, ChevronUp } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Parameter } from '@shared/types';
 import {
   Tooltip,
   TooltipContent,
@@ -17,12 +16,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ParameterInput } from '@/components/parameter/ParameterInput';
 import { ColorPicker } from '@/components/parameter/ColorPicker';
-import { validateParameterValue } from '@/utils/parameterUtils';
+
 import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
-import { downloadSTLFile, downloadOpenSCADFile } from '@/utils/downloadUtils';
 import { useChangeParameters } from '@/services/messageService';
 import { useBlob } from '@/contexts/BlobContext';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+
+import { validateParameterValue } from '@/utils/parameterUtils';
+import { downloadSTLFile, downloadOpenSCADFile } from '@/utils/downloadUtils';
+
+import { Parameter } from '@shared/types';
 import { formatKeyCombo } from '@/types/keyboard';
 
 export function ParameterSection() {
