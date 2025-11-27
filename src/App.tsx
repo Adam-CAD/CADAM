@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { PanelLeft, Loader2 } from 'lucide-react';
 
@@ -18,16 +18,24 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
 
-  // Register global keyboard shortcuts
+  // Register global keyboard shortcuts using refs to avoid stale closures
+  const toggleSidebarRef = useRef(() => setIsSidebarOpen((prev) => !prev));
+  const showShortcutsRef = useRef(() => setShowShortcutsDialog(true));
+
+  useEffect(() => {
+    toggleSidebarRef.current = () => setIsSidebarOpen((prev) => !prev);
+    showShortcutsRef.current = () => setShowShortcutsDialog(true);
+  }, []);
+
   useKeyboardShortcuts({
     handlers: [
       {
         action: 'toggle-sidebar',
-        handler: () => setIsSidebarOpen((prev) => !prev),
+        handler: () => toggleSidebarRef.current(),
       },
       {
         action: 'show-shortcuts',
-        handler: () => setShowShortcutsDialog(true),
+        handler: () => showShortcutsRef.current(),
       },
     ],
   });
