@@ -128,7 +128,10 @@ export function useRealtimeCollaboration({
 
       await channel.track({
         userId,
-        userName: `User ${userId.slice(0, 6)}`,
+        userName:
+          userId === 'anonymous'
+            ? `Anonymous ${Math.random().toString(36).substring(2, 6)}`
+            : `User ${userId.slice(0, 6)}`,
         color: userColorRef.current,
         lastSeen: Date.now(),
       });
