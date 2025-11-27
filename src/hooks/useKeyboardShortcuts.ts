@@ -40,7 +40,7 @@ export function useKeyboardShortcuts({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (!enabled) return;
+      if (!enabled || event.defaultPrevented) return;
 
       // Type guard for event target
       const target = event.target;
@@ -70,14 +70,8 @@ export function useKeyboardShortcuts({
         (event.metaKey || event.ctrlKey);
 
       // Block shortcuts in input fields, except for global and save/download shortcuts
-      if (isInputField && !isGlobalShortcut) {
-        if (isSaveOrDownload) {
-          // Allow save/download shortcuts and prevent browser default behavior
-          event.preventDefault();
-        } else {
-          // Block all other shortcuts in input fields
-          return;
-        }
+      if (isInputField && !isGlobalShortcut && !isSaveOrDownload) {
+        return;
       }
 
       // Find and execute matching shortcut
