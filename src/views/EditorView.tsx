@@ -24,14 +24,10 @@ export default function EditorView() {
   const { user } = useAuth();
 
   // Use appropriate hook based on authentication status
-  // Authenticated users use useConversation (with user_id filter)
-  // Anonymous users use usePublicConversation (public conversations only)
-  const authenticatedData = useConversation();
-  const publicData = usePublicConversation(conversationId);
-
+  // Use appropriate hook based on authentication status
   const { conversation, isConversationLoading } = user
-    ? authenticatedData
-    : publicData;
+    ? useConversation()
+    : usePublicConversation(conversationId);
 
   useEffect(() => {
     if (!conversationId) {
