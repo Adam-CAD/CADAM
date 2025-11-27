@@ -4,7 +4,9 @@ CREATE TABLE IF NOT EXISTS "public"."conversations" (
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "user_id" "uuid" NOT NULL,
     "title" "text" NOT NULL,
-    "current_message_leaf_id" "uuid"
+    "current_message_leaf_id" "uuid",
+    "share_token" "text",
+    "is_public" boolean DEFAULT false
 );
 
 

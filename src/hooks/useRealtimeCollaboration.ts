@@ -58,14 +58,23 @@ export function useRealtimeCollaboration({
   const anonymousNameRef = useRef<string>(
     `Anonymous ${Math.random().toString(36).substring(2, 6)}`,
   );
+  const userIdRef = useRef<string>('anonymous');
+
+  // Initialize userId
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      userIdRef.current = data.session?.user.id || 'anonymous';
+    });
+  }, []);
 
   // Broadcast a parameter change to all collaborators
   const broadcastParameterChange = useCallback(
     async (parameterName: string, newValue: number | string | boolean) => {
       if (!channelRef.current || !conversationId || !enabled) return;
 
-      const session = await supabase.auth.getSession();
-      const userId = session.data.session?.user.id || 'anonymous';
+      if (!channelRef.current || !conversationId || !enabled) return;
+
+      const userId = userIdRef.current;
 
       const event: ParameterChangeEvent = {
         parameterName,
@@ -115,9 +124,11 @@ export function useRealtimeCollaboration({
         const state = channel.presenceState() as Record<string, any[]>;
         const presences: Record<string, CollaboratorPresence> = {};
 
+        const now = Date.now();
         Object.entries(state).forEach(([userId, presenceArray]) => {
           const presence = presenceArray[0] as CollaboratorPresence;
-          if (presence) {
+          // Filter out stale collaborators (last seen > 60s ago)
+          if (presence && now - presence.lastSeen < 60000) {
             presences[userId] = presence;
           }
         });

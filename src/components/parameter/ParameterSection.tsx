@@ -34,6 +34,7 @@ export function ParameterSection() {
   const [selectedFormat, setSelectedFormat] = useState<'stl' | 'scad'>('stl');
   const { id: conversationId } = useParams<{ id: string }>();
   const { conversation } = useConversation();
+  const [isRemoteUpdating, setIsRemoteUpdating] = useState(false);
 
   // Debounce timer for compilation
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -134,12 +135,20 @@ export function ParameterSection() {
         clearTimeout(remoteDebounceTimerRef.current);
       }
 
+      // Cancel any pending local debounce to prevent overwriting
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      setIsRemoteUpdating(true);
+
       // Debounce remote changes (300ms) to batch rapid updates
       remoteDebounceTimerRef.current = setTimeout(() => {
         if (currentMessage) {
           changeParameters(currentMessage, updatedParameters);
         }
         remoteDebounceTimerRef.current = null;
+        setIsRemoteUpdating(false);
       }, 300);
     },
     enabled: conversation?.is_public === true,
@@ -177,6 +186,11 @@ export function ParameterSection() {
           </Tooltip>
         </TooltipProvider>
       </div>
+      {isRemoteUpdating && (
+        <div className="bg-adam-blue/10 px-6 py-2 text-xs text-adam-blue duration-200 animate-in fade-in slide-in-from-top-1">
+          Collaborator updating parameters...
+        </div>
+      )}
       <div className="flex h-[calc(100%-3.5rem)] flex-col justify-between overflow-hidden">
         <ScrollArea className="flex-1 px-6 py-6">
           <div className="flex flex-col gap-3">
