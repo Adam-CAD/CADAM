@@ -2,7 +2,7 @@ import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { ThreeScene } from '@/components/viewer/ThreeScene';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { BufferGeometry } from 'three';
+import { BufferGeometry, Vector3 } from 'three';
 import { Loader2, CircleAlert, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
@@ -33,6 +33,13 @@ export function OpenSCADViewer() {
     useOpenSCAD();
   const { getMeshFile, hasMeshFile } = useMeshFiles();
   const [geometry, setGeometry] = useState<BufferGeometry | null>(null);
+  const [geometryStats, setGeometryStats] = useState<{
+    size: { x: number; y: number; z: number };
+    center: { x: number; y: number; z: number };
+    vertexCount: number;
+    triangleCount: number;
+    byteSize: number;
+  } | null>(null);
   const { mutate: sendMessage } = useSendContentMutation({ conversation });
   // Track which files (and their versions) we've written to avoid re-writing
   // Maps filename -> Blob instance
@@ -84,12 +91,33 @@ export function OpenSCADViewer() {
       output.arrayBuffer().then((buffer) => {
         const loader = new STLLoader();
         const geom = loader.parse(buffer);
+        geom.computeBoundingBox();
+        const bbox = geom.boundingBox;
+        const size = new Vector3();
+        const center = new Vector3();
+        if (bbox) {
+          bbox.getSize(size);
+          bbox.getCenter(center);
+        }
+        // Center geometry for viewing after stats are captured
         geom.center();
         geom.computeVertexNormals();
         setGeometry(geom);
+        const vertexCount = geom.attributes.position?.count ?? 0;
+        const triangleCount = geom.index
+          ? geom.index.count / 3
+          : vertexCount / 3;
+        setGeometryStats({
+          size: { x: size.x, y: size.y, z: size.z },
+          center: { x: center.x, y: center.y, z: center.z },
+          vertexCount,
+          triangleCount,
+          byteSize: output.size,
+        });
       });
     } else {
       setGeometry(null);
+      setGeometryStats(null);
     }
   }, [output, setBlob]);
 
@@ -109,7 +137,7 @@ export function OpenSCADViewer() {
     conversation.current_message_leaf_id === currentMessage?.id;
 
   return (
-    <div className="h-full w-full bg-adam-neutral-700/50 shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out">
+    <div className="relative h-full w-full bg-adam-neutral-700/50 shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out">
       <div className="h-full w-full">
         {geometry ? (
           <div className="h-full w-full">
@@ -136,6 +164,30 @@ export function OpenSCADViewer() {
               </p>
             </div>
           </div>
+        )}
+      </div>
+      <div className="border-adam-neutral-600/60 pointer-events-none absolute right-3 top-3 rounded-md border bg-adam-neutral-800/70 px-3 py-2 text-[11px] text-adam-text-primary/80 shadow-lg backdrop-blur">
+        <div className="text-[10px] uppercase tracking-wide text-adam-text-primary/60">
+          Geometry Inspector
+        </div>
+        {geometryStats ? (
+          <div className="mt-1 space-y-0.5">
+            <div>
+              Size: {geometryStats.size.x.toFixed(2)},{' '}
+              {geometryStats.size.y.toFixed(2)},{' '}
+              {geometryStats.size.z.toFixed(2)}
+            </div>
+            <div>
+              Center: {geometryStats.center.x.toFixed(2)},{' '}
+              {geometryStats.center.y.toFixed(2)},{' '}
+              {geometryStats.center.z.toFixed(2)}
+            </div>
+            <div>Vertices: {geometryStats.vertexCount}</div>
+            <div>Triangles: {Math.floor(geometryStats.triangleCount)}</div>
+            <div>STL Size: {(geometryStats.byteSize / 1024).toFixed(1)} KB</div>
+          </div>
+        ) : (
+          <div className="mt-1 text-adam-text-primary/50">No geometry</div>
         )}
       </div>
     </div>
