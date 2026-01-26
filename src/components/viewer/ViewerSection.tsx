@@ -8,6 +8,8 @@ export function ViewerSection() {
   const isLoading = useIsLoading();
   const { currentMessage: message } = useCurrentMessage();
 
+  const showViewer = message?.content.artifact?.code;
+
   return (
     <div className="flex h-full w-full items-center justify-center bg-adam-neutral-700">
       {isLoading ? (
@@ -19,7 +21,7 @@ export function ViewerSection() {
           {message?.content.images && Array.isArray(message.content.images) && (
             <ImageGallery imageIds={message.content.images} />
           )}
-          {message?.content.artifact?.code && <OpenSCADViewer />}
+          {showViewer && <OpenSCADViewer />}
         </div>
       )}
     </div>

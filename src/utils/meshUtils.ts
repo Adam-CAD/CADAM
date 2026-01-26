@@ -7,6 +7,41 @@ export interface BoundingBox {
   z: number;
 }
 
+export interface FilamentEstimates {
+  volumeCm3: number; // Volume in cubic centimeters
+  weightGrams: number; // Weight in grams
+  costUSD: number; // Estimated cost in USD
+}
+
+// PLA filament density: ~1.24 g/cm³
+const PLA_DENSITY_G_CM3 = 1.24;
+// Average PLA filament cost: ~$20/kg = $0.02/g
+const FILAMENT_COST_PER_GRAM = 0.02;
+
+/**
+ * Calculate filament estimates from model volume
+ * The mesh volume represents the actual material in the model as designed.
+ * @param volumeMm3 - Volume in cubic millimeters (actual mesh volume)
+ */
+export function calculateFilamentEstimates(
+  volumeMm3: number,
+): FilamentEstimates {
+  // Convert mm³ to cm³ (1 cm³ = 1000 mm³)
+  const volumeCm3 = volumeMm3 / 1000;
+
+  // Calculate weight using PLA density (1.24 g/cm³)
+  const weightGrams = volumeCm3 * PLA_DENSITY_G_CM3;
+
+  // Calculate cost
+  const costUSD = weightGrams * FILAMENT_COST_PER_GRAM;
+
+  return {
+    volumeCm3: Math.round(volumeCm3 * 100) / 100,
+    weightGrams: Math.round(weightGrams * 100) / 100,
+    costUSD: Math.round(costUSD * 100) / 100,
+  };
+}
+
 export interface STLProcessingResult {
   geometry: THREE.BufferGeometry;
   boundingBox: BoundingBox;

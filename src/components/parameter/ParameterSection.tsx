@@ -1,4 +1,12 @@
-import { RefreshCcw, Download, ChevronUp } from 'lucide-react';
+import {
+  RefreshCcw,
+  Download,
+  ChevronUp,
+  Box,
+  Ruler,
+  Scale,
+  DollarSign,
+} from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -22,9 +30,11 @@ import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
 import { downloadSTLFile, downloadOpenSCADFile } from '@/utils/downloadUtils';
 import { useChangeParameters } from '@/services/messageService';
 import { useBlob } from '@/contexts/BlobContext';
+import { useDimensions } from '@/contexts/DimensionsContext';
 
 export function ParameterSection() {
   const { blob } = useBlob();
+  const { dimensions, filamentEstimates } = useDimensions();
   const changeParameters = useChangeParameters();
   const { currentMessage } = useCurrentMessage();
   const parameters = currentMessage?.content.artifact?.parameters ?? [];
@@ -141,6 +151,83 @@ export function ParameterSection() {
             ))}
           </div>
         </ScrollArea>
+        {dimensions && (
+          <div className="border-t border-adam-neutral-700 px-6 py-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Box className="h-4 w-4 text-adam-blue" />
+              <span className="text-sm font-semibold text-adam-text-primary">
+                Dimensions
+              </span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-red-400">X</span>
+                <span className="font-mono text-xs text-adam-text-primary">
+                  {dimensions.x.toFixed(2)} mm
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-green-400">Y</span>
+                <span className="font-mono text-xs text-adam-text-primary">
+                  {dimensions.y.toFixed(2)} mm
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-400">Z</span>
+                <span className="font-mono text-xs text-adam-text-primary">
+                  {dimensions.z.toFixed(2)} mm
+                </span>
+              </div>
+              <div className="border-adam-neutral-600/50 mt-2 flex items-center gap-1.5 border-t pt-2">
+                <Ruler className="h-3 w-3 text-adam-text-secondary" />
+                <span className="text-xs text-adam-text-secondary">
+                  {dimensions.x.toFixed(2)} × {dimensions.y.toFixed(2)} ×{' '}
+                  {dimensions.z.toFixed(2)} mm
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+        {filamentEstimates && (
+          <div className="border-t border-adam-neutral-700 px-6 py-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Scale className="h-4 w-4 text-adam-blue" />
+              <span className="text-sm font-semibold text-adam-text-primary">
+                Print Estimates
+              </span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-adam-text-secondary">Volume</span>
+                <span className="font-mono text-xs text-adam-text-primary">
+                  {filamentEstimates.volumeCm3.toFixed(2)} cm³
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-adam-text-secondary">
+                  Filament
+                </span>
+                <span className="font-mono text-xs text-adam-text-primary">
+                  {filamentEstimates.weightGrams.toFixed(1)} g
+                </span>
+              </div>
+              <div className="border-adam-neutral-600/50 mt-2 flex items-center justify-between border-t pt-2">
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="h-3 w-3 text-green-400" />
+                  <span className="text-xs font-medium text-adam-text-primary">
+                    Est. Cost
+                  </span>
+                </div>
+                <span className="font-mono text-xs font-semibold text-green-400">
+                  ${filamentEstimates.costUSD.toFixed(2)}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-adam-text-secondary/60">
+                PLA @ $20/kg
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex flex-col gap-4 border-t border-adam-neutral-700 px-6 py-6">
           <div>
             <ColorPicker />
