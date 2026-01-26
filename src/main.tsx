@@ -15,8 +15,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthProvider.tsx';
 import { Toaster } from '@/components/ui/toaster.tsx';
 import { TooltipProvider } from '@/components/ui/tooltip.tsx';
+import { isSupabaseConfigMissing } from '@/lib/supabase';
 
 const queryClient = new QueryClient();
+
+const MissingConfig = () => (
+  <div className="flex min-h-screen items-center justify-center bg-adam-bg-secondary-dark">
+    <div className="max-w-xl px-4 text-center text-red-500">
+      Missing API Keys. Please copy .env.local.template to .env.local and
+      restart.
+    </div>
+  </div>
+);
 
 const router = createBrowserRouter(
   [
@@ -48,17 +58,21 @@ const router = createBrowserRouter(
 );
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider delayDuration={0}>
-          <Toaster />
-          <RouterProvider
-            router={router}
-            future={{ v7_startTransition: true }}
-          />
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
-  </StrictMode>,
+  isSupabaseConfigMissing ? (
+    <MissingConfig />
+  ) : (
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider delayDuration={0}>
+            <Toaster />
+            <RouterProvider
+              router={router}
+              future={{ v7_startTransition: true }}
+            />
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </StrictMode>
+  ),
 );
