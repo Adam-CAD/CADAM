@@ -14,7 +14,10 @@ import { useSendContentMutation } from '@/services/messageService';
 import { useBlob } from '@/contexts/BlobContext';
 import { useMeshFiles } from '@/contexts/MeshFilesContext';
 import { useDimensions } from '@/contexts/DimensionsContext';
-import { calculateFilamentEstimates } from '@/utils/meshUtils';
+import {
+  calculateFilamentEstimates,
+  calculateMeshVolume,
+} from '@/utils/meshUtils';
 
 // Extract import() filenames from OpenSCAD code
 function extractImportFilenames(code: string): string[] {
@@ -25,42 +28,6 @@ function extractImportFilenames(code: string): string[] {
     filenames.push(match[1]);
   }
   return filenames;
-}
-
-/**
- * Calculate the volume of a mesh from its BufferGeometry
- * Uses the signed tetrahedron volume method
- */
-function calculateMeshVolume(geometry: BufferGeometry): number {
-  const position = geometry.getAttribute('position');
-  if (!position) return 0;
-
-  let volume = 0;
-  const vertices = position.array;
-
-  // For each triangle, calculate signed volume of tetrahedron with origin
-  for (let i = 0; i < position.count; i += 3) {
-    const v0x = vertices[i * 3];
-    const v0y = vertices[i * 3 + 1];
-    const v0z = vertices[i * 3 + 2];
-
-    const v1x = vertices[(i + 1) * 3];
-    const v1y = vertices[(i + 1) * 3 + 1];
-    const v1z = vertices[(i + 1) * 3 + 2];
-
-    const v2x = vertices[(i + 2) * 3];
-    const v2y = vertices[(i + 2) * 3 + 1];
-    const v2z = vertices[(i + 2) * 3 + 2];
-
-    // Signed volume of tetrahedron formed by triangle and origin
-    volume +=
-      (v0x * (v1y * v2z - v2y * v1z) -
-        v1x * (v0y * v2z - v2y * v0z) +
-        v2x * (v0y * v1z - v1y * v0z)) /
-      6;
-  }
-
-  return Math.abs(volume);
 }
 
 export function OpenSCADViewer() {
