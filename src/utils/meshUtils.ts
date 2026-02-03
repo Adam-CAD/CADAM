@@ -6,8 +6,10 @@ import * as THREE from 'three';
  * Uses the signed tetrahedron volume method
  */
 export function calculateMeshVolume(geometry: THREE.BufferGeometry): number {
-  const position = geometry.getAttribute('position');
-  if (!position) return 0;
+  // Handle indexed geometry by converting to non-indexed
+  const geo = geometry.index ? geometry.toNonIndexed() : geometry;
+  const position = geo.getAttribute('position');
+  if (!position || position.count % 3 !== 0) return 0;
 
   let volume = 0;
   const vertices = position.array;
@@ -41,6 +43,17 @@ export interface BoundingBox {
   x: number;
   y: number;
   z: number;
+}
+
+/**
+ * Calculate bounding box dimensions from a Three.js Box3
+ */
+export function calculateBoundingBox(box: THREE.Box3): BoundingBox {
+  return {
+    x: Math.round((box.max.x - box.min.x) * 100) / 100,
+    y: Math.round((box.max.y - box.min.y) * 100) / 100,
+    z: Math.round((box.max.z - box.min.z) * 100) / 100,
+  };
 }
 
 export interface FilamentEstimates {
@@ -95,13 +108,7 @@ export async function parseSTL(
   const geometry = loader.parse(buffer);
 
   geometry.computeBoundingBox();
-  const box = geometry.boundingBox!;
-
-  const boundingBox: BoundingBox = {
-    x: Math.round((box.max.x - box.min.x) * 100) / 100,
-    y: Math.round((box.max.y - box.min.y) * 100) / 100,
-    z: Math.round((box.max.z - box.min.z) * 100) / 100,
-  };
+  const boundingBox = calculateBoundingBox(geometry.boundingBox!);
 
   geometry.center();
   geometry.computeVertexNormals();

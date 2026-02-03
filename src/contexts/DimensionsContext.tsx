@@ -1,13 +1,8 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import type { FilamentEstimates } from '@/utils/meshUtils';
+import type { FilamentEstimates, BoundingBox } from '@/utils/meshUtils';
 
 export type { FilamentEstimates };
-
-export interface Dimensions {
-  x: number;
-  y: number;
-  z: number;
-}
+export type Dimensions = BoundingBox;
 
 interface DimensionsContextType {
   dimensions: Dimensions | null;

@@ -15,6 +15,7 @@ import { useBlob } from '@/contexts/BlobContext';
 import { useMeshFiles } from '@/contexts/MeshFilesContext';
 import { useDimensions } from '@/contexts/DimensionsContext';
 import {
+  calculateBoundingBox,
   calculateFilamentEstimates,
   calculateMeshVolume,
 } from '@/utils/meshUtils';
@@ -87,24 +88,23 @@ export function OpenSCADViewer() {
 
   // Handle compiled output
   useEffect(() => {
+    let cancelled = false;
     setBlob(output ?? null);
     if (output && output instanceof Blob) {
       output.arrayBuffer().then((buffer) => {
+        if (cancelled) return;
         const loader = new STLLoader();
         const geom = loader.parse(buffer);
-        geom.center();
-        geom.computeVertexNormals();
         geom.computeBoundingBox();
+        geom.computeVertexNormals();
 
-        // Calculate and set dimensions
-        const box = geom.boundingBox;
-        if (box) {
-          setDimensions({
-            x: Math.round((box.max.x - box.min.x) * 100) / 100,
-            y: Math.round((box.max.y - box.min.y) * 100) / 100,
-            z: Math.round((box.max.z - box.min.z) * 100) / 100,
-          });
+        // Calculate dimensions from original bounds before centering
+        if (geom.boundingBox) {
+          setDimensions(calculateBoundingBox(geom.boundingBox));
         }
+
+        // Center geometry for display
+        geom.center();
 
         // Calculate volume and filament estimates
         const volumeMm3 = calculateMeshVolume(geom);
@@ -118,6 +118,9 @@ export function OpenSCADViewer() {
       setDimensions(null);
       setFilamentEstimates(null);
     }
+    return () => {
+      cancelled = true;
+    };
   }, [output, setBlob, setDimensions, setFilamentEstimates]);
 
   const fixError = useCallback(
@@ -192,7 +195,7 @@ function FixWithAIButton({
           </p>
         </div>
       </div>
-      {fixError && error && error.name === 'OpenSCADError' && (
+      {fixError && error instanceof OpenSCADError && (
         <Button
           variant="ghost"
           className={cn(
@@ -204,11 +207,7 @@ function FixWithAIButton({
             'hover:shadow-[0_0_25px_rgba(0,166,255,0.4)]',
             'focus:outline-none focus:ring-2 focus:ring-adam-blue/30',
           )}
-          onClick={() => {
-            if (error && error.name === 'OpenSCADError') {
-              fixError?.(error as OpenSCADError);
-            }
-          }}
+          onClick={() => fixError(error)}
         >
           <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-adam-blue/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
           <Wrench className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
