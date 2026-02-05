@@ -17,9 +17,9 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'anthropic/claude-opus-4.5',
-    name: 'Claude Opus 4.5',
-    description: 'Most powerful Anthropic model for complex reasoning',
+    id: 'anthropic/claude-opus-4.6',
+    name: 'Claude Opus 4.6',
+    description: 'Strongest Anthropic model for coding and complex tasks',
     provider: 'Anthropic',
     supportsTools: true,
     supportsThinking: true,
