@@ -19,7 +19,7 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
   {
     id: 'anthropic/claude-opus-4.6',
     name: 'Claude Opus 4.6',
-    description: 'Strongest Anthropic model for coding and complex tasks',
+    description: 'Most powerful Anthropic model for complex reasoning',
     provider: 'Anthropic',
     supportsTools: true,
     supportsThinking: true,
