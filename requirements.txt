@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+build123d
+openai
+anthropic
+pydantic
