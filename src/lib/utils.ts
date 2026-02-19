@@ -8,8 +8,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export const PARAMETRIC_MODELS: ModelConfig[] = [
   {
-    id: 'google/gemini-3-pro-preview',
-    name: 'Gemini 3 Pro',
+    id: 'google/gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro',
     description: 'Latest Google model with excellent multi-modal capabilities',
     provider: 'Google',
     supportsTools: true,
