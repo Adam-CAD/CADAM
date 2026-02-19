@@ -55,10 +55,13 @@ function messageInsertedConversationUpdate(
   // Update the current conversation optimistically
   queryClient.setQueryData(
     ['conversation', conversationId],
-    (oldConversation: Conversation) => ({
-      ...oldConversation,
-      current_message_leaf_id: newMessage.id,
-    }),
+    (oldConversation: Conversation | undefined) => {
+      if (!oldConversation) return oldConversation;
+      return {
+        ...oldConversation,
+        current_message_leaf_id: newMessage.id,
+      };
+    },
   );
 
   // Update messages optimistically
