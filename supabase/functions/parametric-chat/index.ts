@@ -20,6 +20,35 @@ import { corsHeaders } from '../_shared/cors.ts';
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') ?? '';
 
+// MiniMax API configuration
+const MINIMAX_API_URL = 'https://api.minimax.io/v1/chat/completions';
+const MINIMAX_API_KEY = Deno.env.get('MINIMAX_API_KEY') ?? '';
+
+// Returns the API endpoint, key, and resolved model ID for a given model string.
+// Models prefixed with "minimax/" are routed to the MiniMax API directly;
+// all others go through OpenRouter.
+function getApiConfig(model: string): {
+  url: string;
+  key: string;
+  modelId: string;
+  isMiniMax: boolean;
+} {
+  if (model.startsWith('minimax/')) {
+    return {
+      url: MINIMAX_API_URL,
+      key: MINIMAX_API_KEY,
+      modelId: model.slice('minimax/'.length),
+      isMiniMax: true,
+    };
+  }
+  return {
+    url: OPENROUTER_API_URL,
+    key: OPENROUTER_API_KEY,
+    modelId: model,
+    isMiniMax: false,
+  };
+}
+
 // Helper to stream updated assistant message rows
 function streamMessage(
   controller: ReadableStreamDefaultController,
@@ -596,8 +625,9 @@ Deno.serve(async (req) => {
     );
 
     // Prepare request body
+    const apiConfig = getApiConfig(model);
     const requestBody: OpenRouterRequest = {
-      model,
+      model: apiConfig.modelId,
       messages: [
         { role: 'system', content: PARAMETRIC_AGENT_PROMPT },
         ...messagesToSend,
@@ -608,8 +638,8 @@ Deno.serve(async (req) => {
     };
 
     // Add reasoning/thinking parameter if requested and supported
-    // OpenRouter uses a unified 'reasoning' parameter
-    if (thinking) {
+    // Only supported by OpenRouter; skip for MiniMax
+    if (thinking && !apiConfig.isMiniMax) {
       requestBody.reasoning = {
         max_tokens: 12000,
       };
@@ -617,14 +647,18 @@ Deno.serve(async (req) => {
       requestBody.max_tokens = 20000;
     }
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    const apiHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiConfig.key}`,
+    };
+    if (!apiConfig.isMiniMax) {
+      apiHeaders['HTTP-Referer'] = 'https://adam-cad.com';
+      apiHeaders['X-Title'] = 'Adam CAD';
+    }
+
+    const response = await fetch(apiConfig.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'https://adam-cad.com',
-        'X-Title': 'Adam CAD',
-      },
+      headers: apiHeaders,
       body: JSON.stringify(requestBody),
     });
 
@@ -907,7 +941,7 @@ Deno.serve(async (req) => {
 
             // Code generation request logic
             const codeRequestBody: OpenRouterRequest = {
-              model,
+              model: apiConfig.modelId,
               messages: [
                 { role: 'system', content: STRICT_CODE_PROMPT },
                 ...codeMessages,
@@ -915,23 +949,27 @@ Deno.serve(async (req) => {
               max_tokens: 16000,
             };
 
-            // Also apply thinking to code generation if enabled
-            if (thinking) {
+            // Also apply thinking to code generation if enabled (not supported by MiniMax)
+            if (thinking && !apiConfig.isMiniMax) {
               codeRequestBody.reasoning = {
                 max_tokens: 12000,
               };
               codeRequestBody.max_tokens = 20000;
             }
 
+            const codeApiHeaders: Record<string, string> = {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiConfig.key}`,
+            };
+            if (!apiConfig.isMiniMax) {
+              codeApiHeaders['HTTP-Referer'] = 'https://adam-cad.com';
+              codeApiHeaders['X-Title'] = 'Adam CAD';
+            }
+
             const [codeResult, titleResult] = await Promise.allSettled([
-              fetch(OPENROUTER_API_URL, {
+              fetch(apiConfig.url, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-                  'HTTP-Referer': 'https://adam-cad.com',
-                  'X-Title': 'Adam CAD',
-                },
+                headers: codeApiHeaders,
                 body: JSON.stringify(codeRequestBody),
               }).then(async (r) => {
                 if (!r.ok) {

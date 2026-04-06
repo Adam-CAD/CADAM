@@ -272,6 +272,24 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsThinking: true,
     supportsVision: true,
   },
+  {
+    id: 'minimax/MiniMax-M2.7',
+    name: 'MiniMax M2.7',
+    description: 'Peak Performance. Ultimate Value. Master the Complex',
+    provider: 'MiniMax',
+    supportsTools: true,
+    supportsThinking: false,
+    supportsVision: false,
+  },
+  {
+    id: 'minimax/MiniMax-M2.7-highspeed',
+    name: 'MiniMax M2.7 Highspeed',
+    description: 'Same performance, faster and more agile',
+    provider: 'MiniMax',
+    supportsTools: true,
+    supportsThinking: false,
+    supportsVision: false,
+  },
 ];
 
 export const CREATIVE_MODELS: ModelConfig[] = [
