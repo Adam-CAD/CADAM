@@ -1,7 +1,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import '@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'stripe';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import { getAnonSupabaseClient } from '../_shared/supabaseClient.ts';
 import { initSentry, logError, logApiError } from '../_shared/sentry.ts';
 
@@ -14,6 +14,8 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
 });
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

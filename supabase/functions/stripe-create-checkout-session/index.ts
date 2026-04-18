@@ -1,7 +1,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import '@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'stripe';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import { getAnonSupabaseClient } from '../_shared/supabaseClient.ts';
 import { initSentry, logError, logApiError } from '../_shared/sentry.ts';
 
@@ -13,7 +13,27 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
+const SUBSCRIPTION_LOOKUP_KEYS: Record<string, 'pro' | 'standard'> = {
+  standard_monthly: 'standard',
+  standard_yearly: 'standard',
+  pro_monthly: 'pro',
+  pro_yearly: 'pro',
+};
+
+function jsonResponse(
+  body: unknown,
+  corsHeaders: ReturnType<typeof getCorsHeaders>,
+  status = 200,
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -159,7 +179,54 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Resolve price via lookup key (used for both subscriptions and token packs)
+  if (typeof lookupKey !== 'string' || lookupKey.trim() === '') {
+    return jsonResponse({ error: 'Invalid lookup key' }, corsHeaders, 400);
+  }
+
+  if (mode && !['subscription', 'token_pack'].includes(mode)) {
+    return jsonResponse({ error: 'Invalid checkout mode' }, corsHeaders, 400);
+  }
+
+  let tokenPack: {
+    stripe_lookup_key: string;
+    token_amount: number;
+    price_cents: number;
+  } | null = null;
+
+  if (mode === 'token_pack') {
+    const { data: packData, error: packError } = await supabaseClient
+      .from('token_pack_products')
+      .select('stripe_lookup_key, token_amount, price_cents')
+      .eq('stripe_lookup_key', lookupKey)
+      .eq('active', true)
+      .maybeSingle();
+
+    if (packError || !packData) {
+      logError(packError ?? new Error(`Invalid token pack: ${lookupKey}`), {
+        functionName: 'stripe-create-checkout-session',
+        statusCode: 400,
+        userId: userData.user?.id,
+        additionalContext: { lookupKey },
+      });
+      return jsonResponse({ error: 'Invalid token pack' }, corsHeaders, 400);
+    }
+
+    tokenPack = packData;
+  } else if (!SUBSCRIPTION_LOOKUP_KEYS[lookupKey]) {
+    logError(new Error(`Invalid subscription lookup key: ${lookupKey}`), {
+      functionName: 'stripe-create-checkout-session',
+      statusCode: 400,
+      userId: userData.user?.id,
+      additionalContext: { lookupKey },
+    });
+    return jsonResponse(
+      { error: 'Invalid subscription lookup key' },
+      corsHeaders,
+      400,
+    );
+  }
+
+  // Resolve price via lookup key after server-side allowlist validation.
   const price = await stripe.prices.list({ lookup_keys: [lookupKey] });
 
   if (price.data.length === 0) {
@@ -175,10 +242,36 @@ Deno.serve(async (req) => {
     });
   }
 
+  const selectedPrice = price.data[0];
+  if (
+    !selectedPrice.active ||
+    selectedPrice.lookup_key !== lookupKey ||
+    (mode === 'token_pack' && selectedPrice.type !== 'one_time') ||
+    (mode !== 'token_pack' && selectedPrice.type !== 'recurring')
+  ) {
+    return jsonResponse(
+      { error: 'Invalid price configuration' },
+      corsHeaders,
+      400,
+    );
+  }
+
+  if (
+    mode === 'token_pack' &&
+    tokenPack &&
+    selectedPrice.unit_amount !== tokenPack.price_cents
+  ) {
+    return jsonResponse(
+      { error: 'Token pack price mismatch' },
+      corsHeaders,
+      400,
+    );
+  }
+
   // Handle token pack one-time purchases
   if (mode === 'token_pack') {
     const tokenPackSession = await stripe.checkout.sessions.create({
-      line_items: [{ price: price.data[0].id, quantity: 1 }],
+      line_items: [{ price: selectedPrice.id, quantity: 1 }],
       mode: 'payment',
       success_url: Deno.env.get('ADAM_URL') ?? 'https://adam.new/app',
       cancel_url: Deno.env.get('ADAM_URL') ?? 'https://adam.new/app',
@@ -205,10 +298,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const level =
-    lookupKey === 'pro_monthly' || lookupKey === 'pro_yearly'
-      ? 'pro'
-      : 'standard';
+  const level = SUBSCRIPTION_LOOKUP_KEYS[lookupKey];
 
   let hasTrialed = false;
   const { data: trialData } = await supabaseClient
@@ -221,7 +311,7 @@ Deno.serve(async (req) => {
   }
 
   const session = await stripe.checkout.sessions.create({
-    line_items: [{ price: price.data[0].id, quantity: 1 }],
+    line_items: [{ price: selectedPrice.id, quantity: 1 }],
     mode: 'subscription',
     allow_promotion_codes: true,
     success_url: Deno.env.get('ADAM_URL') ?? 'https://adam.new/app',

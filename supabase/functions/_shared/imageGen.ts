@@ -3,6 +3,7 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.9';
 import { GoogleGenAI, Modality } from 'npm:@google/genai';
 import { fal } from 'npm:@fal-ai/client';
 import { reformatSignedUrl } from './messageUtils.ts';
+import { safeFetch } from './safeFetch.ts';
 
 const DEBUG_LOGS =
   Deno.env.get('ENVIRONMENT') === 'local' ||
@@ -255,7 +256,10 @@ export const generateImageWithFalFlux = async (
     });
 
     const imageUrl = result.data.images[0];
-    const response = await fetch(imageUrl.url);
+    const response = await safeFetch(imageUrl.url, {
+      maxBytes: 20 * 1024 * 1024,
+      timeoutMs: 30000,
+    });
     const imageBytes = await response.arrayBuffer();
     return Buffer.from(imageBytes);
   } else {
@@ -268,7 +272,10 @@ export const generateImageWithFalFlux = async (
     });
 
     const imageUrl = result.data.images[0];
-    const response = await fetch(imageUrl.url);
+    const response = await safeFetch(imageUrl.url, {
+      maxBytes: 20 * 1024 * 1024,
+      timeoutMs: 30000,
+    });
     const imageBytes = await response.arrayBuffer();
     return Buffer.from(imageBytes);
   }
@@ -373,7 +380,10 @@ export const generateImageWithGeminiFlashEdit = async (
   debugLog('Prompt:', prompt);
 
   try {
-    const imageResponse = await fetch(imageUrl);
+    const imageResponse = await safeFetch(imageUrl, {
+      maxBytes: 20 * 1024 * 1024,
+      timeoutMs: 30000,
+    });
     if (!imageResponse.ok) {
       throw new Error(`Failed to fetch input image: ${imageResponse.status}`);
     }

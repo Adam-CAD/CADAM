@@ -14,7 +14,8 @@ import {
 import Tree from '@shared/Tree.ts';
 import parseParameters from '../_shared/parseParameter.ts';
 import { formatUserMessage } from '../_shared/messageUtils.ts';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireOwnedConversation } from '../_shared/ownership.ts';
 
 // OpenRouter API configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -393,6 +394,8 @@ module torus(r1, r2) {
 }`;
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -425,7 +428,37 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Deduct chat token (1) at request start
+  const {
+    messageId,
+    conversationId,
+    model,
+    newMessageId,
+    thinking, // Add thinking parameter
+  }: {
+    messageId: string;
+    conversationId: string;
+    model: Model;
+    newMessageId: string;
+    thinking?: boolean;
+  } = await req.json();
+
+  try {
+    await requireOwnedConversation(
+      supabaseClient,
+      userData.user.id,
+      conversationId,
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: { message: (error as Error).message } }),
+      {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
+  }
+
+  // Deduct chat token only after the conversation is known to belong to the caller.
   const serviceClient = getServiceRoleSupabaseClient();
   const { data: rawChatTokenResult, error: chatTokenError } =
     await serviceClient.rpc('deduct_tokens', {
@@ -460,20 +493,6 @@ Deno.serve(async (req) => {
       },
     );
   }
-
-  const {
-    messageId,
-    conversationId,
-    model,
-    newMessageId,
-    thinking, // Add thinking parameter
-  }: {
-    messageId: string;
-    conversationId: string;
-    model: Model;
-    newMessageId: string;
-    thinking?: boolean;
-  } = await req.json();
 
   const { data: messages, error: messagesError } = await supabaseClient
     .from('messages')

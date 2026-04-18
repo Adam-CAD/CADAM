@@ -1,7 +1,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'npm:stripe@17.5.0';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import {
   getServiceRoleSupabaseClient,
   SupabaseClient,
@@ -28,6 +28,8 @@ const supabaseClient = getServiceRoleSupabaseClient();
  * - Deletes the auth user via service role
  */
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

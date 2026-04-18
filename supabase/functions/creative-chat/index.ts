@@ -1,5 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import { Anthropic } from 'npm:@anthropic-ai/sdk';
 import { MessageParam } from 'npm:@anthropic-ai/sdk/resources/messages';
 import {
@@ -17,6 +17,7 @@ import {
 } from '../_shared/supabaseClient.ts';
 import Tree from '@shared/Tree.ts';
 import { initSentry, logError } from '../_shared/sentry.ts';
+import { requireOwnedConversation } from '../_shared/ownership.ts';
 import {
   getSignedUrl,
   getSignedUrls,
@@ -328,6 +329,8 @@ Examples:
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -370,7 +373,41 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Deduct chat token (1) at request start
+  const supabaseHost =
+    (Deno.env.get('ENVIRONMENT') === 'local'
+      ? Deno.env.get('NGROK_URL')
+      : Deno.env.get('SUPABASE_URL')
+    )?.trim() ?? '';
+
+  const {
+    messageId,
+    conversationId,
+    model,
+    newMessageId,
+  }: {
+    messageId: string;
+    conversationId: string;
+    model: Model;
+    newMessageId: string;
+  } = await req.json();
+
+  try {
+    await requireOwnedConversation(
+      supabaseClient,
+      userData.user.id,
+      conversationId,
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: { message: (error as Error).message } }),
+      {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      },
+    );
+  }
+
+  // Deduct chat token only after the conversation is known to belong to the caller.
   const serviceClient = getServiceRoleSupabaseClient();
   const { data: rawChatTokenResult, error: chatTokenError } =
     await serviceClient.rpc('deduct_tokens', {
@@ -405,24 +442,6 @@ Deno.serve(async (req) => {
       },
     );
   }
-
-  const supabaseHost =
-    (Deno.env.get('ENVIRONMENT') === 'local'
-      ? Deno.env.get('NGROK_URL')
-      : Deno.env.get('SUPABASE_URL')
-    )?.trim() ?? '';
-
-  const {
-    messageId,
-    conversationId,
-    model,
-    newMessageId,
-  }: {
-    messageId: string;
-    conversationId: string;
-    model: Model;
-    newMessageId: string;
-  } = await req.json();
 
   // Set up cancellation via realtime
   const abortController = new AbortController();

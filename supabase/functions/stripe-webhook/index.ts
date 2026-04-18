@@ -16,14 +16,27 @@ const supabaseClient = getServiceRoleSupabaseClient();
 
 Deno.serve(async (request) => {
   const signature = request.headers.get('Stripe-Signature');
+  const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET');
+
+  if (!signature) {
+    return new Response('Missing Stripe signature', { status: 400 });
+  }
+
+  if (!webhookSecret) {
+    logError(new Error('Missing STRIPE_WEBHOOK_SIGNING_SECRET'), {
+      functionName: 'stripe-webhook',
+      statusCode: 500,
+    });
+    return new Response('Webhook not configured', { status: 500 });
+  }
 
   const body = await request.text();
   let event;
   try {
     event = await stripe.webhooks.constructEventAsync(
       body,
-      signature!,
-      Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET')!,
+      signature,
+      webhookSecret,
       undefined,
       cryptoProvider,
     );
@@ -37,44 +50,210 @@ Deno.serve(async (request) => {
     return new Response((err as Error).message, { status: 400 });
   }
 
-  const requestOptions =
-    event.request && event.request.idempotency_key
-      ? { idempotencyKey: event.request.idempotency_key }
-      : {};
-
   let retrievedEvent;
   try {
-    retrievedEvent = await stripe.events.retrieve(event.id, requestOptions);
+    retrievedEvent = await stripe.events.retrieve(event.id);
   } catch (err) {
     logApiError(err, {
       functionName: 'stripe-webhook',
       apiName: 'Stripe event retrieve',
       statusCode: 400,
-      requestData: { eventId: event.id, requestOptions },
+      requestData: { eventId: event.id },
     });
     return new Response((err as Error).message, { status: 400 });
   }
 
-  switch (retrievedEvent.type) {
-    case 'customer.subscription.updated':
-      return await handleCustomerSubscriptionUpdated(retrievedEvent);
-    case 'customer.subscription.deleted':
-      return await handleCustomerSubscriptionDeleted(retrievedEvent);
-    case 'checkout.session.completed':
-      return await handleCheckoutSessionCompleted(retrievedEvent.data.object);
-    case 'invoice.paid':
-      return await handleInvoicePaid(retrievedEvent);
-    default:
-      break;
+  if (
+    !(await claimStripeEvent(
+      retrievedEvent.id,
+      retrievedEvent.type,
+      stripeTimestampToIso(retrievedEvent.created),
+      getStripeObjectIdForEvent(retrievedEvent),
+    ))
+  ) {
+    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+      status: 200,
+    });
   }
 
-  return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  try {
+    let response: Response;
+    switch (retrievedEvent.type) {
+      case 'customer.subscription.updated':
+        response = await handleCustomerSubscriptionUpdated(retrievedEvent);
+        break;
+      case 'customer.subscription.deleted':
+        response = await handleCustomerSubscriptionDeleted(retrievedEvent);
+        break;
+      case 'checkout.session.completed':
+        response = await handleCheckoutSessionCompleted(retrievedEvent);
+        break;
+      case 'invoice.paid':
+        response = await handleInvoicePaid(retrievedEvent);
+        break;
+      default:
+        response = new Response(JSON.stringify({ ok: true }), { status: 200 });
+        break;
+    }
+
+    if (response.status >= 500) {
+      await releaseStripeEvent(retrievedEvent.id);
+    } else {
+      await markStripeEventProcessed(retrievedEvent.id);
+    }
+
+    return response;
+  } catch (error) {
+    await releaseStripeEvent(retrievedEvent.id);
+    logError(error, {
+      functionName: 'stripe-webhook',
+      statusCode: 500,
+      additionalContext: { eventId: retrievedEvent.id },
+    });
+    return new Response(
+      JSON.stringify({ error: 'Webhook processing failed' }),
+      {
+        status: 500,
+      },
+    );
+  }
 });
+
+async function claimStripeEvent(
+  eventId: string,
+  eventType: string,
+  eventCreatedAt: string,
+  stripeObjectId: string | null,
+) {
+  const { error } = await supabaseClient.from('stripe_webhook_events').insert({
+    event_id: eventId,
+    event_type: eventType,
+    status: 'processing',
+    stripe_event_created_at: eventCreatedAt,
+    stripe_object_id: stripeObjectId,
+  });
+
+  if (!error) return true;
+
+  if (error.code === '23505') {
+    return false;
+  }
+
+  throw error;
+}
+
+async function markStripeEventProcessed(eventId: string) {
+  await supabaseClient
+    .from('stripe_webhook_events')
+    .update({ status: 'processed', processed_at: new Date().toISOString() })
+    .eq('event_id', eventId);
+}
+
+async function releaseStripeEvent(eventId: string) {
+  await supabaseClient
+    .from('stripe_webhook_events')
+    .delete()
+    .eq('event_id', eventId);
+}
+
+async function grantSubscriptionTokens(
+  userId: string,
+  tokenAmount: number,
+  expiresAt: string,
+  referenceId: string,
+  force = false,
+) {
+  const { error } = await supabaseClient.rpc('grant_subscription_tokens', {
+    p_user_id: userId,
+    p_token_amount: tokenAmount,
+    p_expires_at: expiresAt,
+    p_reference_id: referenceId,
+    p_force: force,
+  });
+
+  if (error) throw error;
+}
+
+function stripeTimestampToIso(timestamp: number) {
+  return new Date(timestamp * 1000).toISOString();
+}
+
+function getStripeObjectIdForEvent(event: Stripe.Event) {
+  switch (event.type) {
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      return event.data.object.id;
+    case 'checkout.session.completed': {
+      const subscription = event.data.object.subscription;
+      return typeof subscription === 'string'
+        ? subscription
+        : (subscription?.id ?? null);
+    }
+    case 'invoice.paid': {
+      const subscription = event.data.object.subscription;
+      return typeof subscription === 'string'
+        ? subscription
+        : (subscription?.id ?? null);
+    }
+    default:
+      return null;
+  }
+}
+
+function getSubscriptionPeriodEnd(subscription: Stripe.Subscription) {
+  return stripeTimestampToIso(subscription.current_period_end);
+}
+
+function isNewerStripeEvent(
+  existingEventCreatedAt: string | null | undefined,
+  eventCreatedAt: string,
+) {
+  return (
+    !!existingEventCreatedAt &&
+    new Date(existingEventCreatedAt).getTime() >
+      new Date(eventCreatedAt).getTime()
+  );
+}
+
+async function getSubscriptionRecord(subscriptionId: string) {
+  const { data, error } = await supabaseClient
+    .from('subscriptions')
+    .select(
+      'id,user_id,status,level,stripe_event_created_at,current_period_end',
+    )
+    .eq('stripe_subscription_id', subscriptionId)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data;
+}
+
+async function hasNewerSubscriptionLedgerEvent(
+  subscriptionId: string,
+  eventId: string,
+  eventCreatedAt: string,
+) {
+  const { data, error } = await supabaseClient
+    .from('stripe_webhook_events')
+    .select('event_id')
+    .eq('stripe_object_id', subscriptionId)
+    .neq('event_id', eventId)
+    .gt('stripe_event_created_at', eventCreatedAt)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return !!data;
+}
 
 async function handleCustomerSubscriptionUpdated(
   event: Stripe.CustomerSubscriptionUpdatedEvent,
 ) {
   const subscription = event.data.object;
+  const eventCreatedAt = stripeTimestampToIso(event.created);
+  const currentPeriodEnd = getSubscriptionPeriodEnd(subscription);
 
   const price = await stripe.prices.retrieve(
     subscription.items.data[0].price.id,
@@ -91,6 +270,43 @@ async function handleCustomerSubscriptionUpdated(
       ? 'pro'
       : 'standard';
 
+  const existingSubscription = await getSubscriptionRecord(subscription.id);
+
+  if (!existingSubscription) {
+    logError(new Error('No subscription data found for update'), {
+      functionName: 'stripe-webhook',
+      statusCode: 200,
+      additionalContext: {
+        operation: 'update_subscription',
+        subscriptionId: subscription.id,
+        customerId,
+        level,
+        handler: 'handleCustomerSubscriptionUpdated',
+      },
+    });
+    return new Response(JSON.stringify({ error: 'No subscription data' }), {
+      // We don't need this getting resent if it doesn't exist
+      // We do new subscriptions in the table with the checkout.session.completed webhook
+      status: 200,
+    });
+  }
+
+  if (
+    isNewerStripeEvent(
+      existingSubscription.stripe_event_created_at,
+      eventCreatedAt,
+    ) ||
+    (await hasNewerSubscriptionLedgerEvent(
+      subscription.id,
+      event.id,
+      eventCreatedAt,
+    ))
+  ) {
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
+      status: 200,
+    });
+  }
+
   // Update the subscription status
   const { data: subscriptionData, error: subscriptionError } =
     await supabaseClient
@@ -98,6 +314,8 @@ async function handleCustomerSubscriptionUpdated(
       .update({
         status: subscription.status,
         stripe_customer_id: customerId,
+        current_period_end: currentPeriodEnd,
+        stripe_event_created_at: eventCreatedAt,
         level,
       })
       .eq('stripe_subscription_id', subscription.id)
@@ -122,35 +340,20 @@ async function handleCustomerSubscriptionUpdated(
   }
 
   if (!subscriptionData) {
-    logError(new Error('No subscription data found for update'), {
-      functionName: 'stripe-webhook',
-      statusCode: 200,
-      additionalContext: {
-        operation: 'update_subscription',
-        subscriptionId: subscription.id,
-        customerId,
-        level,
-        handler: 'handleCustomerSubscriptionUpdated',
-      },
-    });
-    return new Response(JSON.stringify({ error: 'No subscription data' }), {
-      // We don't need this getting resent if it doesn't exist
-      // We do new subscriptions in the table with the checkout.session.completed webhook
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
       status: 200,
     });
   }
 
   // Grant subscription tokens based on level
   const tokenAmount = level === 'pro' ? 10000 : 2000;
-  const expiresAt = new Date(
-    subscription.current_period_end * 1000,
-  ).toISOString();
 
-  await supabaseClient.rpc('grant_subscription_tokens', {
-    p_user_id: subscriptionData.user_id,
-    p_token_amount: tokenAmount,
-    p_expires_at: expiresAt,
-  });
+  await grantSubscriptionTokens(
+    subscriptionData.user_id,
+    tokenAmount,
+    currentPeriodEnd,
+    `${subscription.id}:${subscription.current_period_end}`,
+  );
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
@@ -159,11 +362,51 @@ async function handleCustomerSubscriptionDeleted(
   event: Stripe.CustomerSubscriptionDeletedEvent,
 ) {
   const subscription = event.data.object;
+  const eventCreatedAt = stripeTimestampToIso(event.created);
+  const currentPeriodEnd = getSubscriptionPeriodEnd(subscription);
+
+  const existingSubscription = await getSubscriptionRecord(subscription.id);
+
+  if (!existingSubscription) {
+    logError(new Error('No subscription data found for deletion'), {
+      functionName: 'stripe-webhook',
+      statusCode: 200,
+      additionalContext: {
+        operation: 'delete_subscription',
+        subscriptionId: subscription.id,
+        handler: 'handleCustomerSubscriptionDeleted',
+      },
+    });
+    return new Response(JSON.stringify({ error: 'No subscription data' }), {
+      // We don't need this getting resent if it doesn't exist
+      status: 200,
+    });
+  }
+
+  if (
+    isNewerStripeEvent(
+      existingSubscription.stripe_event_created_at,
+      eventCreatedAt,
+    ) ||
+    (await hasNewerSubscriptionLedgerEvent(
+      subscription.id,
+      event.id,
+      eventCreatedAt,
+    ))
+  ) {
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
+      status: 200,
+    });
+  }
 
   const { data: subscriptionData, error: subscriptionError } =
     await supabaseClient
       .from('subscriptions')
-      .delete()
+      .update({
+        status: subscription.status,
+        current_period_end: currentPeriodEnd,
+        stripe_event_created_at: eventCreatedAt,
+      })
       .eq('stripe_subscription_id', subscription.id)
       .select()
       .maybeSingle();
@@ -184,17 +427,7 @@ async function handleCustomerSubscriptionDeleted(
   }
 
   if (!subscriptionData) {
-    logError(new Error('No subscription data found for deletion'), {
-      functionName: 'stripe-webhook',
-      statusCode: 200,
-      additionalContext: {
-        operation: 'delete_subscription',
-        subscriptionId: subscription.id,
-        handler: 'handleCustomerSubscriptionDeleted',
-      },
-    });
-    return new Response(JSON.stringify({ error: 'No subscription data' }), {
-      // We don't need this getting resent if it doesn't exist
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
       status: 200,
     });
   }
@@ -204,18 +437,21 @@ async function handleCustomerSubscriptionDeleted(
     Date.now() + 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  await supabaseClient.rpc('grant_subscription_tokens', {
-    p_user_id: subscriptionData.user_id,
-    p_token_amount: 50,
-    p_expires_at: freeTierExpiry,
-  });
+  await grantSubscriptionTokens(
+    subscriptionData.user_id,
+    50,
+    freeTierExpiry,
+    `${subscription.id}:deleted:${event.id}`,
+    true,
+  );
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
 
 async function handleCheckoutSessionCompleted(
-  session: Stripe.Checkout.Session,
+  event: Stripe.CheckoutSessionCompletedEvent,
 ) {
+  const session = event.data.object;
   // Handle token pack one-time purchases
   if (session.mode === 'payment') {
     return await handleTokenPackPurchase(session);
@@ -313,19 +549,49 @@ async function handleCheckoutSessionCompleted(
 
   // This will tell us if they are trialing right away instead of having to wait for the subscription to be updated
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const eventCreatedAt = stripeTimestampToIso(event.created);
+  const currentPeriodEnd = getSubscriptionPeriodEnd(subscription);
 
   const level = session.metadata?.level ?? 'standard';
 
-  const { error: subscriptionError } = await supabaseClient
-    .from('subscriptions')
-    .insert({
-      status: subscription.status,
-      stripe_customer_id: customerId,
-      user_id: userData.user.id,
-      stripe_subscription_id: subscriptionId,
-      level: level as 'pro' | 'standard',
-    })
-    .select();
+  const existingSubscription = await getSubscriptionRecord(subscriptionId);
+
+  if (
+    isNewerStripeEvent(
+      existingSubscription?.stripe_event_created_at,
+      eventCreatedAt,
+    ) ||
+    (await hasNewerSubscriptionLedgerEvent(
+      subscriptionId,
+      event.id,
+      eventCreatedAt,
+    ))
+  ) {
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
+      status: 200,
+    });
+  }
+
+  const subscriptionPayload = {
+    status: subscription.status,
+    stripe_customer_id: customerId,
+    user_id: userData.user.id,
+    stripe_subscription_id: subscriptionId,
+    current_period_end: currentPeriodEnd,
+    stripe_event_created_at: eventCreatedAt,
+    level: level as 'pro' | 'standard',
+  };
+
+  const { error: subscriptionError } = existingSubscription
+    ? await supabaseClient
+        .from('subscriptions')
+        .update(subscriptionPayload)
+        .eq('stripe_subscription_id', subscriptionId)
+        .select()
+    : await supabaseClient
+        .from('subscriptions')
+        .insert(subscriptionPayload)
+        .select();
 
   if (subscriptionError) {
     logError(subscriptionError, {
@@ -358,15 +624,13 @@ async function handleCheckoutSessionCompleted(
 
   // Grant subscription tokens
   const tokenAmount = level === 'pro' ? 10000 : 2000;
-  const expiresAt = new Date(
-    subscription.current_period_end * 1000,
-  ).toISOString();
 
-  await supabaseClient.rpc('grant_subscription_tokens', {
-    p_user_id: userData.user.id,
-    p_token_amount: tokenAmount,
-    p_expires_at: expiresAt,
-  });
+  await grantSubscriptionTokens(
+    userData.user.id,
+    tokenAmount,
+    currentPeriodEnd,
+    `${subscription.id}:${subscription.current_period_end}`,
+  );
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
@@ -431,8 +695,9 @@ async function handleTokenPackPurchase(session: Stripe.Checkout.Session) {
   // Look up token amount from our products table by lookup key
   const { data: packData, error: packError } = await supabaseClient
     .from('token_pack_products')
-    .select('token_amount')
+    .select('token_amount, price_cents, active')
     .eq('stripe_lookup_key', lookupKey)
+    .eq('active', true)
     .single();
 
   if (packError || !packData) {
@@ -450,18 +715,34 @@ async function handleTokenPackPurchase(session: Stripe.Checkout.Session) {
     );
   }
 
-  // Credit purchased tokens
-  await supabaseClient.rpc('credit_purchased_tokens', {
-    p_user_id: userData.user.id,
-    p_amount: packData.token_amount,
-    p_reference_id: session.id,
-  });
+  if (priceObj.unit_amount !== packData.price_cents) {
+    return new Response(
+      JSON.stringify({ error: 'Token pack price mismatch' }),
+      {
+        status: 400,
+      },
+    );
+  }
+
+  const { error: creditError } = await supabaseClient.rpc(
+    'credit_purchased_tokens',
+    {
+      p_user_id: userData.user.id,
+      p_amount: packData.token_amount,
+      p_reference_id: session.id,
+    },
+  );
+
+  if (creditError) {
+    throw creditError;
+  }
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
 
 async function handleInvoicePaid(event: Stripe.InvoicePaidEvent) {
   const invoice = event.data.object;
+  const eventCreatedAt = stripeTimestampToIso(event.created);
 
   // Only handle subscription invoices (not one-time)
   if (!invoice.subscription) {
@@ -473,13 +754,25 @@ async function handleInvoicePaid(event: Stripe.InvoicePaidEvent) {
       ? invoice.subscription
       : invoice.subscription.id;
 
+  if (
+    await hasNewerSubscriptionLedgerEvent(
+      subscriptionId,
+      event.id,
+      eventCreatedAt,
+    )
+  ) {
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
+      status: 200,
+    });
+  }
+
   // Get the subscription to find the user and period end
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
   // Find the user from our subscriptions table
   const { data: subData, error: subError } = await supabaseClient
     .from('subscriptions')
-    .select('user_id, level')
+    .select('user_id, level, status, current_period_end')
     .eq('stripe_subscription_id', subscriptionId)
     .maybeSingle();
 
@@ -488,17 +781,30 @@ async function handleInvoicePaid(event: Stripe.InvoicePaidEvent) {
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   }
 
+  if (subData.status !== 'active' && subData.status !== 'trialing') {
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }
+
   // Grant tokens for the new billing period
   const tokenAmount = subData.level === 'pro' ? 10000 : 2000;
-  const expiresAt = new Date(
-    subscription.current_period_end * 1000,
-  ).toISOString();
+  const expiresAt = getSubscriptionPeriodEnd(subscription);
 
-  await supabaseClient.rpc('grant_subscription_tokens', {
-    p_user_id: subData.user_id,
-    p_token_amount: tokenAmount,
-    p_expires_at: expiresAt,
-  });
+  if (
+    subData.current_period_end &&
+    new Date(subData.current_period_end).getTime() >
+      new Date(expiresAt).getTime()
+  ) {
+    return new Response(JSON.stringify({ ok: true, stale: true }), {
+      status: 200,
+    });
+  }
+
+  await grantSubscriptionTokens(
+    subData.user_id,
+    tokenAmount,
+    expiresAt,
+    `${subscription.id}:${subscription.current_period_end}`,
+  );
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }

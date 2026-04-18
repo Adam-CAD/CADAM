@@ -211,6 +211,20 @@ DECLARE
     v_new_balance integer;
     v_sub_balance integer;
 BEGIN
+    IF p_reference_id IS NOT NULL AND EXISTS (
+        SELECT 1
+        FROM public.token_transactions
+        WHERE source = 'purchased'::public.token_source_type
+          AND reference_id = p_reference_id
+          AND amount > 0
+    ) THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'duplicate', true,
+            'tokensAdded', 0
+        );
+    END IF;
+
     INSERT INTO public.token_balances (user_id, source, balance)
     VALUES (p_user_id, 'purchased'::public.token_source_type, p_amount)
     ON CONFLICT (user_id, source) DO UPDATE
@@ -243,18 +257,55 @@ $$;
 CREATE OR REPLACE FUNCTION "public"."grant_subscription_tokens"(
     "p_user_id" uuid,
     "p_token_amount" integer,
-    "p_expires_at" timestamptz
+    "p_expires_at" timestamptz,
+    "p_reference_id" text DEFAULT NULL,
+    "p_force" boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE "plpgsql"
 AS $$
 DECLARE
     v_pur_balance integer;
+    v_sub_balance integer;
+    v_sub_expires timestamptz;
 BEGIN
+    IF p_reference_id IS NOT NULL AND EXISTS (
+        SELECT 1
+        FROM public.token_transactions
+        WHERE source = 'subscription'::public.token_source_type
+          AND reference_id = p_reference_id
+          AND amount > 0
+    ) THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'duplicate', true,
+            'tokensGranted', 0
+        );
+    END IF;
+
     INSERT INTO public.token_balances (user_id, source, balance, expires_at)
     VALUES (p_user_id, 'subscription'::public.token_source_type, p_token_amount, p_expires_at)
     ON CONFLICT (user_id, source) DO UPDATE
-    SET balance = p_token_amount, expires_at = p_expires_at, updated_at = now();
+    SET balance = p_token_amount, expires_at = p_expires_at, updated_at = now()
+    WHERE p_force
+       OR token_balances.expires_at IS NULL
+       OR token_balances.expires_at < p_expires_at
+    RETURNING balance, expires_at INTO v_sub_balance, v_sub_expires;
+
+    IF NOT FOUND THEN
+        SELECT balance, expires_at INTO v_sub_balance, v_sub_expires
+        FROM public.token_balances
+        WHERE user_id = p_user_id
+          AND source = 'subscription'::public.token_source_type;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'stale', true,
+            'tokensGranted', 0,
+            'subscriptionBalance', COALESCE(v_sub_balance, 0),
+            'expiresAt', v_sub_expires
+        );
+    END IF;
 
     SELECT COALESCE(balance, 0) INTO v_pur_balance
     FROM public.token_balances
@@ -266,15 +317,15 @@ BEGIN
         user_id, operation, amount, source, reference_id,
         subscription_balance_after, purchased_balance_after
     ) VALUES (
-        p_user_id, 'chat'::public.token_operation_type, p_token_amount, 'subscription'::public.token_source_type, 'subscription_grant',
-        p_token_amount, v_pur_balance
+        p_user_id, 'chat'::public.token_operation_type, p_token_amount, 'subscription'::public.token_source_type, COALESCE(p_reference_id, 'subscription_grant'),
+        v_sub_balance, v_pur_balance
     );
 
     RETURN jsonb_build_object(
         'success', true,
         'tokensGranted', p_token_amount,
-        'subscriptionBalance', p_token_amount,
-        'expiresAt', p_expires_at
+        'subscriptionBalance', v_sub_balance,
+        'expiresAt', v_sub_expires
     );
 END;
 $$;

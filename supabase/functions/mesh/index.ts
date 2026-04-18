@@ -1,5 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import { fal } from 'npm:@fal-ai/client';
 import { GoogleGenAI } from 'npm:@google/genai';
 import Anthropic from 'npm:@anthropic-ai/sdk';
@@ -14,8 +14,15 @@ import {
   getServiceRoleSupabaseClient,
   SupabaseClient,
 } from '../_shared/supabaseClient.ts';
+import { signedWebhookUrl } from '../_shared/webhookAuth.ts';
 import { reformatSignedUrl } from '../_shared/messageUtils.ts';
 import { initSentry, logError, logApiError } from '../_shared/sentry.ts';
+import {
+  assertStorageImageId,
+  requireOwnedConversation,
+  requireOwnedImageIds,
+  requireOwnedMesh,
+} from '../_shared/ownership.ts';
 import { Buffer } from 'node:buffer';
 
 // Initialize Sentry for error logging
@@ -38,9 +45,12 @@ async function getSignedImageUrl(
   conversationId: string,
   imageIdOrUrl: string,
 ): Promise<string> {
-  // If it's already a URL, return it as-is
+  assertStorageImageId(imageIdOrUrl);
+
+  // Raw URLs are intentionally rejected. External model providers should only
+  // receive signed URLs for images that belong to the authenticated user.
   if (imageIdOrUrl.startsWith('http')) {
-    return imageIdOrUrl;
+    throw new Error('Remote image URLs are not allowed');
   }
 
   // It's a filename/ID, verify the image exists and get a signed URL
@@ -140,6 +150,10 @@ const anthropic = new Anthropic({
   apiKey: Deno.env.get('ANTHROPIC_API_KEY') ?? '',
 });
 
+function falWebhookUrl(supabaseHost: string, id: string, mode?: string) {
+  return signedWebhookUrl(supabaseHost, id, mode);
+}
+
 // Helper function to stream message data to the client
 function streamMessage(
   controller: ReadableStreamDefaultController,
@@ -156,6 +170,8 @@ Be quirky and excited! Use wordplay or puns if appropriate.
 Do NOT use quotes around your response.`;
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   try {
     debugLog('=== DENO.SERVE MESH FUNCTION ENTRY POINT ===');
     debugLog('Mesh function called', {
@@ -213,7 +229,82 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Deduct tokens for mesh operation using service role client
+    const requestBody = await req.json();
+
+    const {
+      images,
+      mesh,
+      text,
+      conversationId,
+      model,
+      meshTopology,
+      polygonCount,
+      preferredFormat,
+      action,
+      meshId: upscaleMeshId,
+      parentMessageId,
+    }: {
+      images?: string[];
+      mesh?: string;
+      text?: string;
+      conversationId?: string;
+      model?: Model;
+      meshTopology?: 'quads' | 'polys';
+      polygonCount?: number;
+      preferredFormat?: 'glb' | 'fbx';
+      action?: 'upscale';
+      meshId?: string;
+      parentMessageId?: string;
+    } = requestBody;
+
+    debugLog('=== MESH FUNCTION CALLED ===');
+    debugLog('Mesh function request body:', {
+      ...requestBody,
+      text: requestBody.text
+        ? requestBody.text.substring(0, 100) + '...'
+        : undefined,
+    });
+
+    debugLog('Model parameter extracted:', model);
+
+    if (!conversationId) {
+      logError(new Error('Conversation ID is required'), {
+        functionName: 'mesh',
+        statusCode: 400,
+        userId: userData.user?.id,
+      });
+      return new Response(
+        JSON.stringify({ error: { message: 'Conversation ID is required' } }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
+    }
+
+    try {
+      await requireOwnedConversation(
+        supabaseClient,
+        userData.user.id,
+        conversationId,
+      );
+      await requireOwnedImageIds(
+        supabaseClient,
+        userData.user.id,
+        conversationId,
+        images,
+      );
+    } catch (error) {
+      return new Response(
+        JSON.stringify({ error: { message: (error as Error).message } }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      );
+    }
+
+    // Deduct tokens only after the caller and referenced resources are valid.
     const serviceClient = getServiceRoleSupabaseClient();
     const { data: rawTokenResult, error: tokenError } = await serviceClient.rpc(
       'deduct_tokens',
@@ -272,58 +363,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    const requestBody = await req.json();
-
-    debugLog('=== MESH FUNCTION CALLED ===');
-    debugLog('Mesh function request body:', {
-      ...requestBody,
-      text: requestBody.text
-        ? requestBody.text.substring(0, 100) + '...'
-        : undefined,
-    });
-
-    const {
-      images,
-      mesh,
-      text,
-      conversationId,
-      model,
-      meshTopology,
-      polygonCount,
-      preferredFormat,
-      action,
-      meshId: upscaleMeshId,
-      parentMessageId,
-    }: {
-      images?: string[];
-      mesh?: string;
-      text?: string;
-      conversationId?: string;
-      model?: Model;
-      meshTopology?: 'quads' | 'polys';
-      polygonCount?: number;
-      preferredFormat?: 'glb' | 'fbx';
-      action?: 'upscale';
-      meshId?: string;
-      parentMessageId?: string;
-    } = requestBody;
-
-    debugLog('Model parameter extracted:', model);
-
     // Handle upscale action with streaming response
     if (action === 'upscale' && upscaleMeshId && conversationId) {
       debugLog('=== UPSCALE ACTION ===');
       debugLog('Upscaling mesh:', upscaleMeshId);
 
       // Get the original mesh data to find the seed image
-      const { data: originalMesh, error: originalMeshError } =
-        await supabaseClient
-          .from('meshes')
-          .select('*')
-          .eq('id', upscaleMeshId)
-          .single();
+      const originalMesh = await requireOwnedMesh(
+        supabaseClient,
+        userData.user.id,
+        conversationId,
+        upscaleMeshId,
+      );
 
-      if (originalMeshError || !originalMesh) {
+      if (!originalMesh) {
         return new Response(
           JSON.stringify({ error: { message: 'Original mesh not found' } }),
           {
@@ -494,7 +547,7 @@ Deno.serve(async (req) => {
                 enable_pbr: true,
                 face_count: 500000,
               },
-              webhookUrl: `${supabaseHost}/functions/v1/fal-webhook?id=${newMeshData.id}`,
+              webhookUrl: falWebhookUrl(supabaseHost, newMeshData.id),
             });
 
             debugLog('Successfully submitted to Hunyuan3D V3 for upscaling');
@@ -534,21 +587,6 @@ Deno.serve(async (req) => {
           Connection: 'keep-alive',
         },
       });
-    }
-
-    if (!conversationId) {
-      logError(new Error('Conversation ID is required'), {
-        functionName: 'mesh',
-        statusCode: 400,
-        userId: userData.user?.id,
-      });
-      return new Response(
-        JSON.stringify({ error: { message: 'Conversation ID is required' } }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-      );
     }
 
     if (
@@ -737,6 +775,8 @@ async function submitMeshJob(
         .from('meshes')
         .select('images')
         .eq('id', mesh)
+        .eq('user_id', userId)
+        .eq('conversation_id', conversationId)
         .single();
 
       if (meshDataError) {
@@ -1179,7 +1219,7 @@ async function submitMeshJob(
 
       await fal.queue.submit('fal-ai/meshy/v6-preview/image-to-3d', {
         input: meshyInput,
-        webhookUrl: `${supabaseHost}/functions/v1/fal-webhook?id=${meshId}`,
+        webhookUrl: falWebhookUrl(supabaseHost, meshId),
       });
 
       debugLog('Successfully submitted to Meshy v6 Preview');
@@ -1379,7 +1419,7 @@ Output:`;
 
       await fal.queue.submit('fal-ai/sam-3/3d-objects', {
         input: sam3dInput,
-        webhookUrl: `${supabaseHost}/functions/v1/fal-webhook?id=${meshId}`,
+        webhookUrl: falWebhookUrl(supabaseHost, meshId),
       });
 
       debugLog('Successfully submitted to SAM 3D');
@@ -1413,7 +1453,7 @@ Output:`;
       };
       await fal.queue.submit('tripo3d/tripo/v2.5/image-to-3d', {
         input: tripoInput,
-        webhookUrl: `${supabaseHost}/functions/v1/fal-webhook?id=${meshId}`,
+        webhookUrl: falWebhookUrl(supabaseHost, meshId),
       });
       debugLog(
         'Successfully submitted to Tripo textureless with conversational context',
@@ -1516,6 +1556,8 @@ async function submitPreviewJob(
         .from('meshes')
         .select('images')
         .eq('id', mesh)
+        .eq('user_id', userId)
+        .eq('conversation_id', conversationId)
         .single();
 
       if (meshDataError) {
@@ -1632,7 +1674,7 @@ async function submitPreviewJob(
       input: {
         input_image_url: imageInputs[0],
       },
-      webhookUrl: `${supabaseHost}/functions/v1/fal-webhook?id=${previewId}&mode=preview`,
+      webhookUrl: falWebhookUrl(supabaseHost, previewId, 'preview'),
     });
   } catch (error) {
     logApiError(error, {
@@ -1685,7 +1727,7 @@ async function createHunyuanPreview(
         input: {
           input_image_url: imageUrl,
         },
-        webhookUrl: `${supabaseHost}/functions/v1/fal-webhook?id=${previewData.id}&mode=preview`,
+        webhookUrl: falWebhookUrl(supabaseHost, previewData.id, 'preview'),
       });
       debugLog(`Successfully submitted ${description} to Hunyuan3D Mini Turbo`);
     }

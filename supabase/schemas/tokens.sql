@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS "public"."token_transactions" (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS token_transactions_pkey ON "public"."token_transactions" USING btree (id);
+CREATE UNIQUE INDEX IF NOT EXISTS token_transactions_purchased_reference_id_key ON "public"."token_transactions" USING btree (reference_id) WHERE ((source = 'purchased'::"public"."token_source_type") AND (reference_id IS NOT NULL) AND (amount > 0));
+CREATE UNIQUE INDEX IF NOT EXISTS token_transactions_subscription_reference_id_key ON "public"."token_transactions" USING btree (reference_id) WHERE ((source = 'subscription'::"public"."token_source_type") AND (reference_id IS NOT NULL) AND (amount > 0));
 
 ALTER TABLE "public"."token_transactions" ADD CONSTRAINT "token_transactions_pkey" PRIMARY KEY USING INDEX "token_transactions_pkey";
 

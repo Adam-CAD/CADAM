@@ -1,0 +1,55 @@
+name: Security Gates
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Node lint, build, and audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint application
+        run: npm run lint
+
+      - name: Build application
+        run: npm run build
+
+      - name: Audit high severity dependencies
+        run: npm audit --audit-level=high
+
+  supabase-deno:
+    name: Supabase Deno lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Lint Supabase functions
+        run: deno lint --config supabase/deno.json supabase

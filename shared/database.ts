@@ -261,30 +261,66 @@ export type Database = {
       subscriptions: {
         Row: {
           created_at: string | null;
+          current_period_end: string | null;
           id: string;
           level: Database['public']['Enums']['stripe-level'];
           status: string | null;
+          stripe_event_created_at: string | null;
           stripe_customer_id: string | null;
           stripe_subscription_id: string | null;
           user_id: string;
         };
         Insert: {
           created_at?: string | null;
+          current_period_end?: string | null;
           id?: string;
           level?: Database['public']['Enums']['stripe-level'];
           status?: string | null;
+          stripe_event_created_at?: string | null;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;
           user_id: string;
         };
         Update: {
           created_at?: string | null;
+          current_period_end?: string | null;
           id?: string;
           level?: Database['public']['Enums']['stripe-level'];
           status?: string | null;
+          stripe_event_created_at?: string | null;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;
           user_id?: string;
+        };
+        Relationships: [];
+      };
+      stripe_webhook_events: {
+        Row: {
+          created_at: string;
+          event_id: string;
+          event_type: string;
+          processed_at: string | null;
+          status: string;
+          stripe_event_created_at: string | null;
+          stripe_object_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          event_id: string;
+          event_type: string;
+          processed_at?: string | null;
+          status?: string;
+          stripe_event_created_at?: string | null;
+          stripe_object_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          event_id?: string;
+          event_type?: string;
+          processed_at?: string | null;
+          status?: string;
+          stripe_event_created_at?: string | null;
+          stripe_object_id?: string | null;
         };
         Relationships: [];
       };
@@ -444,6 +480,8 @@ export type Database = {
       grant_subscription_tokens: {
         Args: {
           p_expires_at: string;
+          p_force?: boolean;
+          p_reference_id?: string;
           p_token_amount: number;
           p_user_id: string;
         };

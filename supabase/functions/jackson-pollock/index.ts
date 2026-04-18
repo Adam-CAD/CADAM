@@ -4,15 +4,25 @@
 
 // Setup type definitions for built-in Supabase Runtime APIs
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const POSTHOG_API_HOST = 'us.i.posthog.com';
 const POSTHOG_ASSET_HOST = 'us-assets.i.posthog.com';
 
 async function reqHandler(req: Request) {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  if (!['GET', 'POST'].includes(req.method)) {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   const url = new URL(req.url);
   const hostname = url.pathname.startsWith('/jackson-pollock/static/')
     ? POSTHOG_ASSET_HOST
@@ -26,6 +36,10 @@ async function reqHandler(req: Request) {
 
   const headers = new Headers(req.headers);
   headers.set('host', hostname);
+  headers.delete('authorization');
+  headers.delete('cookie');
+  headers.delete('apikey');
+  headers.delete('x-client-info');
 
   try {
     const response = await fetch(newUrl, {

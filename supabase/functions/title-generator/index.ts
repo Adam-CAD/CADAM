@@ -5,7 +5,7 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { Anthropic } from 'npm:@anthropic-ai/sdk';
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 import 'jsr:@std/dotenv/load';
 import { getAnonSupabaseClient } from '../_shared/supabaseClient.ts';
 import { Content } from '@shared/types.ts';
@@ -42,6 +42,8 @@ Assistant: "New Conversation"
 
 // Main server function handling incoming requests
 Deno.serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });

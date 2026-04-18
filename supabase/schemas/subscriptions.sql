@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS "public"."subscriptions" (
     "status" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "level" "public"."stripe-level" DEFAULT 'pro'::"public"."stripe-level" NOT NULL,
+    "current_period_end" timestamp with time zone,
+    "stripe_event_created_at" timestamp with time zone,
     CONSTRAINT "subscriptions_status_check" CHECK (("status" = ANY (ARRAY['active'::"text", 'canceled'::"text", 'incomplete'::"text", 'incomplete_expired'::"text", 'past_due'::"text", 'trialing'::"text", 'unpaid'::"text"])))
 );
 
@@ -23,6 +25,10 @@ ALTER TABLE "public"."subscriptions" VALIDATE CONSTRAINT "subscriptions_user_id_
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_customer_id ON "public"."subscriptions" USING "btree" ("stripe_customer_id");
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON "public"."subscriptions" USING "btree" ("stripe_subscription_id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_stripe_subscription_id_key ON "public"."subscriptions" USING "btree" ("stripe_subscription_id") WHERE ("stripe_subscription_id" IS NOT NULL);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_event_created_at ON "public"."subscriptions" USING "btree" ("stripe_event_created_at");
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON "public"."subscriptions" USING "btree" ("user_id");
 

@@ -1,5 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { getServiceRoleSupabaseClient } from '../_shared/supabaseClient.ts';
+import { safeFetch } from '../_shared/safeFetch.ts';
+import { requireSharedSecret } from '../_shared/webhookAuth.ts';
 import { unzipSync } from 'npm:fflate@0.8.2';
 
 const supabaseClient = getServiceRoleSupabaseClient();
@@ -24,6 +26,13 @@ Deno.serve(async (request) => {
   const mode = searchParams.get('mode');
 
   debugLog('Webhook parameters:', { id, mode });
+
+  try {
+    requireSharedSecret(request, 'FAL_WEBHOOK_SECRET');
+  } catch (error) {
+    console.error('Rejected fal webhook:', (error as Error).message);
+    return new Response('Unauthorized webhook', { status: 401 });
+  }
 
   if (!id) {
     console.error('Webhook missing mesh ID');
@@ -208,15 +217,12 @@ Deno.serve(async (request) => {
     debugLog('Model URL:', modelUrl);
 
     // Add timeout to prevent hanging - increased to 45 seconds for large models
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
-
     let model: ArrayBuffer;
     try {
-      const modelResponse = await fetch(modelUrl, {
-        signal: controller.signal,
+      const modelResponse = await safeFetch(modelUrl, {
+        timeoutMs: 45000,
+        maxBytes: 80 * 1024 * 1024,
       });
-      clearTimeout(timeoutId);
 
       if (!modelResponse.ok) {
         console.error('Model fetch failed:', {
@@ -232,7 +238,6 @@ Deno.serve(async (request) => {
       model = await modelResponse.arrayBuffer();
       debugLog('Model size:', model.byteLength, 'bytes');
     } catch (fetchError) {
-      clearTimeout(timeoutId);
       if ((fetchError as Error).name === 'AbortError') {
         throw new Error('Model fetch timed out after 45 seconds');
       }
