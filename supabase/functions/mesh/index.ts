@@ -5,18 +5,18 @@ import { GoogleGenAI } from 'npm:@google/genai';
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import {
   generateImageWithFalFlux,
-  generateImageWithGeminiMultiTurn,
   generateImageWithGeminiFlash,
   generateImageWithGeminiFlashEdit,
+  generateImageWithGeminiMultiTurn,
 } from '../_shared/imageGen.ts';
-import { Model, MeshFileType } from '@shared/types.ts';
+import { MeshFileType, Model } from '@shared/types.ts';
 import {
   getServiceRoleSupabaseClient,
   SupabaseClient,
 } from '../_shared/supabaseClient.ts';
 import { signedWebhookUrl } from '../_shared/webhookAuth.ts';
 import { reformatSignedUrl } from '../_shared/messageUtils.ts';
-import { initSentry, logError, logApiError } from '../_shared/sentry.ts';
+import { initSentry, logApiError, logError } from '../_shared/sentry.ts';
 import {
   assertStorageImageId,
   requireOwnedConversation,
@@ -150,8 +150,8 @@ const anthropic = new Anthropic({
   apiKey: Deno.env.get('ANTHROPIC_API_KEY') ?? '',
 });
 
-function falWebhookUrl(supabaseHost: string, id: string, mode?: string) {
-  return signedWebhookUrl(supabaseHost, id, mode);
+async function falWebhookUrl(supabaseHost: string, id: string, mode?: string) {
+  return await signedWebhookUrl(supabaseHost, id, mode);
 }
 
 // Helper function to stream message data to the client
@@ -163,8 +163,8 @@ function streamMessage(
 }
 
 // System prompt for generating fun upscale messages
-const upscaleSystemPrompt = `You are Adam, a fun, playful, nerdy assistant who creates 3D meshes. 
-You're about to upscale a mesh to production quality. 
+const upscaleSystemPrompt = `You are Adam, a fun, playful, nerdy assistant who creates 3D meshes.
+You're about to upscale a mesh to production quality.
 Generate a SHORT (1 sentence max), enthusiastic message about starting the upscale.
 Be quirky and excited! Use wordplay or puns if appropriate.
 Do NOT use quotes around your response.`;
@@ -547,7 +547,7 @@ Deno.serve(async (req) => {
                 enable_pbr: true,
                 face_count: 500000,
               },
-              webhookUrl: falWebhookUrl(supabaseHost, newMeshData.id),
+              webhookUrl: await falWebhookUrl(supabaseHost, newMeshData.id),
             });
 
             debugLog('Successfully submitted to Hunyuan3D V3 for upscaling');
@@ -1070,7 +1070,13 @@ async function submitMeshJob(
         `Ultra generation type: First=${isFirstGeneration}, HasImages=${hasUploadedImages}, HasText=${hasText}`,
       );
       debugLog(
-        `Using: ${useGeminiFlash ? 'Gemini Flash (first text-only)' : useGeminiFlashEdit ? 'Gemini Flash edit (first with images)' : 'Gemini Multi-Turn (conversational)'}`,
+        `Using: ${
+          useGeminiFlash
+            ? 'Gemini Flash (first text-only)'
+            : useGeminiFlashEdit
+              ? 'Gemini Flash edit (first with images)'
+              : 'Gemini Multi-Turn (conversational)'
+        }`,
       );
 
       // Validate we have something to work with
@@ -1219,7 +1225,7 @@ async function submitMeshJob(
 
       await fal.queue.submit('fal-ai/meshy/v6-preview/image-to-3d', {
         input: meshyInput,
-        webhookUrl: falWebhookUrl(supabaseHost, meshId),
+        webhookUrl: await falWebhookUrl(supabaseHost, meshId),
       });
 
       debugLog('Successfully submitted to Meshy v6 Preview');
@@ -1419,7 +1425,7 @@ Output:`;
 
       await fal.queue.submit('fal-ai/sam-3/3d-objects', {
         input: sam3dInput,
-        webhookUrl: falWebhookUrl(supabaseHost, meshId),
+        webhookUrl: await falWebhookUrl(supabaseHost, meshId),
       });
 
       debugLog('Successfully submitted to SAM 3D');
@@ -1453,7 +1459,7 @@ Output:`;
       };
       await fal.queue.submit('tripo3d/tripo/v2.5/image-to-3d', {
         input: tripoInput,
-        webhookUrl: falWebhookUrl(supabaseHost, meshId),
+        webhookUrl: await falWebhookUrl(supabaseHost, meshId),
       });
       debugLog(
         'Successfully submitted to Tripo textureless with conversational context',
@@ -1674,7 +1680,7 @@ async function submitPreviewJob(
       input: {
         input_image_url: imageInputs[0],
       },
-      webhookUrl: falWebhookUrl(supabaseHost, previewId, 'preview'),
+      webhookUrl: await falWebhookUrl(supabaseHost, previewId, 'preview'),
     });
   } catch (error) {
     logApiError(error, {
@@ -1727,13 +1733,19 @@ async function createHunyuanPreview(
         input: {
           input_image_url: imageUrl,
         },
-        webhookUrl: falWebhookUrl(supabaseHost, previewData.id, 'preview'),
+        webhookUrl: await falWebhookUrl(
+          supabaseHost,
+          previewData.id,
+          'preview',
+        ),
       });
       debugLog(`Successfully submitted ${description} to Hunyuan3D Mini Turbo`);
     }
   } catch (error) {
     debugLog(
-      `Error creating Hunyuan preview: ${error instanceof Error ? error.message : String(error)}`,
+      `Error creating Hunyuan preview: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
 }

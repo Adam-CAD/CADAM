@@ -9,10 +9,7 @@ CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
 );
 
 ALTER TABLE public.stripe_webhook_events
-ADD COLUMN IF NOT EXISTS stripe_object_id text,
-ADD COLUMN IF NOT EXISTS stripe_event_created_at timestamptz;
-
-ALTER TABLE public.stripe_webhook_events ENABLE ROW LEVEL SECURITY;
+ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_object_created
 ON public.stripe_webhook_events (stripe_object_id, stripe_event_created_at DESC)

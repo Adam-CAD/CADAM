@@ -1,7 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { getServiceRoleSupabaseClient } from '../_shared/supabaseClient.ts';
 import { safeFetch } from '../_shared/safeFetch.ts';
-import { requireSharedSecret } from '../_shared/webhookAuth.ts';
+import { verifySignedWebhookUrl } from '../_shared/webhookAuth.ts';
 import { unzipSync } from 'npm:fflate@0.8.2';
 
 const supabaseClient = getServiceRoleSupabaseClient();
@@ -27,13 +27,6 @@ Deno.serve(async (request) => {
 
   debugLog('Webhook parameters:', { id, mode });
 
-  try {
-    requireSharedSecret(request, 'FAL_WEBHOOK_SECRET');
-  } catch (error) {
-    console.error('Rejected fal webhook:', (error as Error).message);
-    return new Response('Unauthorized webhook', { status: 401 });
-  }
-
   if (!id) {
     console.error('Webhook missing mesh ID');
     return new Response('Missing mesh ID', { status: 200 });
@@ -45,6 +38,13 @@ Deno.serve(async (request) => {
   if (!uuidRegex.test(id)) {
     console.error('Invalid mesh ID format:', id);
     return new Response('Invalid mesh ID format', { status: 200 });
+  }
+
+  try {
+    await verifySignedWebhookUrl(request, 'FAL_WEBHOOK_SECRET', id, mode);
+  } catch (error) {
+    console.error('Rejected fal webhook:', (error as Error).message);
+    return new Response('Unauthorized webhook', { status: 401 });
   }
 
   debugLog('=== QUERYING MESH DATA ===');

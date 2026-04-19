@@ -1,11 +1,13 @@
 type SafeFetchOptions = RequestInit & {
   allowedHosts?: string[];
   maxBytes?: number;
+  maxRedirects?: number;
   timeoutMs?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
+const DEFAULT_MAX_REDIRECTS = 5;
 
 const DEFAULT_ALLOWED_HOSTS = [
   'fal.media',
@@ -36,13 +38,13 @@ function isAllowedHost(hostname: string, allowedHosts: string[]) {
 }
 
 function isBlockedIp(hostname: string) {
-  const lowerHost = hostname.toLowerCase();
+  const lowerHost = hostname.toLowerCase().replace(/^\[|\]$/g, '');
 
   if (lowerHost === 'localhost' || lowerHost.endsWith('.localhost')) {
     return true;
   }
 
-  if (lowerHost === '::1' || lowerHost === '[::1]') {
+  if (lowerHost === '::' || lowerHost === '::1') {
     return true;
   }
 
@@ -66,8 +68,25 @@ function isBlockedIp(hostname: string) {
   return (
     lowerHost.startsWith('fc') ||
     lowerHost.startsWith('fd') ||
-    lowerHost.startsWith('fe80:')
+    /^fe[89ab]/.test(lowerHost)
   );
+}
+
+async function resolveHostAddresses(hostname: string) {
+  const [ipv4Result, ipv6Result] = await Promise.allSettled([
+    Deno.resolveDns(hostname, 'A'),
+    Deno.resolveDns(hostname, 'AAAA'),
+  ]);
+  const addresses = [
+    ...(ipv4Result.status === 'fulfilled' ? ipv4Result.value : []),
+    ...(ipv6Result.status === 'fulfilled' ? ipv6Result.value : []),
+  ];
+
+  if (addresses.length === 0) {
+    throw new Error('Unable to resolve URL host');
+  }
+
+  return addresses;
 }
 
 async function assertSafeUrl(url: URL, allowedHosts: string[]) {
@@ -87,15 +106,9 @@ async function assertSafeUrl(url: URL, allowedHosts: string[]) {
     throw new Error(`URL host is not allowlisted: ${url.hostname}`);
   }
 
-  try {
-    const addresses = await Deno.resolveDns(url.hostname, 'A');
-    if (addresses.some(isBlockedIp)) {
-      throw new Error('URL resolves to a blocked private or local address');
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('blocked')) {
-      throw error;
-    }
+  const addresses = await resolveHostAddresses(url.hostname);
+  if (addresses.some(isBlockedIp)) {
+    throw new Error('URL resolves to a blocked private or local address');
   }
 }
 
@@ -132,9 +145,8 @@ function boundedResponseBody(
 
 function boundResponse(response: Response, maxBytes: number) {
   const contentLengthHeader = response.headers.get('content-length');
-  const contentLength = contentLengthHeader === null
-    ? undefined
-    : Number(contentLengthHeader);
+  const contentLength =
+    contentLengthHeader === null ? undefined : Number(contentLengthHeader);
   if (contentLength !== undefined && contentLength > maxBytes) {
     throw responseExceedsMaxBytesError();
   }
@@ -157,9 +169,18 @@ export async function safeFetch(
   input: string | URL,
   options: SafeFetchOptions = {},
 ) {
+  return await safeFetchWithRedirectDepth(input, options, 0);
+}
+
+async function safeFetchWithRedirectDepth(
+  input: string | URL,
+  options: SafeFetchOptions,
+  redirectDepth: number,
+) {
   const {
     allowedHosts: extraAllowedHosts,
     maxBytes,
+    maxRedirects,
     timeoutMs,
     ...fetchOptions
   } = options;
@@ -171,6 +192,7 @@ export async function safeFetch(
   ];
   const maxResponseBytes = maxBytes ?? DEFAULT_MAX_BYTES;
   const timeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const redirectLimit = maxRedirects ?? DEFAULT_MAX_REDIRECTS;
 
   await assertSafeUrl(url, allowedHosts);
 
@@ -186,14 +208,26 @@ export async function safeFetch(
 
     const location = response.headers.get('location');
     if (location && response.status >= 300 && response.status < 400) {
+      if (redirectDepth >= redirectLimit) {
+        throw new Error('Too many redirects');
+      }
+
       const nextUrl = new URL(location, url);
       await assertSafeUrl(nextUrl, allowedHosts);
-      return safeFetch(nextUrl, {
-        ...fetchOptions,
-        allowedHosts: extraAllowedHosts,
-        timeoutMs: timeout,
-        maxBytes: maxResponseBytes,
-      });
+      // DNS can still change between validation and connection. This helper
+      // blocks obvious app-layer SSRF paths; production egress rules should
+      // enforce private-network blocking as the final boundary.
+      return safeFetchWithRedirectDepth(
+        nextUrl,
+        {
+          ...fetchOptions,
+          allowedHosts: extraAllowedHosts,
+          maxRedirects: redirectLimit,
+          timeoutMs: timeout,
+          maxBytes: maxResponseBytes,
+        },
+        redirectDepth + 1,
+      );
     }
 
     return boundResponse(response, maxResponseBytes);

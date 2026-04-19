@@ -9,7 +9,7 @@ This patch hardens the network-reachable Supabase Edge Function surface found in
 | ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
 | Dynamic CORS allowlist                                | Implemented | `supabase/functions/_shared/cors.ts`                                                                      |
 | SSRF-safe outbound fetch helper                       | Implemented | `supabase/functions/_shared/safeFetch.ts`                                                                 |
-| FAL webhook shared-secret verification                | Implemented | `supabase/functions/_shared/webhookAuth.ts`, `supabase/functions/fal-webhook/index.ts`                    |
+| FAL webhook HMAC verification                         | Implemented | `supabase/functions/_shared/webhookAuth.ts`, `supabase/functions/fal-webhook/index.ts`                    |
 | FAL webhook signed callback URLs                      | Implemented | `supabase/functions/mesh/index.ts`                                                                        |
 | Mesh/conversation/image ownership guards              | Implemented | `supabase/functions/_shared/ownership.ts`, `supabase/functions/mesh/index.ts`                             |
 | Chat token deduction after ownership proof            | Implemented | `supabase/functions/creative-chat/index.ts`, `supabase/functions/parametric-chat/index.ts`                |
@@ -23,25 +23,25 @@ This patch hardens the network-reachable Supabase Edge Function surface found in
 
 ## Endpoint Inventory
 
-| Endpoint                         | Required protection                                                      | Main risks                                                                       | Patch status                                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `fal-webhook`                    | FAL shared secret; UUID and mode validation; safe fetch                  | Unauthenticated mutation, SSRF, oversized model downloads                        | Shared secret and safe fetch added. Follow-up: bind FAL request IDs to rows if provider exposes them. |
-| `mesh`                           | Supabase auth; owned conversation/images/mesh before service-role writes | Cross-user mesh/image access, token charge before validation, unsigned callbacks | Ownership checks and signed callbacks added.                                                          |
-| `creative-chat`                  | Supabase auth; owned conversation before token deduction                 | Token charge before ownership proof; model tool output parsing                   | Ownership-before-charge added. Follow-up: schema-validate tool payloads.                              |
-| `parametric-chat`                | Supabase auth; owned conversation before token deduction                 | Token charge before ownership proof; model-generated tool args/code              | Ownership-before-charge added. Follow-up: schema-validate tool args and cap generated code.           |
-| `stripe-webhook`                 | Stripe signature; event idempotency; RPC error handling                  | Replay/double credit, duplicate subscription rows, ignored RPC failures          | Event ledger, upsert, reference IDs, RPC error handling added.                                        |
-| `stripe-create-checkout-session` | Supabase auth; server-side lookup allowlists                             | Arbitrary Stripe lookup keys, inactive token packs                               | Subscription allowlist and active token pack validation added.                                        |
-| `stripe-create-portal-session`   | Supabase auth                                                            | Customer portal for missing customer IDs                                         | Follow-up: explicit missing-customer guard.                                                           |
-| `delete-user`                    | Supabase auth                                                            | Privileged user deletion and Stripe cancellation                                 | Follow-up: validate delete reason and audit background cleanup.                                       |
-| `title-generator`                | Supabase auth                                                            | Conversation/content reference ownership                                         | Follow-up: explicit conversation ownership guard.                                                     |
-| `prompt-generator`               | Supabase auth                                                            | Prompt/body size abuse                                                           | Follow-up: cap body size and validate type.                                                           |
-| `jackson-pollock`                | Fixed-host proxy only                                                    | Header leakage and unauthenticated relay                                         | Sensitive headers stripped and methods limited to GET/POST.                                           |
+| Endpoint                         | Required protection                                                      | Main risks                                                                       | Patch status                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `fal-webhook`                    | FAL HMAC signature; UUID and mode validation; safe fetch                 | Unauthenticated mutation, SSRF, oversized model downloads                        | Signed callback verification and safe fetch added. Follow-up: bind FAL request IDs to rows if provider exposes them. |
+| `mesh`                           | Supabase auth; owned conversation/images/mesh before service-role writes | Cross-user mesh/image access, token charge before validation, unsigned callbacks | Ownership checks and signed callbacks added.                                                                         |
+| `creative-chat`                  | Supabase auth; owned conversation before token deduction                 | Token charge before ownership proof; model tool output parsing                   | Ownership-before-charge added. Follow-up: schema-validate tool payloads.                                             |
+| `parametric-chat`                | Supabase auth; owned conversation before token deduction                 | Token charge before ownership proof; model-generated tool args/code              | Ownership-before-charge added. Follow-up: schema-validate tool args and cap generated code.                          |
+| `stripe-webhook`                 | Stripe signature; event idempotency; RPC error handling                  | Replay/double credit, duplicate subscription rows, ignored RPC failures          | Event ledger, upsert, reference IDs, RPC error handling added.                                                       |
+| `stripe-create-checkout-session` | Supabase auth; server-side lookup allowlists                             | Arbitrary Stripe lookup keys, inactive token packs                               | Subscription allowlist and active token pack validation added.                                                       |
+| `stripe-create-portal-session`   | Supabase auth                                                            | Customer portal for missing customer IDs                                         | Follow-up: explicit missing-customer guard.                                                                          |
+| `delete-user`                    | Supabase auth                                                            | Privileged user deletion and Stripe cancellation                                 | Follow-up: validate delete reason and audit background cleanup.                                                      |
+| `title-generator`                | Supabase auth                                                            | Conversation/content reference ownership                                         | Follow-up: explicit conversation ownership guard.                                                                    |
+| `prompt-generator`               | Supabase auth                                                            | Prompt/body size abuse                                                           | Follow-up: cap body size and validate type.                                                                          |
+| `jackson-pollock`                | Fixed-host proxy only                                                    | Header leakage and unauthenticated relay                                         | Sensitive headers stripped and methods limited to GET/POST.                                                          |
 
 ## Required Environment
 
 Set these before deploying the patched functions:
 
-- `FAL_WEBHOOK_SECRET`: required outside local development. Mesh job callbacks include this as a webhook query secret, and `fal-webhook` rejects callbacks without it.
+- `FAL_WEBHOOK_SECRET`: required outside local development. Mesh job callbacks include an HMAC signature derived from this secret, and `fal-webhook` rejects callbacks without a matching signature.
 - `CORS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call functions. Example: `https://adam.new,https://www.adam.new`.
 - `SAFE_FETCH_ALLOWED_HOSTS`: optional comma-separated host allowlist additions for provider file URLs. Defaults include common FAL and Google storage hosts.
 
@@ -127,7 +127,7 @@ Use `--audit-level=high` in CI until the Vite/esbuild major upgrade is scheduled
 
 Run these against local Supabase or a staging deployment:
 
-1. `fal-webhook` rejects a valid pending mesh ID without `FAL_WEBHOOK_SECRET`.
+1. `fal-webhook` rejects a valid pending mesh ID without a valid HMAC signature.
 2. `fal-webhook` rejects `model_glb.url` values pointing to `http://localhost`, `http://127.0.0.1`, private RFC1918 addresses, and `http://169.254.169.254`.
 3. `fal-webhook` accepts only expected provider HTTPS hosts.
 4. `mesh` rejects a `conversationId` owned by another user before deducting tokens.
@@ -146,7 +146,7 @@ Do not promote this patch to production until all of these pass in staging:
 
 1. Browser calls from `https://adam.new` and `https://www.adam.new` receive matching `access-control-allow-origin` headers.
 2. Browser calls from an unlisted origin do not receive a permissive CORS origin.
-3. A full mesh generation reaches FAL and the callback completes through the signed webhook URL.
+3. A full mesh generation reaches FAL and the callback completes through the HMAC-signed webhook URL.
 4. A mesh preview and mesh upscale both reject resources created by a different user.
 5. A token-pack checkout credits tokens exactly once after two Stripe replay attempts.
 6. A subscription renewal event grants tokens once and does not shorten a newer expiry when an older event is replayed later.

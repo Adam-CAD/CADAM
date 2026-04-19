@@ -32,5 +32,3 @@ export function getCorsHeaders(request?: Request) {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
 }
-
-export const corsHeaders = getCorsHeaders();

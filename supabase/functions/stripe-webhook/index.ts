@@ -1,7 +1,7 @@
 import '@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'stripe';
 import { getServiceRoleSupabaseClient } from '../_shared/supabaseClient.ts';
-import { initSentry, logError, logApiError } from '../_shared/sentry.ts';
+import { initSentry, logApiError, logError } from '../_shared/sentry.ts';
 
 // Initialize Sentry for error logging
 initSentry();
@@ -96,15 +96,26 @@ Deno.serve(async (request) => {
         break;
     }
 
-    if (response.status >= 500) {
-      await releaseStripeEvent(retrievedEvent.id);
-    } else {
+    if (response.status >= 200 && response.status < 300) {
       await markStripeEventProcessed(retrievedEvent.id);
+    } else {
+      await releaseStripeEvent(retrievedEvent.id);
     }
 
     return response;
   } catch (error) {
-    await releaseStripeEvent(retrievedEvent.id);
+    try {
+      await releaseStripeEvent(retrievedEvent.id);
+    } catch (releaseError) {
+      logError(releaseError, {
+        functionName: 'stripe-webhook',
+        statusCode: 500,
+        additionalContext: {
+          eventId: retrievedEvent.id,
+          operation: 'release_after_processing_error',
+        },
+      });
+    }
     logError(error, {
       functionName: 'stripe-webhook',
       statusCode: 500,
@@ -143,17 +154,35 @@ async function claimStripeEvent(
 }
 
 async function markStripeEventProcessed(eventId: string) {
-  await supabaseClient
+  const { error } = await supabaseClient
     .from('stripe_webhook_events')
     .update({ status: 'processed', processed_at: new Date().toISOString() })
     .eq('event_id', eventId);
+
+  if (error) {
+    logError(error, {
+      functionName: 'stripe-webhook',
+      statusCode: 500,
+      additionalContext: { eventId, operation: 'mark_processed' },
+    });
+    throw error;
+  }
 }
 
 async function releaseStripeEvent(eventId: string) {
-  await supabaseClient
+  const { error } = await supabaseClient
     .from('stripe_webhook_events')
     .delete()
     .eq('event_id', eventId);
+
+  if (error) {
+    logError(error, {
+      functionName: 'stripe-webhook',
+      statusCode: 500,
+      additionalContext: { eventId, operation: 'release_event' },
+    });
+    throw error;
+  }
 }
 
 async function grantSubscriptionTokens(
