@@ -193,7 +193,7 @@ export function CreditsButton() {
             onMouseLeave={handleLeave}
           >
             {/* Header */}
-            <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
+            <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-4">
               <div className="text-base font-semibold leading-tight">
                 {headerLabel}
               </div>
@@ -228,14 +228,6 @@ export function CreditsButton() {
               </div>
 
               <div className="mt-2 space-y-1 pl-6 text-xs text-adam-neutral-400">
-                {isFree && (
-                  <div className="flex items-center justify-between">
-                    <span>Daily credits</span>
-                    <span className="tabular-nums">
-                      {formatFull(freeTokens)}
-                    </span>
-                  </div>
-                )}
                 {!isFree && (
                   <div className="flex items-center justify-between">
                     <span>Monthly credits</span>
@@ -244,12 +236,22 @@ export function CreditsButton() {
                     </span>
                   </div>
                 )}
-                <div className="flex items-center justify-between">
-                  <span>Add-on credits</span>
-                  <span className="tabular-nums">
-                    {formatFull(purchasedTokens)}
-                  </span>
-                </div>
+                {freeTokens > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span>Daily free credits</span>
+                    <span className="tabular-nums">
+                      {formatFull(freeTokens)}
+                    </span>
+                  </div>
+                )}
+                {purchasedTokens > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span>Add-on credits</span>
+                    <span className="tabular-nums">
+                      {formatFull(purchasedTokens)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -32,6 +32,7 @@ type Cadence = 'monthly' | 'yearly';
 type SubscriptionTier = {
   level: PlanLevel;
   displayName: string;
+  description: string;
   price: string;
   oldPrice?: string;
   priceId: string | null;
@@ -74,6 +75,7 @@ function buildTier(
     return {
       level: 'free',
       displayName: PLAN_DISPLAY_NAMES.free,
+      description: PLAN_FEATURES.free.description,
       price: '0',
       priceId: null,
       tokenAmount: null,
@@ -87,6 +89,7 @@ function buildTier(
   const tier: SubscriptionTier = {
     level,
     displayName: PLAN_DISPLAY_NAMES[level],
+    description: PLAN_FEATURES[level].description,
     price: formatPrice(monthlyEquivalent(product)),
     priceId: product.stripePriceId,
     tokenAmount: product.tokenAmount,
@@ -98,10 +101,11 @@ function buildTier(
   return tier;
 }
 
-function creditsLine(tier: SubscriptionTier): string {
-  if (tier.level === 'free') return '50 credits per day';
+function creditsLines(tier: SubscriptionTier): string[] {
+  const daily = '50 free credits per day';
+  if (tier.level === 'free') return [daily];
   const amount = tier.tokenAmount?.toLocaleString() ?? '';
-  return `${amount} credits per month`;
+  return [daily, `${amount} credits per month`];
 }
 
 export function Subscriptions() {
@@ -256,7 +260,10 @@ function SubscriptionCard({
   totalCards: number;
 }) {
   const isCurrent = tier.level === currentLevel;
-  const features = [creditsLine(tier), ...PLAN_FEATURES[tier.level]];
+  const features = [
+    ...creditsLines(tier),
+    ...PLAN_FEATURES[tier.level].features,
+  ];
 
   return (
     <Card
@@ -290,6 +297,7 @@ function SubscriptionCard({
           <span className="text-4xl font-light text-white">${tier.price}</span>
           <span className="text-sm text-adam-neutral-400">/mo</span>
         </div>
+        <p className="mt-1 text-xs text-adam-neutral-400">{tier.description}</p>
       </CardHeader>
 
       <CardContent className="flex-1 pb-4 pt-4">

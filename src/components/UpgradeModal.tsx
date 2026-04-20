@@ -140,7 +140,7 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
                 </div>
 
                 <ul className="mt-3 space-y-1.5 text-xs text-adam-neutral-300">
-                  {PLAN_FEATURES[level].map((feature) => (
+                  {PLAN_FEATURES[level].features.map((feature) => (
                     <li key={feature} className="flex items-start gap-1.5">
                       <Check className="mt-0.5 h-3 w-3 shrink-0 text-adam-neutral-400" />
                       <span>{feature}</span>

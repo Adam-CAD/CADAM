@@ -327,16 +327,6 @@ export default function SettingsView() {
               </div>
 
               <div className="flex flex-col gap-2">
-                {level === 'free' && freeTokens > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-adam-neutral-200">
-                      Daily tokens
-                    </span>
-                    <span className="text-xs tabular-nums text-adam-neutral-50">
-                      {freeTokens.toLocaleString()}
-                    </span>
-                  </div>
-                )}
                 {level !== 'free' && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-adam-neutral-200">
@@ -344,6 +334,16 @@ export default function SettingsView() {
                     </span>
                     <span className="text-xs tabular-nums text-adam-neutral-50">
                       {subscriptionTokens.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {freeTokens > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-adam-neutral-200">
+                      Daily free tokens
+                    </span>
+                    <span className="text-xs tabular-nums text-adam-neutral-50">
+                      {freeTokens.toLocaleString()}
                     </span>
                   </div>
                 )}

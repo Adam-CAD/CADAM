@@ -1,30 +1,32 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import Stripe from 'npm:stripe@17.5.0';
 import { corsHeaders } from '../_shared/cors.ts';
 import {
   getServiceRoleSupabaseClient,
   SupabaseClient,
 } from '../_shared/supabaseClient.ts';
+import { billing, BillingClientError } from '../_shared/billingClient.ts';
 import { initSentry, logApiError, logError } from '../_shared/sentry.ts';
 
 // Initialize Sentry for error logging
 initSentry();
 
-type StripeFeedback =
-  Stripe.SubscriptionCancelParams.CancellationDetails.Feedback;
-
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
-  apiVersion: '2024-12-18.acacia',
-  httpClient: Stripe.createFetchHttpClient(),
-});
+type CancellationFeedback =
+  | 'customer_service'
+  | 'low_quality'
+  | 'missing_features'
+  | 'other'
+  | 'switched_service'
+  | 'too_complex'
+  | 'too_expensive'
+  | 'unused';
 
 const supabaseClient = getServiceRoleSupabaseClient();
 
 /**
  * Deletes the authenticated user account.
- * - Cancels any active Stripe subscription so the user is not charged again
- * - Removes the subscription row
+ * - Cancels any active subscription via adam-billing (no-op if none)
+ * - Removes storage items in the background
  * - Deletes the auth user via service role
  */
 Deno.serve(async (req) => {
@@ -39,7 +41,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { reason }: { reason: StripeFeedback } = await req.json();
+  const { reason }: { reason?: CancellationFeedback } = await req
+    .json()
+    .catch(() => ({}));
 
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.replace('Bearer ', '');
@@ -47,7 +51,7 @@ Deno.serve(async (req) => {
   const { data: userData, error: userError } =
     await supabaseClient.auth.getUser(token);
 
-  if (userError || !userData.user) {
+  if (userError || !userData.user || !userData.user.email) {
     logError(userError ?? new Error('No user in request token'), {
       functionName: 'delete-user',
       statusCode: 401,
@@ -59,73 +63,20 @@ Deno.serve(async (req) => {
   }
 
   const userId = userData.user.id;
+  const email = userData.user.email;
 
-  // Fetch subscription for user (if any)
-  const { data: subscription, error: subscriptionFetchError } =
-    await supabaseClient
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-  if (subscriptionFetchError) {
-    logError(subscriptionFetchError, {
+  try {
+    await billing.cancelSubscription(email, { feedback: reason });
+  } catch (err) {
+    const status = err instanceof BillingClientError ? err.status : 502;
+    logApiError(err, {
       functionName: 'delete-user',
-      statusCode: 500,
+      apiName: 'adam-billing cancel-subscription',
+      statusCode: status,
       userId,
-      additionalContext: { step: 'fetch_subscription' },
     });
     return new Response(
-      JSON.stringify({ error: 'Failed to fetch subscription' }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
-  }
-
-  // Cancel active Stripe subscription if exists
-  if (subscription?.stripe_subscription_id) {
-    try {
-      await stripe.subscriptions.cancel(subscription.stripe_subscription_id, {
-        cancellation_details: {
-          feedback: reason,
-        },
-      });
-    } catch (err) {
-      logApiError(err, {
-        functionName: 'delete-user',
-        apiName: 'Stripe cancel subscription',
-        statusCode: 500,
-        userId,
-        requestData: { subscriptionId: subscription.stripe_subscription_id },
-      });
-      // Continue – we still want to attempt user deletion; but return error to client
-      return new Response(
-        JSON.stringify({ error: 'Failed to cancel Stripe subscription' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        },
-      );
-    }
-  }
-
-  // Remove local subscription record
-  const { error: deleteSubError } = await supabaseClient
-    .from('subscriptions')
-    .delete()
-    .eq('user_id', userId);
-
-  if (deleteSubError) {
-    logError(deleteSubError, {
-      functionName: 'delete-user',
-      statusCode: 500,
-      userId,
-      additionalContext: { step: 'delete_subscription_row' },
-    });
-    return new Response(
-      JSON.stringify({ error: 'Failed to delete subscription row' }),
+      JSON.stringify({ error: 'Failed to cancel subscription' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

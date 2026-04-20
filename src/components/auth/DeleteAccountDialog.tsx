@@ -13,11 +13,17 @@ import { supabase } from '@/lib/supabase';
 import * as Sentry from '@sentry/react';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
-import { Stripe } from 'stripe';
 import posthog from 'posthog-js';
 
-type StripeFeedback =
-  Stripe.SubscriptionCancelParams.CancellationDetails.Feedback;
+type CancellationFeedback =
+  | 'customer_service'
+  | 'low_quality'
+  | 'missing_features'
+  | 'other'
+  | 'switched_service'
+  | 'too_complex'
+  | 'too_expensive'
+  | 'unused';
 
 export const DeleteAccountDialog = ({
   children,
@@ -28,9 +34,8 @@ export const DeleteAccountDialog = ({
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
-  const [selectedReason, setSelectedReason] = useState<StripeFeedback | null>(
-    null,
-  );
+  const [selectedReason, setSelectedReason] =
+    useState<CancellationFeedback | null>(null);
   const { mutate: deleteUser, isPending: isDeleting } = useMutation({
     mutationFn: async () => {
       posthog.capture('delete_account_called', {

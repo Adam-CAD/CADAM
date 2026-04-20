@@ -143,6 +143,23 @@ type CheckoutBody = {
   trialPeriodDays?: number;
 };
 
+type CancelSubscriptionBody = {
+  feedback?:
+    | 'customer_service'
+    | 'low_quality'
+    | 'missing_features'
+    | 'other'
+    | 'switched_service'
+    | 'too_complex'
+    | 'too_expensive'
+    | 'unused';
+  comment?: string;
+};
+
+export type CancelSubscriptionResult =
+  | { canceled: true }
+  | { canceled: false; reason: 'no_subscription' | 'already_canceled' };
+
 export const billing = {
   getStatus: (email: string) =>
     call<BillingStatus>('GET', `/v1/users/${enc(email)}/status`),
@@ -160,6 +177,13 @@ export const billing = {
 
   createPortal: (email: string, body: { returnUrl: string }) =>
     call<{ url: string }>('POST', `/v1/users/${enc(email)}/portal`, body),
+
+  cancelSubscription: (email: string, body: CancelSubscriptionBody = {}) =>
+    call<CancelSubscriptionResult>(
+      'POST',
+      `/v1/users/${enc(email)}/cancel-subscription`,
+      body,
+    ),
 
   getProductsByType: (type: 'subscription' | 'pack') =>
     call<BillingProduct[]>('GET', `/v1/products?type=${type}`),
