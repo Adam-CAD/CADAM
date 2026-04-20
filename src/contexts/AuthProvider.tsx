@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import posthog from 'posthog-js';
-import { AuthContext } from './AuthContext';
+import { AuthContext, type BillingStatus, getLevel } from './AuthContext';
 
 const ensurePermission = async () => {
   if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -57,47 +57,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Fetch user's subscription and usage data when user is available
-  const { data: userExtraData, isLoading: isUserExtraDataLoading } = useQuery({
-    queryKey: ['userExtraData'],
+  // Poll adam-billing for subscription state + token balances. 30s cadence
+  // matches the prior user_extradata poll — adam-billing is the source of
+  // truth; no local realtime channel anymore.
+  const { data: billing, isLoading: isBillingLoading } = useQuery({
+    queryKey: ['billing', 'status'],
     enabled: !!user,
     refetchInterval: 30000,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('user_extradata', {
-        user_id_input: user?.id ?? '',
-      });
-
+    queryFn: async (): Promise<BillingStatus> => {
+      const { data, error } = await supabase.functions.invoke('billing-status');
       if (error) throw error;
-
-      return data;
+      return data as BillingStatus;
     },
   });
-
-  // Set up real-time subscription for token_balances table to update tokens immediately
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel('token-balances-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'token_balances',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          // Invalidate userExtraData query immediately when token balances change
-          queryClient.invalidateQueries({ queryKey: ['userExtraData'] });
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, queryClient]);
 
   // Fetch user's profile data directly (avoiding circular dependency)
   const { data: profile, isLoading: isProfileLoading } = useQuery({
@@ -140,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               queryKey: ['meshData', payload.id],
             });
             queryClient.invalidateQueries({ queryKey: ['mesh', payload.id] });
-            queryClient.invalidateQueries({ queryKey: ['userExtraData'] });
+            queryClient.invalidateQueries({ queryKey: ['billing', 'status'] });
 
             if (
               payload.status === 'success' &&
@@ -182,18 +154,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (
       user &&
       !posthogSent.current &&
-      !isUserExtraDataLoading &&
+      !isBillingLoading &&
       !isProfileLoading
     ) {
       posthog.identify(user.id, {
         email: user.email,
         full_name: profile?.full_name,
-        subscription: userExtraData?.sublevel ?? 'free',
-        has_trialed: userExtraData?.hasTrialed ?? false,
+        subscription: getLevel(billing),
+        has_trialed: billing?.user.hasTrialed ?? false,
       });
       posthogSent.current = true;
     }
-  }, [user, isUserExtraDataLoading, userExtraData, profile, isProfileLoading]);
+  }, [user, isBillingLoading, billing, profile, isProfileLoading]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -249,16 +221,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         session,
         user,
-        hasTrialed: userExtraData?.hasTrialed ?? true,
-        subscription: userExtraData?.sublevel ?? 'free',
-        subscriptionTokens: userExtraData?.subscriptionTokens ?? 0,
-        purchasedTokens: userExtraData?.purchasedTokens ?? 0,
-        totalTokens: userExtraData?.totalTokens ?? 0,
-        subscriptionTokenLimit: userExtraData?.subscriptionTokenLimit ?? 50,
-        subscriptionExpiresAt: userExtraData?.subscriptionExpiresAt ?? null,
-        // Consider auth loading, user data loading, and profile loading states
+        billing: billing ?? null,
         isLoading:
-          isLoading || (!!user && (isUserExtraDataLoading || isProfileLoading)),
+          isLoading || (!!user && (isBillingLoading || isProfileLoading)),
         signIn,
         signUp,
         signInWithMagicLink,

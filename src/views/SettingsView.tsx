@@ -1,17 +1,11 @@
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, Info, Sparkles } from 'lucide-react';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
+import { Loader2, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   useManageSubscription,
   useTokenPackPurchase,
 } from '@/services/subscriptionService';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { DeleteAccountDialog } from '@/components/auth/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
@@ -23,18 +17,28 @@ import * as Sentry from '@sentry/react';
 import { useProfile, useUpdateProfile } from '@/services/profileService';
 import { AvatarUpdateDialog } from '@/components/auth/AvatarUpdateDialog';
 import { useTokenPacks } from '@/hooks/useTokenPacks';
-import { useTokenCosts } from '@/hooks/useTokenCosts';
+
+function formatPeriodEnd(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
 
 export default function SettingsView() {
-  const {
-    subscription,
-    subscriptionTokens,
-    purchasedTokens,
-    totalTokens,
-    subscriptionTokenLimit,
-    user,
-    resetPassword,
-  } = useAuth();
+  const { billing, user, resetPassword } = useAuth();
+  const level = getLevel(billing);
+  const freeTokens = billing?.tokens.free ?? 0;
+  const subscriptionTokens = billing?.tokens.subscription ?? 0;
+  const purchasedTokens = billing?.tokens.purchased ?? 0;
+  const totalTokens = billing?.tokens.total ?? 0;
+  const periodEnd = formatPeriodEnd(
+    billing?.subscription?.currentPeriodEnd ?? null,
+  );
   const { data: profile } = useProfile();
   const { mutate: updateProfile, isPending: isUpdateLoading } =
     useUpdateProfile();
@@ -43,18 +47,11 @@ export default function SettingsView() {
   const [editingName, setEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const { data: tokenPacks = [] } = useTokenPacks();
-  const { data: tokenCosts = [] } = useTokenCosts();
   const {
     mutate: purchaseTokenPack,
     isPending: isPurchaseLoading,
     variables: purchaseVariables,
   } = useTokenPackPurchase();
-
-  const subscriptionUsed = subscriptionTokenLimit - subscriptionTokens;
-  const usagePercent =
-    subscriptionTokenLimit > 0
-      ? (subscriptionUsed / subscriptionTokenLimit) * 100
-      : 0;
 
   useEffect(() => {
     if (editingName) {
@@ -140,16 +137,16 @@ export default function SettingsView() {
     });
 
   const tierLabel =
-    subscription === 'free'
+    level === 'free'
       ? 'Adam Free'
-      : subscription === 'standard'
+      : level === 'standard'
         ? 'Adam Standard'
         : 'Adam Pro';
 
   const tierAccent =
-    subscription === 'free'
+    level === 'free'
       ? 'bg-adam-neutral-700 text-adam-neutral-50'
-      : subscription === 'standard'
+      : level === 'standard'
         ? 'bg-adam-blue/15 text-adam-blue'
         : 'bg-gradient-to-r from-adam-blue/20 to-fuchsia-500/20 text-adam-neutral-50';
 
@@ -297,25 +294,17 @@ export default function SettingsView() {
                       tierAccent,
                     )}
                   >
-                    {subscription === 'pro' && <Sparkles className="h-3 w-3" />}
+                    {level === 'pro' && <Sparkles className="h-3 w-3" />}
                     {tierLabel}
                   </span>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="h-4 w-4 text-adam-neutral-300 transition-colors hover:text-adam-neutral-50" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{subscriptionTokenLimit} tokens per period</p>
-                      {tokenCosts.map((tc) => (
-                        <p key={tc.operation}>
-                          {tc.operation}: {tc.cost} tokens
-                        </p>
-                      ))}
-                    </TooltipContent>
-                  </Tooltip>
+                  {periodEnd && (
+                    <span className="text-xs text-adam-neutral-300">
+                      Renews {periodEnd}
+                    </span>
+                  )}
                 </div>
 
-                {subscription !== 'free' ? (
+                {level !== 'free' ? (
                   <Button
                     onClick={() => handleManageSubscription()}
                     className="flex-shrink-0 rounded-full font-light"
@@ -338,34 +327,26 @@ export default function SettingsView() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-adam-neutral-200">
-                    Subscription tokens
-                  </span>
-                  <span className="text-xs tabular-nums text-adam-neutral-50">
-                    {subscriptionTokens.toLocaleString()} /{' '}
-                    {subscriptionTokenLimit.toLocaleString()}
-                  </span>
-                </div>
-                <Progress
-                  indicatorClassName={cn(
-                    usagePercent < 70
-                      ? 'bg-lime-500'
-                      : usagePercent < 90
-                        ? 'bg-amber-500'
-                        : 'bg-[#FB2C2C]',
-                  )}
-                  className={cn(
-                    'h-1.5',
-                    usagePercent < 70
-                      ? 'bg-lime-950'
-                      : usagePercent < 90
-                        ? 'bg-amber-950'
-                        : 'bg-[#3a1818]',
-                  )}
-                  max={subscriptionTokenLimit}
-                  value={subscriptionUsed}
-                />
+                {level === 'free' && freeTokens > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-adam-neutral-200">
+                      Daily tokens
+                    </span>
+                    <span className="text-xs tabular-nums text-adam-neutral-50">
+                      {freeTokens.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+                {level !== 'free' && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-adam-neutral-200">
+                      Subscription tokens
+                    </span>
+                    <span className="text-xs tabular-nums text-adam-neutral-50">
+                      {subscriptionTokens.toLocaleString()}
+                    </span>
+                  </div>
+                )}
                 {purchasedTokens > 0 && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-adam-neutral-200">
@@ -400,16 +381,14 @@ export default function SettingsView() {
                     {tokenPacks.map((pack) => {
                       const isThisPending =
                         isPurchaseLoading &&
-                        purchaseVariables?.lookupKey === pack.stripe_lookup_key;
+                        purchaseVariables?.priceId === pack.stripePriceId;
                       return (
                         <button
                           key={pack.id}
                           type="button"
                           disabled={isPurchaseLoading}
                           onClick={() =>
-                            purchaseTokenPack({
-                              lookupKey: pack.stripe_lookup_key,
-                            })
+                            purchaseTokenPack({ priceId: pack.stripePriceId })
                           }
                           className={cn(
                             'relative flex flex-col items-start rounded-lg border border-adam-neutral-800 bg-adam-background-1 px-3 py-2.5 text-left transition-colors',
@@ -421,10 +400,10 @@ export default function SettingsView() {
                             <Loader2 className="absolute right-2 top-2 h-3.5 w-3.5 animate-spin text-adam-neutral-200" />
                           )}
                           <div className="text-sm font-medium tabular-nums text-adam-neutral-50">
-                            {pack.token_amount.toLocaleString()}
+                            {pack.tokenAmount.toLocaleString()}
                           </div>
                           <div className="mt-0.5 text-xs tabular-nums text-adam-neutral-200">
-                            ${(pack.price_cents / 100).toFixed(2)}
+                            ${(pack.priceCents / 100).toFixed(2)}
                           </div>
                         </button>
                       );

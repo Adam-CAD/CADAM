@@ -8,7 +8,7 @@ import {
   CardHeader,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   useManageSubscription,
@@ -17,58 +17,99 @@ import {
 } from '@/services/subscriptionService';
 import { useTokenPacks } from '@/hooks/useTokenPacks';
 import {
-  Cadence,
-  PRICING_PLANS,
-  PlanName,
-  creditsFeatureLine,
-} from '@/config/pricing';
+  useSubscriptionProducts,
+  type BillingProduct,
+  type SubscriptionLevel,
+} from '@/hooks/useBillingProducts';
+import {
+  PLAN_DISPLAY_NAMES,
+  PLAN_FEATURES,
+  type PlanLevel,
+} from '@/config/plan-features';
 
-interface PricingTier {
-  name: string;
-  description: string;
-  oldPrice?: string;
+type Cadence = 'monthly' | 'yearly';
+
+type SubscriptionTier = {
+  level: PlanLevel;
+  displayName: string;
   price: string;
-  features: string[];
-  buttonText: string;
-  popular?: boolean;
-  lookupKey: string;
+  oldPrice?: string;
+  priceId: string | null;
+  tokenAmount: number | null;
+  popular: boolean;
+};
+
+const DISPLAY_ORDER: PlanLevel[] = ['free', 'pro', 'standard'];
+
+function formatPrice(cents: number): string {
+  const dollars = cents / 100;
+  return dollars % 1 === 0 ? dollars.toFixed(0) : dollars.toFixed(2);
 }
 
-// Build the tier list for a given cadence from the shared pricing config.
-// Display order (Free → Pro → Standard) is preserved from the original
-// layout so the "Popular" Pro card sits in the middle of the row.
-const DISPLAY_ORDER: PlanName[] = ['Free', 'Pro', 'Standard'];
+function monthlyEquivalent(product: BillingProduct): number {
+  if (product.interval === 'year') return product.priceCents / 12;
+  return product.priceCents;
+}
 
-function buildTiers(cadence: Cadence): PricingTier[] {
-  return DISPLAY_ORDER.map((planName): PricingTier => {
-    const plan = PRICING_PLANS[planName];
-    const isFree = plan.name === 'Free';
-    const features = [creditsFeatureLine(plan), ...plan.extraFeatures];
+function findProduct(
+  products: BillingProduct[],
+  level: SubscriptionLevel,
+  interval: 'month' | 'year',
+): BillingProduct | undefined {
+  return products.find(
+    (p) =>
+      p.subscriptionLevel === level &&
+      p.interval === interval &&
+      p.productType === 'subscription' &&
+      p.active,
+  );
+}
 
-    const base: PricingTier = {
-      name: plan.name,
-      description: plan.description,
-      price: cadence === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice,
-      features,
-      buttonText: isFree ? 'Current Plan' : `Get ${plan.name}`,
-      popular: plan.popular,
-      lookupKey:
-        cadence === 'yearly' ? plan.yearlyLookupKey : plan.monthlyLookupKey,
+function buildTier(
+  products: BillingProduct[],
+  level: PlanLevel,
+  cadence: Cadence,
+): SubscriptionTier | null {
+  if (level === 'free') {
+    return {
+      level: 'free',
+      displayName: PLAN_DISPLAY_NAMES.free,
+      price: '0',
+      priceId: null,
+      tokenAmount: null,
+      popular: false,
     };
-    // Yearly view shows the crossed-out monthly price above the discount price.
-    if (cadence === 'yearly' && !isFree) {
-      return { ...base, oldPrice: plan.monthlyPrice };
-    }
-    return base;
-  });
+  }
+  const interval: 'month' | 'year' = cadence === 'yearly' ? 'year' : 'month';
+  const product = findProduct(products, level, interval);
+  if (!product) return null;
+  const monthly = findProduct(products, level, 'month');
+  const tier: SubscriptionTier = {
+    level,
+    displayName: PLAN_DISPLAY_NAMES[level],
+    price: formatPrice(monthlyEquivalent(product)),
+    priceId: product.stripePriceId,
+    tokenAmount: product.tokenAmount,
+    popular: level === 'pro',
+  };
+  if (cadence === 'yearly' && monthly) {
+    tier.oldPrice = formatPrice(monthly.priceCents);
+  }
+  return tier;
 }
 
-const yearlyPricingTiers: PricingTier[] = buildTiers('yearly');
-const monthlyPricingTiers: PricingTier[] = buildTiers('monthly');
+function creditsLine(tier: SubscriptionTier): string {
+  if (tier.level === 'free') return '50 credits per day';
+  const amount = tier.tokenAmount?.toLocaleString() ?? '';
+  return `${amount} credits per month`;
+}
 
 export function Subscriptions() {
   const navigate = useNavigate();
-  const { user, subscription } = useAuth();
+  const { user, billing } = useAuth();
+  const currentLevel = getLevel(billing);
+
+  const { data: products = [] } = useSubscriptionProducts();
 
   const { mutate: handleSubscribeMutation, isPending: isSubscribeLoading } =
     useSubscriptionService();
@@ -81,27 +122,32 @@ export function Subscriptions() {
     variables: purchaseVariables,
   } = useTokenPackPurchase();
 
-  const handleSubscribe = (lookupKey: string) => {
+  const buildTiers = (cadence: Cadence): SubscriptionTier[] =>
+    DISPLAY_ORDER.map((level) => buildTier(products, level, cadence)).filter(
+      (t): t is SubscriptionTier => t !== null,
+    );
+
+  const yearlyTiers = buildTiers('yearly');
+  const monthlyTiers = buildTiers('monthly');
+
+  const handleSubscribe = (priceId: string) => {
     if (!user) {
       navigate('/signin');
       return;
     }
-
-    handleSubscribeMutation({ lookupKey, source: 'subscriptions' });
+    handleSubscribeMutation({ priceId, source: 'subscriptions' });
   };
 
-  const renderTiers = (tiers: PricingTier[]) => (
+  const renderTiers = (tiers: SubscriptionTier[]) => (
     <div className="flex flex-col items-center gap-4 px-4 md:flex-row md:items-stretch md:justify-center md:px-8">
       {tiers.map((tier) => (
         <SubscriptionCard
-          key={tier.name}
+          key={tier.level}
           tier={tier}
+          currentLevel={currentLevel}
           isLoading={isSubscribeLoading || isManageLoading}
-          onClick={
-            subscription === 'free'
-              ? () => handleSubscribe(tier.lookupKey)
-              : handleManageSubscription
-          }
+          onSubscribe={handleSubscribe}
+          onManage={() => handleManageSubscription()}
           totalCards={tiers.length}
         />
       ))}
@@ -145,10 +191,10 @@ export function Subscriptions() {
             </TabsList>
 
             <TabsContent value="yearly" className="w-full">
-              {renderTiers(yearlyPricingTiers)}
+              {renderTiers(yearlyTiers)}
             </TabsContent>
             <TabsContent value="monthly" className="w-full">
-              {renderTiers(monthlyPricingTiers)}
+              {renderTiers(monthlyTiers)}
             </TabsContent>
           </Tabs>
 
@@ -166,7 +212,7 @@ export function Subscriptions() {
                   {tokenPacks.map((pack) => {
                     const isThisPending =
                       isPurchaseLoading &&
-                      purchaseVariables?.lookupKey === pack.stripe_lookup_key;
+                      purchaseVariables?.priceId === pack.stripePriceId;
                     return (
                       <Button
                         key={pack.id}
@@ -174,15 +220,13 @@ export function Subscriptions() {
                         className="rounded-full border border-adam-neutral-700 px-5 font-light"
                         disabled={isPurchaseLoading}
                         onClick={() =>
-                          purchaseTokenPack({
-                            lookupKey: pack.stripe_lookup_key,
-                          })
+                          purchaseTokenPack({ priceId: pack.stripePriceId })
                         }
                       >
                         {isThisPending && (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         )}
-                        {`${pack.token_amount} tokens — $${(pack.price_cents / 100).toFixed(2)}`}
+                        {`${pack.tokenAmount.toLocaleString()} tokens — $${formatPrice(pack.priceCents)}`}
                       </Button>
                     );
                   })}
@@ -198,21 +242,21 @@ export function Subscriptions() {
 
 function SubscriptionCard({
   tier,
+  currentLevel,
   isLoading,
-  onClick,
+  onSubscribe,
+  onManage,
   totalCards,
 }: {
-  tier: PricingTier;
+  tier: SubscriptionTier;
+  currentLevel: PlanLevel;
   isLoading: boolean;
-  onClick: () => void;
+  onSubscribe: (priceId: string) => void;
+  onManage: () => void;
   totalCards: number;
 }) {
-  const { subscription } = useAuth();
-
-  const isCurrent =
-    (tier.lookupKey === 'free' && subscription === 'free') ||
-    (tier.name === 'Pro' && subscription === 'pro') ||
-    (tier.name === 'Standard' && subscription === 'standard');
+  const isCurrent = tier.level === currentLevel;
+  const features = [creditsLine(tier), ...PLAN_FEATURES[tier.level]];
 
   return (
     <Card
@@ -235,7 +279,7 @@ function SubscriptionCard({
 
       <CardHeader className="pb-2 pt-6">
         <div className="mb-1 text-sm font-medium text-adam-neutral-300">
-          {tier.name}
+          {tier.displayName}
         </div>
         <div className="flex items-baseline gap-1">
           {tier.oldPrice && (
@@ -246,12 +290,11 @@ function SubscriptionCard({
           <span className="text-4xl font-light text-white">${tier.price}</span>
           <span className="text-sm text-adam-neutral-400">/mo</span>
         </div>
-        <p className="mt-1 text-xs text-adam-neutral-400">{tier.description}</p>
       </CardHeader>
 
       <CardContent className="flex-1 pb-4 pt-4">
         <ul className="flex flex-col gap-2.5">
-          {tier.features.map((feature) => (
+          {features.map((feature) => (
             <li key={feature} className="flex items-start gap-2.5">
               <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-adam-blue" />
               <span className="text-sm text-adam-neutral-200">{feature}</span>
@@ -268,10 +311,10 @@ function SubscriptionCard({
           >
             Current Plan
           </Button>
-        ) : tier.lookupKey === 'free' && subscription !== 'free' ? (
+        ) : tier.level === 'free' && currentLevel !== 'free' ? (
           <Button
             className="h-10 w-full rounded-full bg-adam-neutral-800 text-sm font-medium text-adam-neutral-200 hover:bg-adam-neutral-700"
-            onClick={() => onClick()}
+            onClick={onManage}
           >
             Manage Plan
           </Button>
@@ -283,18 +326,22 @@ function SubscriptionCard({
                 ? 'bg-adam-blue text-white hover:bg-adam-blue/90'
                 : 'bg-adam-neutral-100 text-adam-neutral-900 hover:bg-white',
             )}
-            onClick={() => onClick()}
-            disabled={isLoading}
+            onClick={() =>
+              currentLevel !== 'free'
+                ? onManage()
+                : tier.priceId && onSubscribe(tier.priceId)
+            }
+            disabled={isLoading || (!tier.priceId && currentLevel === 'free')}
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Loading...
               </>
-            ) : subscription !== 'free' ? (
+            ) : currentLevel !== 'free' ? (
               'Manage Plan'
             ) : (
-              tier.buttonText
+              `Get ${tier.displayName}`
             )}
           </Button>
         )}

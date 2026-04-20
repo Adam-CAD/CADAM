@@ -1,4 +1,4 @@
-import { useAuth } from '@/contexts/AuthContext';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { TrialDialog } from './auth/TrialDialog';
 import { useState, useEffect } from 'react';
@@ -6,12 +6,14 @@ import { useState, useEffect } from 'react';
 const TRIAL_DIALOG_SHOWN_KEY = 'adam_trial_dialog_shown';
 
 export function LimitReachedMessage() {
-  const { subscription, hasTrialed } = useAuth();
+  const { billing } = useAuth();
+  const level = getLevel(billing);
+  const hasTrialed = billing?.user.hasTrialed ?? false;
   const [showTrialDialog, setShowTrialDialog] = useState(false);
 
   // Automatically open trial dialog for free users who haven't trialed
   useEffect(() => {
-    if (subscription === 'free' && !hasTrialed) {
+    if (level === 'free' && !hasTrialed) {
       // Check if dialog has been shown before
       const hasDialogBeenShown =
         localStorage.getItem(TRIAL_DIALOG_SHOWN_KEY) === 'true';
@@ -27,7 +29,7 @@ export function LimitReachedMessage() {
         return () => clearTimeout(timer);
       }
     }
-  }, [subscription, hasTrialed]);
+  }, [level, hasTrialed]);
 
   const handleTrialClick = () => {
     setShowTrialDialog(true);
@@ -36,7 +38,7 @@ export function LimitReachedMessage() {
   return (
     <div className="p-3 text-center text-sm text-adam-text-secondary">
       <LimitReachedSpan onTrialClick={handleTrialClick} />
-      {subscription === 'free' && !hasTrialed && (
+      {level === 'free' && !hasTrialed && (
         <TrialDialog open={showTrialDialog} onOpenChange={setShowTrialDialog} />
       )}
     </div>
@@ -44,10 +46,12 @@ export function LimitReachedMessage() {
 }
 
 function LimitReachedSpan({ onTrialClick }: { onTrialClick?: () => void }) {
-  const { subscription, hasTrialed } = useAuth();
+  const { billing } = useAuth();
+  const level = getLevel(billing);
+  const hasTrialed = billing?.user.hasTrialed ?? false;
 
   // Free tier with trial already used
-  if (subscription === 'free' && hasTrialed) {
+  if (level === 'free' && hasTrialed) {
     return (
       <span>
         You've used all your tokens.{' '}
@@ -64,7 +68,7 @@ function LimitReachedSpan({ onTrialClick }: { onTrialClick?: () => void }) {
   }
 
   // Free tier without trial
-  if (subscription === 'free' && !hasTrialed) {
+  if (level === 'free' && !hasTrialed) {
     return (
       <span>
         You've used all your tokens.{' '}

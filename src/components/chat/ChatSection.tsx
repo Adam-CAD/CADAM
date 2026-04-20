@@ -64,7 +64,8 @@ export function ChatSection({
   const isMobile = useIsMobile();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { conversation, updateConversation } = useConversation();
-  const { session, totalTokens } = useAuth();
+  const { session, billing } = useAuth();
+  const totalTokens = billing?.tokens.total ?? 0;
   const navigate = useNavigate();
 
   const scrollToBottom = useCallback(() => {

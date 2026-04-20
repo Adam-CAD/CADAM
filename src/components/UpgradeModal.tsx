@@ -9,49 +9,76 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
 import {
   useManageSubscription,
   useSubscriptionService,
 } from '@/services/subscriptionService';
 import { cn } from '@/lib/utils';
-import { PLAN_ORDER, PRICING_PLANS, creditsBadgeLabel } from '@/config/pricing';
+import {
+  useSubscriptionProducts,
+  type BillingProduct,
+} from '@/hooks/useBillingProducts';
+import {
+  PLAN_DISPLAY_NAMES,
+  PLAN_FEATURES,
+  PLAN_ORDER,
+  type PlanLevel,
+} from '@/config/plan-features';
 
 interface UpgradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+function formatPrice(cents: number): string {
+  const dollars = cents / 100;
+  return dollars % 1 === 0 ? dollars.toFixed(0) : dollars.toFixed(2);
+}
+
+function findMonthly(
+  products: BillingProduct[],
+  level: Exclude<PlanLevel, 'free'>,
+): BillingProduct | undefined {
+  return products.find(
+    (p) =>
+      p.subscriptionLevel === level &&
+      p.interval === 'month' &&
+      p.productType === 'subscription' &&
+      p.active,
+  );
+}
+
+function creditsBadge(level: PlanLevel, product: BillingProduct | undefined) {
+  if (level === 'free') return '50 / day';
+  const amount = product?.tokenAmount ?? 0;
+  return `${amount.toLocaleString()} / mo`;
+}
+
 export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
-  const { subscription } = useAuth();
+  const { billing } = useAuth();
+  const currentLevel = getLevel(billing);
+  const { data: products = [] } = useSubscriptionProducts();
   const { mutate: subscribe, isPending: isSubscribing } =
     useSubscriptionService();
   const { mutate: manage, isPending: isManaging } = useManageSubscription();
 
-  // Track which tier's button was clicked so only that one shows a spinner
-  // (rather than spinning every button the moment any mutation is in flight).
-  const [activeLookupKey, setActiveLookupKey] = useState<string | null>(null);
-
-  const currentTierName =
-    subscription === 'pro'
-      ? 'Pro'
-      : subscription === 'standard'
-        ? 'Standard'
-        : 'Free';
-
+  // Track which tier's button was clicked so only that one shows a spinner.
+  const [activeLevel, setActiveLevel] = useState<PlanLevel | null>(null);
   const isAnyBusy = isSubscribing || isManaging;
 
-  const handleClick = (lookupKey: string, planName: string) => {
-    if (planName === currentTierName) return;
-    setActiveLookupKey(lookupKey);
-    if (subscription === 'free' && lookupKey) {
+  const handleClick = (level: PlanLevel, priceId: string | null) => {
+    if (level === currentLevel) return;
+    setActiveLevel(level);
+    if (currentLevel === 'free' && priceId) {
       subscribe(
-        { lookupKey, source: 'upgrade_modal' },
-        { onSettled: () => setActiveLookupKey(null) },
+        { priceId, source: 'upgrade_modal' },
+        { onSettled: () => setActiveLevel(null) },
       );
-    } else if (subscription !== 'free') {
-      // Paid user changing plans — route through Stripe portal
-      manage(undefined, { onSettled: () => setActiveLookupKey(null) });
+    } else if (currentLevel !== 'free') {
+      manage(undefined, { onSettled: () => setActiveLevel(null) });
+    } else {
+      setActiveLevel(null);
     }
   };
 
@@ -68,49 +95,52 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
         </DialogHeader>
 
         <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
-          {PLAN_ORDER.map((planName) => {
-            const plan = PRICING_PLANS[planName];
-            const isCurrent = plan.name === currentTierName;
-            const lookupKey = plan.monthlyLookupKey;
-            const isThisBusy = activeLookupKey === lookupKey && isAnyBusy;
+          {PLAN_ORDER.map((level) => {
+            const product =
+              level === 'free' ? undefined : findMonthly(products, level);
+            const isCurrent = level === currentLevel;
+            const priceId = product?.stripePriceId ?? null;
+            const isThisBusy = activeLevel === level && isAnyBusy;
+            const popular = level === 'pro';
+            const displayName = PLAN_DISPLAY_NAMES[level];
 
             return (
               <div
-                key={plan.name}
+                key={level}
                 className={cn(
                   'relative flex flex-col rounded-lg border p-5',
-                  plan.popular
+                  popular
                     ? 'border-adam-blue/60 bg-adam-neutral-950'
                     : 'border-adam-neutral-800 bg-adam-neutral-950/60',
                 )}
               >
-                {plan.popular && (
+                {popular && (
                   <span className="absolute right-3 top-3 rounded-full bg-adam-blue/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-adam-blue">
                     Popular
                   </span>
                 )}
 
                 <div className="text-sm font-medium text-adam-neutral-10">
-                  {plan.name}
-                </div>
-                <div className="text-xs text-adam-neutral-400">
-                  {plan.description}
+                  {displayName}
                 </div>
 
                 <div className="mt-3 flex items-baseline gap-1">
                   <span className="text-2xl font-semibold">
-                    ${plan.monthlyPrice}
+                    $
+                    {level === 'free'
+                      ? '0'
+                      : formatPrice(product?.priceCents ?? 0)}
                   </span>
                   <span className="text-xs text-adam-neutral-400">/mo</span>
                 </div>
 
                 <div className="mt-3 flex items-center gap-1.5 rounded-md bg-adam-neutral-900 px-2 py-1.5 text-xs font-medium">
                   <Zap className="h-3 w-3" fill="currentColor" />
-                  <span>{creditsBadgeLabel(plan)}</span>
+                  <span>{creditsBadge(level, product)}</span>
                 </div>
 
                 <ul className="mt-3 space-y-1.5 text-xs text-adam-neutral-300">
-                  {plan.extraFeatures.map((feature) => (
+                  {PLAN_FEATURES[level].map((feature) => (
                     <li key={feature} className="flex items-start gap-1.5">
                       <Check className="mt-0.5 h-3 w-3 shrink-0 text-adam-neutral-400" />
                       <span>{feature}</span>
@@ -120,13 +150,17 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
 
                 <div className="mt-auto pt-4">
                   <Button
-                    disabled={isCurrent || isAnyBusy}
-                    onClick={() => handleClick(lookupKey, plan.name)}
+                    disabled={
+                      isCurrent ||
+                      isAnyBusy ||
+                      (level !== 'free' && !priceId && currentLevel === 'free')
+                    }
+                    onClick={() => handleClick(level, priceId)}
                     className={cn(
                       'h-9 w-full rounded-full text-xs font-medium',
                       isCurrent
                         ? 'bg-adam-neutral-900 text-adam-neutral-400 [@media(hover:hover)]:hover:bg-adam-neutral-900 [@media(hover:hover)]:hover:text-adam-neutral-400'
-                        : plan.popular
+                        : popular
                           ? 'bg-adam-neutral-10 text-adam-bg-dark [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-adam-bg-dark'
                           : 'bg-adam-neutral-800 text-adam-neutral-10 [@media(hover:hover)]:hover:bg-adam-neutral-700 [@media(hover:hover)]:hover:text-adam-neutral-10',
                     )}
@@ -135,10 +169,10 @@ export function UpgradeModal({ open, onOpenChange }: UpgradeModalProps) {
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : isCurrent ? (
                       'Current plan'
-                    ) : plan.name === 'Free' ? (
+                    ) : level === 'free' ? (
                       'Downgrade'
                     ) : (
-                      `Get ${plan.name}`
+                      `Get ${displayName}`
                     )}
                   </Button>
                 </div>

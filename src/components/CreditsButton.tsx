@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { UpgradeModal } from '@/components/UpgradeModal';
-import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 function formatCompact(n: number): string {
@@ -24,16 +24,24 @@ function formatFull(n: number): string {
   return n.toLocaleString();
 }
 
+function formatPeriodEnd(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function CreditsButton() {
-  const {
-    user,
-    subscription,
-    totalTokens,
-    purchasedTokens,
-    subscriptionTokens,
-    subscriptionTokenLimit,
-  } = useAuth();
   const isMobile = useIsMobile();
+  const { user, billing } = useAuth();
+  const level = getLevel(billing);
+  const totalTokens = billing?.tokens.total ?? 0;
+  const freeTokens = billing?.tokens.free ?? 0;
+  const subscriptionTokens = billing?.tokens.subscription ?? 0;
+  const purchasedTokens = billing?.tokens.purchased ?? 0;
+  const periodEnd = formatPeriodEnd(
+    billing?.subscription?.currentPeriodEnd ?? null,
+  );
 
   const [open, setOpen] = useState(false);
   // Card opened by click stays pinned — mouse-leave alone won't dismiss it.
@@ -103,9 +111,12 @@ export function CreditsButton() {
     );
   }
 
-  const isFree = subscription === 'free';
-  const periodLabel = isFree ? '/ day' : '/ mo';
-  const limitLabel = `${formatFull(subscriptionTokenLimit)} credits ${periodLabel}`;
+  const isFree = level === 'free';
+  const headerLabel = isFree
+    ? 'Daily credits'
+    : periodEnd
+      ? `Renews ${periodEnd}`
+      : 'Current credits';
 
   const handleEnter = () => {
     if (closeTimer.current) {
@@ -184,7 +195,7 @@ export function CreditsButton() {
             {/* Header */}
             <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
               <div className="text-base font-semibold leading-tight">
-                {limitLabel}
+                {headerLabel}
               </div>
               <Button
                 size="sm"
@@ -217,60 +228,30 @@ export function CreditsButton() {
               </div>
 
               <div className="mt-2 space-y-1 pl-6 text-xs text-adam-neutral-400">
+                {isFree && (
+                  <div className="flex items-center justify-between">
+                    <span>Daily credits</span>
+                    <span className="tabular-nums">
+                      {formatFull(freeTokens)}
+                    </span>
+                  </div>
+                )}
+                {!isFree && (
+                  <div className="flex items-center justify-between">
+                    <span>Monthly credits</span>
+                    <span className="tabular-nums">
+                      {formatFull(subscriptionTokens)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span>Add-on credits</span>
                   <span className="tabular-nums">
                     {formatFull(purchasedTokens)}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>{isFree ? 'Daily credits' : 'Monthly credits'}</span>
-                  <span className="tabular-nums">
-                    {formatFull(subscriptionTokens)}
-                    {' / '}
-                    {formatFull(subscriptionTokenLimit)}
-                  </span>
-                </div>
               </div>
             </div>
-
-            {/* Daily refresh — free tier only */}
-            {isFree && (
-              <>
-                <div className="h-px bg-adam-neutral-800" />
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-4 w-4"
-                        aria-hidden
-                      >
-                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-                        <path d="M21 3v5h-5" />
-                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-                        <path d="M3 21v-5h5" />
-                      </svg>
-                      <span className="text-sm font-medium">
-                        Daily refresh credits
-                      </span>
-                    </div>
-                    <span className="text-sm font-semibold tabular-nums">
-                      {formatFull(subscriptionTokenLimit)}
-                    </span>
-                  </div>
-                  <div className="mt-1 pl-6 text-xs text-adam-neutral-400">
-                    Refreshes to {formatFull(subscriptionTokenLimit)} every day
-                  </div>
-                </div>
-              </>
-            )}
 
             <div className="h-px bg-adam-neutral-800" />
 

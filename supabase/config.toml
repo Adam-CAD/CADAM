@@ -16,21 +16,25 @@ secret = "env(GOOGLE_SECRET)"
 enabled = true
 policy = "per_worker"
 
-[functions.stripe-webhook]
-enabled = true
-verify_jwt = false
-
 [functions.parametric-chat]
 enabled = true
 verify_jwt = true
 
-[functions.stripe-create-checkout-session]
+[functions.billing-status]
 enabled = true
 verify_jwt = true
 
-[functions.stripe-create-portal-session]
+[functions.billing-checkout]
 enabled = true
 verify_jwt = true
+
+[functions.billing-portal]
+enabled = true
+verify_jwt = true
+
+[functions.billing-products]
+enabled = true
+verify_jwt = false
 
 [functions.mesh]
 enabled = true

@@ -7,14 +7,15 @@ import {
   ParametricArtifact,
   ToolCall,
 } from '@shared/types.ts';
-import {
-  getAnonSupabaseClient,
-  getServiceRoleSupabaseClient,
-} from '../_shared/supabaseClient.ts';
+import { getAnonSupabaseClient } from '../_shared/supabaseClient.ts';
 import Tree from '@shared/Tree.ts';
 import parseParameters from '../_shared/parseParameter.ts';
 import { formatUserMessage } from '../_shared/messageUtils.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { billing, BillingClientError } from '../_shared/billingClient.ts';
+
+const CHAT_TOKEN_COST = 1;
+const PARAMETRIC_TOKEN_COST = 5;
 
 // OpenRouter API configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -427,40 +428,46 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Deduct chat token (1) at request start
-  const serviceClient = getServiceRoleSupabaseClient();
-  const { data: rawChatTokenResult, error: chatTokenError } =
-    await serviceClient.rpc('deduct_tokens', {
-      p_user_id: userData.user.id,
-      p_operation: 'chat',
+  // Deduct chat token (1) via adam-billing
+  if (!userData.user.email) {
+    return new Response(JSON.stringify({ error: 'User email missing' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+  }
 
-  const chatTokenResult = rawChatTokenResult as {
-    success: boolean;
-    tokensRequired?: number;
-    tokensAvailable?: number;
-  } | null;
-
-  if (chatTokenError || !chatTokenResult?.success) {
-    const insufficientTokens = chatTokenResult && !chatTokenResult.success;
-    return new Response(
-      JSON.stringify({
-        error: {
-          message: insufficientTokens
-            ? 'insufficient_tokens'
-            : chatTokenError?.message || 'Token deduction failed',
-          code: 'insufficient_tokens',
-          ...(insufficientTokens && {
-            tokensRequired: chatTokenResult.tokensRequired,
-            tokensAvailable: chatTokenResult.tokensAvailable,
-          }),
+  try {
+    const result = await billing.consume(userData.user.email, {
+      tokens: CHAT_TOKEN_COST,
+      operation: 'chat',
+      referenceId: crypto.randomUUID(),
+    });
+    if (!result.ok) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: 'insufficient_tokens',
+            code: 'insufficient_tokens',
+            tokensRequired: result.tokensRequired,
+            tokensAvailable: result.tokensAvailable,
+          },
+        }),
+        {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
-      }),
-      {
-        status: 402,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      },
-    );
+      );
+    }
+  } catch (err) {
+    if (err instanceof BillingClientError) {
+      console.error('billing consume failed', err.status, err.body);
+    } else {
+      console.error('billing consume failed', err);
+    }
+    return new Response(JSON.stringify({ error: 'billing_unavailable' }), {
+      status: 502,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   const {
@@ -866,23 +873,25 @@ Deno.serve(async (req) => {
         }) {
           if (toolCall.name === 'build_parametric_model') {
             // Deduct parametric tokens (5) for model building
-            const { data: rawParamTokenResult } = await serviceClient.rpc(
-              'deduct_tokens',
-              {
-                p_user_id: userData.user!.id,
-                p_operation: 'parametric',
-                p_reference_id: toolCall.id,
-              },
-            );
-
-            const paramTokenResult = rawParamTokenResult as {
-              success: boolean;
-            } | null;
-
-            if (!paramTokenResult?.success) {
+            try {
+              const paramResult = await billing.consume(userData.user!.email!, {
+                tokens: PARAMETRIC_TOKEN_COST,
+                operation: 'parametric',
+                referenceId: toolCall.id,
+              });
+              if (!paramResult.ok) {
+                content = {
+                  ...content,
+                  error: 'insufficient_tokens',
+                };
+                streamMessage(controller, { ...newMessageData, content });
+                return;
+              }
+            } catch (err) {
+              console.error('billing consume (parametric) failed', err);
               content = {
                 ...content,
-                error: 'insufficient_tokens',
+                error: 'billing_unavailable',
               };
               streamMessage(controller, { ...newMessageData, content });
               return;

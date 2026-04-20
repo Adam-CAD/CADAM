@@ -25,7 +25,8 @@ export function ParametricEditorView() {
   const { conversation, updateConversationAsync } = useConversation();
   const queryClient = useQueryClient();
   const { currentMessage, setCurrentMessage } = useCurrentMessage();
-  const { totalTokens } = useAuth();
+  const { billing } = useAuth();
+  const totalTokens = billing?.tokens.total ?? 0;
   const [currentOutput, setCurrentOutput] = useState<Blob | undefined>();
   // Brand fallback color used when OFF parsing fails and we drop back to
   // the single-color STL mesh.

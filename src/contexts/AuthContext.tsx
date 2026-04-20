@@ -1,18 +1,38 @@
 import { createContext, useContext } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 
-type Subscription = 'pro' | 'standard' | 'free';
+export type SubscriptionLevel = 'standard' | 'pro';
+export type PlanLevel = SubscriptionLevel | 'free';
+
+export type BillingStatus = {
+  user: {
+    hasTrialed: boolean;
+  };
+  subscription: {
+    level: SubscriptionLevel;
+    status: string | null;
+    currentPeriodEnd: string | null;
+  } | null;
+  tokens: {
+    free: number;
+    subscription: number;
+    purchased: number;
+    total: number;
+  };
+};
+
+const ACTIVE_STATUSES = new Set(['active', 'trialing']);
+
+export function getLevel(billing: BillingStatus | null | undefined): PlanLevel {
+  if (!billing?.subscription) return 'free';
+  if (!ACTIVE_STATUSES.has(billing.subscription.status ?? '')) return 'free';
+  return billing.subscription.level;
+}
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
-  hasTrialed: boolean;
-  subscription: Subscription;
-  subscriptionTokens: number;
-  purchasedTokens: number;
-  totalTokens: number;
-  subscriptionTokenLimit: number;
-  subscriptionExpiresAt: string | null;
+  billing: BillingStatus | null;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;

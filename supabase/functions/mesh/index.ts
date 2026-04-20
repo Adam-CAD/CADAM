@@ -15,8 +15,11 @@ import {
   SupabaseClient,
 } from '../_shared/supabaseClient.ts';
 import { reformatSignedUrl } from '../_shared/messageUtils.ts';
+import { billing, BillingClientError } from '../_shared/billingClient.ts';
 import { initSentry, logError, logApiError } from '../_shared/sentry.ts';
 import { Buffer } from 'node:buffer';
+
+const MESH_TOKEN_COST = 30;
 
 // Initialize Sentry for error logging
 initSentry();
@@ -213,60 +216,51 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Deduct tokens for mesh operation using service role client
-    const serviceClient = getServiceRoleSupabaseClient();
-    const { data: rawTokenResult, error: tokenError } = await serviceClient.rpc(
-      'deduct_tokens',
-      {
-        p_user_id: userData.user.id,
-        p_operation: 'mesh',
-      },
-    );
-
-    const tokenResult = rawTokenResult as {
-      success: boolean;
-      tokensRequired?: number;
-      tokensAvailable?: number;
-    } | null;
-
-    if (tokenError || !tokenResult) {
-      logError(tokenError ?? new Error('Token deduction returned null'), {
-        functionName: 'mesh',
-        statusCode: 500,
-        userId: userData.user?.id,
-      });
+    // Deduct tokens for mesh operation via adam-billing
+    if (!userData.user.email) {
       return new Response(
-        JSON.stringify({
-          error: { message: tokenError?.message ?? 'Token deduction failed' },
-        }),
+        JSON.stringify({ error: { message: 'User email missing' } }),
         {
-          status: 500,
+          status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
       );
     }
 
-    if (!tokenResult.success) {
-      logError(new Error('Insufficient tokens'), {
+    const meshReferenceId = crypto.randomUUID();
+    try {
+      const result = await billing.consume(userData.user.email, {
+        tokens: MESH_TOKEN_COST,
+        operation: 'mesh',
+        referenceId: meshReferenceId,
+      });
+      if (!result.ok) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: 'insufficient_tokens',
+              code: 'insufficient_tokens',
+              tokensRequired: result.tokensRequired,
+              tokensAvailable: result.tokensAvailable,
+            },
+          }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        );
+      }
+    } catch (err) {
+      const status = err instanceof BillingClientError ? err.status : 502;
+      logError(err, {
         functionName: 'mesh',
-        statusCode: 402,
-        userId: userData.user?.id,
-        additionalContext: {
-          tokensRequired: tokenResult.tokensRequired,
-          tokensAvailable: tokenResult.tokensAvailable,
-        },
+        statusCode: status,
+        userId: userData.user.id,
       });
       return new Response(
-        JSON.stringify({
-          error: {
-            message: 'insufficient_tokens',
-            code: 'insufficient_tokens',
-            tokensRequired: tokenResult.tokensRequired,
-            tokensAvailable: tokenResult.tokensAvailable,
-          },
-        }),
+        JSON.stringify({ error: { message: 'billing_unavailable' } }),
         {
-          status: 402,
+          status: 502,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         },
       );

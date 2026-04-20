@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Check } from 'lucide-react';
 import FreeTrialButton from '@/components/ui/FreeTrialButton';
 import { useSubscriptionService } from '@/services/subscriptionService';
+import { useSubscriptionProducts } from '@/hooks/useBillingProducts';
 
 export function TrialDialog({
   open,
@@ -24,17 +25,26 @@ export function TrialDialog({
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const { data: products = [] } = useSubscriptionProducts();
   const { mutate: createCheckoutSession, isPending } = useSubscriptionService();
+
+  const proMonthly = products.find(
+    (p) =>
+      p.subscriptionLevel === 'pro' &&
+      p.interval === 'month' &&
+      p.productType === 'subscription' &&
+      p.active,
+  );
 
   const handleSubscribe = () => {
     if (!user) {
       navigate('/signin');
       return;
     }
-
+    if (!proMonthly) return;
     createCheckoutSession({
-      lookupKey: 'pro_monthly',
-      trial: true,
+      priceId: proMonthly.stripePriceId,
+      trialPeriodDays: 7,
       source: 'trial_dialog',
     });
   };
@@ -62,7 +72,7 @@ export function TrialDialog({
             text="Start your Free Trial"
             onClick={handleSubscribe}
             isPending={isPending}
-            disabled={isPending}
+            disabled={isPending || !proMonthly}
           />
         </div>
 

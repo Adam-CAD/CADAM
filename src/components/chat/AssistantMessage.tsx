@@ -25,7 +25,7 @@ import {
 } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { TrialDialog } from '@/components/auth/TrialDialog';
-import { useAuth } from '@/contexts/AuthContext';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { ImageViewer } from '@/components/ImageViewer';
 import { useConversation } from '@/contexts/ConversationContext';
 import {
@@ -618,14 +618,15 @@ function ImageLimitReachedMessage() {
 }
 
 function InsufficientTokensMessage() {
-  const { subscription } = useAuth();
+  const { billing } = useAuth();
+  const level = getLevel(billing);
   return (
     <span>
       You don't have enough tokens for this operation.{' '}
       <Link to="/settings" className="text-adam-blue hover:underline">
         Buy more tokens
       </Link>
-      {subscription === 'free' && (
+      {level === 'free' && (
         <>
           {' '}
           or{' '}
@@ -640,8 +641,9 @@ function InsufficientTokensMessage() {
 }
 
 function MeshLimitReachedMessage() {
-  const { subscription } = useAuth();
-  if (subscription === 'free') {
+  const { billing } = useAuth();
+  const level = getLevel(billing);
+  if (level === 'free') {
     return (
       <span>
         You have reached the limit of 3 creative generations per day. Please
@@ -654,7 +656,7 @@ function MeshLimitReachedMessage() {
     );
   }
 
-  if (subscription === 'standard') {
+  if (level === 'standard') {
     return (
       <span>
         You have reached the limit of 100 creative generations per month. Please
@@ -667,7 +669,7 @@ function MeshLimitReachedMessage() {
     );
   }
 
-  if (subscription === 'pro') {
+  if (level === 'pro') {
     return (
       <span>
         You have reached the limit of 1500 generations per month. Let us know if

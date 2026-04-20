@@ -1,4 +1,4 @@
-import { useAuth } from '@/contexts/AuthContext';
+import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { TrialDialog } from './auth/TrialDialog';
 import { cn } from '@/lib/utils';
@@ -27,12 +27,14 @@ function LowTokensWarningContent({
   tokensRemaining: number;
   layout: 'inline' | 'stacked';
 }) {
-  const { subscription, hasTrialed } = useAuth();
+  const { billing } = useAuth();
+  const level = getLevel(billing);
+  const hasTrialed = billing?.user.hasTrialed ?? false;
 
   const tokensText = `You have ${tokensRemaining} token${tokensRemaining === 1 ? '' : 's'} remaining`;
 
   // Free tier with trial already used
-  if (subscription === 'free' && hasTrialed) {
+  if (level === 'free' && hasTrialed) {
     return (
       <span>
         {tokensText}.{' '}
@@ -45,7 +47,7 @@ function LowTokensWarningContent({
   }
 
   // Free tier without trial - pure CSS layout control
-  if (subscription === 'free' && !hasTrialed) {
+  if (level === 'free' && !hasTrialed) {
     return (
       <div
         className={cn(
