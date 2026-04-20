@@ -13,9 +13,12 @@ import parseParameters from '../_shared/parseParameter.ts';
 import { formatUserMessage } from '../_shared/messageUtils.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { billing, BillingClientError } from '../_shared/billingClient.ts';
+import { initSentry, logError } from '../_shared/sentry.ts';
 
 const CHAT_TOKEN_COST = 1;
 const PARAMETRIC_TOKEN_COST = 5;
+
+initSentry();
 
 // OpenRouter API configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -459,11 +462,12 @@ Deno.serve(async (req) => {
       );
     }
   } catch (err) {
-    if (err instanceof BillingClientError) {
-      console.error('billing consume failed', err.status, err.body);
-    } else {
-      console.error('billing consume failed', err);
-    }
+    const status = err instanceof BillingClientError ? err.status : 502;
+    logError(err, {
+      functionName: 'parametric-chat',
+      statusCode: status,
+      userId: userData.user.id,
+    });
     return new Response(JSON.stringify({ error: 'billing_unavailable' }), {
       status: 502,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -888,7 +892,18 @@ Deno.serve(async (req) => {
                 return;
               }
             } catch (err) {
-              console.error('billing consume (parametric) failed', err);
+              const status =
+                err instanceof BillingClientError ? err.status : 502;
+              logError(err, {
+                functionName: 'parametric-chat',
+                statusCode: status,
+                userId: userData.user?.id,
+                conversationId,
+                additionalContext: {
+                  operation: 'parametric',
+                  toolCallId: toolCall.id,
+                },
+              });
               content = {
                 ...content,
                 error: 'billing_unavailable',
