@@ -1,0 +1,79 @@
+name: Bug report
+description: Something is broken in CADAM (the open-source app or the demo at adam.new/cadam)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Before opening, please search existing issues to avoid duplicates.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did you hit this?
+      options:
+        - "Live demo at adam.new/cadam"
+        - "Local dev (cloned this repo)"
+        - "Self-hosted / forked"
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: prompt
+    attributes:
+      label: Prompt or input
+      description: If the bug happened during generation, paste the prompt and any image filename.
+      placeholder: "a parametric phone stand for a Pixel 8"
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: Model selected (if known)
+      options:
+        - "Don't know / default"
+        - "Claude Opus 4.7"
+        - "GPT-5.5"
+        - "GPT-5.5 Pro"
+        - "Gemini 3.1 Pro"
+        - "DeepSeek V4 Pro"
+        - "Other (mention in description)"
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to adam.new/cadam
+        2. Type "..."
+        3. Click ...
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Include error text, console output, or a screen recording link if you can.
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser + OS
+      placeholder: "Chrome 130 / macOS 15.1"
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?

@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest something CADAM should do
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Start with the user pain, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would a good solution look like?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What alternatives have you considered?
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who would benefit most?
+      multiple: true
+      options:
+        - "3D printing hobbyists / makers"
+        - "Mechanical engineers"
+        - "Industrial designers"
+        - "Students / educators"
+        - "Power OpenSCAD users"
+        - "Other (mention in description)"

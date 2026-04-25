@@ -1,0 +1,43 @@
+name: Model / routing issue
+description: Something about model selection, output quality, or vision support is off
+title: "[Model] "
+labels: ["model-routing"]
+body:
+  - type: dropdown
+    id: model
+    attributes:
+      label: Which model?
+      options:
+        - "Claude Opus 4.7"
+        - "GPT-5.5"
+        - "GPT-5.5 Pro"
+        - "Gemini 3.1 Pro"
+        - "DeepSeek V4 Pro"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt or image
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: What did the model produce?
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything else useful (regression vs prior model, vision-related, region/locale, etc.)

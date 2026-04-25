@@ -1,7 +1,30 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "cadam",
+  "version": "0.1.0",
+  "description": "CADAM is the open source text-to-CAD web application. Generate parametric 3D models from natural language and images, export STL/SCAD, runs in your browser via OpenSCAD WebAssembly.",
+  "homepage": "https://adam.new/cadam",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Adam-CAD/CADAM.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Adam-CAD/CADAM/issues"
+  },
+  "author": "Adam (https://adam.new)",
+  "license": "GPL-3.0-or-later",
+  "keywords": [
+    "cad",
+    "text-to-cad",
+    "openscad",
+    "wasm",
+    "3d",
+    "parametric",
+    "ai",
+    "llm",
+    "three-js",
+    "react"
+  ],
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

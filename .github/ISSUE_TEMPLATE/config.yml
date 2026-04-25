@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord community
+    url: https://discord.com/invite/HKdXDqAHCs
+    about: Quick questions, demo sharing, troubleshooting
+  - name: Live demo
+    url: https://adam.new/cadam
+    about: Try CADAM without cloning anything

@@ -94,6 +94,7 @@ npm run dev
 
 - Node.js and npm
 - Supabase CLI
+- Docker Desktop (required by `npx supabase start` to run the local Postgres + Edge Functions runtime; **on Windows** ensure Docker Desktop is installed and running before running `npx supabase start`, otherwise it will fail with a missing-Docker-engine error)
 - ngrok (for local webhook development)
 
 ## 🔧 Setting Up Environment Variables
@@ -160,7 +161,7 @@ npx supabase functions serve --no-verify-jwt
 
 ## 🛠️ Built With
 
-- **Frontend:** React 18 + TypeScript + Vite
+- **Frontend:** React 19 + TypeScript + Vite
 - **3D Rendering:** Three.js + React Three Fiber
 - **CAD Engine:** OpenSCAD WebAssembly
 - **Backend:** Supabase (PostgreSQL + Edge Functions)
