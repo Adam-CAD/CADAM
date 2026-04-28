@@ -1,4 +1,4 @@
-import { Download, ChevronUp } from 'lucide-react';
+import { Download, ChevronUp, Loader2 } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -12,21 +12,33 @@ import {
 import { ParameterInput } from '@/components/parameter/ParameterInput';
 import { validateParameterValue } from '@/utils/parameterUtils';
 import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
-import { downloadSTLFile, downloadOpenSCADFile } from '@/utils/downloadUtils';
+import {
+  downloadSTLFile,
+  downloadOpenSCADFile,
+  downloadDXFFile,
+  DxfExporter,
+} from '@/utils/downloadUtils';
+import { useToast } from '@/hooks/use-toast';
 
 interface ParameterSheetContentProps {
   parameters: Parameter[];
   onSubmit: (message: Message | null, parameters: Parameter[]) => void;
   currentOutput?: Blob;
+  dxfExporter?: DxfExporter | null;
 }
+
+type DownloadFormat = 'stl' | 'scad' | 'dxf';
 
 export function ParameterSheetContent({
   parameters,
   onSubmit,
   currentOutput,
+  dxfExporter,
 }: ParameterSheetContentProps) {
   const { currentMessage } = useCurrentMessage();
-  const [selectedFormat, setSelectedFormat] = useState<'stl' | 'scad'>('stl');
+  const { toast } = useToast();
+  const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>('stl');
+  const [isExporting, setIsExporting] = useState(false);
 
   // Debounce timer for compilation
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -77,14 +89,6 @@ export function ParameterSheetContent({
     debouncedSubmit(updatedParameters);
   };
 
-  const handleDownload = () => {
-    if (selectedFormat === 'stl') {
-      handleDownloadSTL();
-    } else {
-      handleDownloadOpenSCAD();
-    }
-  };
-
   const handleDownloadSTL = () => {
     if (!currentOutput) return;
     downloadSTLFile(currentOutput, currentMessage);
@@ -95,10 +99,48 @@ export function ParameterSheetContent({
     downloadOpenSCADFile(currentMessage.content.artifact.code, currentMessage);
   };
 
-  const isDownloadDisabled =
-    selectedFormat === 'stl'
-      ? !currentOutput
-      : !currentMessage?.content.artifact?.code;
+  const handleDownloadDXF = async () => {
+    if (!dxfExporter) return;
+
+    // DXF is async, generated on click via a fresh OpenSCAD compile, it can reject.
+    try {
+      setIsExporting(true);
+      const dxfOutput = await dxfExporter();
+      downloadDXFFile(dxfOutput, currentMessage);
+    } catch (error) {
+      console.error('[OpenSCAD] Failed to export DXF:', error);
+      // Optional user-facing feedback to surface the failure
+      toast({
+        title: 'DXF export failed',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Adam could not export this model as DXF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Per-format dispatch tables — each supported format is a single line in each map.
+  const downloadHandlers: Record<DownloadFormat, () => void | Promise<void>> = {
+    stl: handleDownloadSTL,
+    scad: handleDownloadOpenSCAD,
+    dxf: handleDownloadDXF,
+  };
+  const formatAvailable: Record<DownloadFormat, boolean> = {
+    stl: !!currentOutput,
+    scad: !!currentMessage?.content.artifact?.code,
+    dxf: !!dxfExporter && !isExporting,
+  };
+
+  const handleDownload = async () => {
+    await downloadHandlers[selectedFormat]();
+  };
+  const isDownloadDisabled = !formatAvailable[selectedFormat];
+  // Keep the format menu available when any download format has content.
+  const isAnyFormatAvailable = Object.values(formatAvailable).some(Boolean);
 
   return (
     <>
@@ -121,15 +163,17 @@ export function ParameterSheetContent({
             aria-label={`download ${selectedFormat.toUpperCase()} file`}
             className="flex-1 rounded-r-none bg-adam-neutral-50 text-adam-neutral-800 hover:bg-adam-neutral-100 hover:text-adam-neutral-900"
           >
-            <Download className="mr-2 h-4 w-4" />
+            {isExporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
             {selectedFormat.toUpperCase()}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                disabled={
-                  !currentOutput && !currentMessage?.content.artifact?.code
-                }
+                disabled={!isAnyFormatAvailable}
                 aria-label="select download format"
                 className="rounded-l-none border-l border-adam-neutral-300 bg-adam-neutral-50 px-2 text-adam-neutral-800 hover:bg-adam-neutral-100 hover:text-adam-neutral-900"
               >
@@ -139,7 +183,7 @@ export function ParameterSheetContent({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onClick={() => setSelectedFormat('stl')}
-                disabled={!currentOutput}
+                disabled={!formatAvailable.stl}
                 className="grid cursor-pointer grid-cols-3 text-adam-text-primary"
               >
                 <span className="text-sm">.STL</span>
@@ -149,12 +193,22 @@ export function ParameterSheetContent({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setSelectedFormat('scad')}
-                disabled={!currentMessage?.content.artifact?.code}
+                disabled={!formatAvailable.scad}
                 className="grid cursor-pointer grid-cols-3 text-adam-text-primary"
               >
                 <span className="text-sm">.SCAD</span>
                 <span className="col-span-2 text-xs text-adam-text-primary/60">
                   OpenSCAD Code
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setSelectedFormat('dxf')}
+                disabled={!formatAvailable.dxf}
+                className="grid cursor-pointer grid-cols-3 text-adam-text-primary"
+              >
+                <span className="text-sm">.DXF</span>
+                <span className="col-span-2 text-xs text-adam-text-primary/60">
+                  2D Projection to the (x,y) plane
                 </span>
               </DropdownMenuItem>
             </DropdownMenuContent>

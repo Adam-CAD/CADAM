@@ -18,6 +18,12 @@ const fontsConf = `<?xml version="1.0" encoding="UTF-8"?>
 // Credit
 // https://github.com/seasick/openscad-web-gui/blob/main/src/worker/openSCAD.ts
 
+// OpenSCAD CLI --export-format values, keyed by the fileType the worker receives.
+const EXPORT_FORMAT_FLAGS: Record<string, string> = {
+  stl: 'binstl',
+  dxf: 'dxf',
+};
+
 let defaultFont: ArrayBuffer;
 
 class OpenSCADWrapper {
@@ -126,7 +132,9 @@ class OpenSCADWrapper {
       return `-D${name}=${value}`;
     });
 
-    parameters.push('--export-format=binstl');
+    const exportFormat = EXPORT_FORMAT_FLAGS[data.fileType] ?? 'binstl';
+
+    parameters.push(`--export-format=${exportFormat}`);
     parameters.push(`--enable=manifold`);
     parameters.push(`--enable=fast-csg`);
     parameters.push(`--enable=lazy-union`);

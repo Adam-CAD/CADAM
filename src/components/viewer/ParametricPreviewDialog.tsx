@@ -21,18 +21,23 @@ import { Message, Parameter } from '@shared/types';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { DxfExporter } from '@/utils/downloadUtils';
 
 interface ParametricPreviewDialogProps {
   onSubmit: (message: Message | null, parameters: Parameter[]) => void;
   currentOutput?: Blob;
+  dxfExporter?: DxfExporter | null;
   onOutputChange?: (output: Blob | undefined) => void;
+  onDxfExportChange?: (exporter: DxfExporter | null) => void;
   fixError?: (error: OpenSCADError) => void;
 }
 
 export function ParametricPreviewDialog({
   onSubmit,
   currentOutput,
+  dxfExporter,
   onOutputChange,
+  onDxfExportChange,
   fixError,
 }: ParametricPreviewDialogProps) {
   const { currentMessage, setCurrentMessage } = useCurrentMessage();
@@ -158,6 +163,7 @@ export function ParametricPreviewDialog({
                       scadCode={currentMessage.content.artifact.code}
                       color="#F8248A"
                       onOutputChange={onOutputChange}
+                      onDxfExportChange={onDxfExportChange}
                       fixError={fixError}
                       isMobile={true}
                       backgroundColor="#212121"
@@ -171,6 +177,7 @@ export function ParametricPreviewDialog({
                   parameters={currentMessage.content.artifact.parameters ?? []}
                   onSubmit={onSubmit}
                   currentOutput={currentOutput}
+                  dxfExporter={dxfExporter}
                 />
               </div>
             </SheetPrimitive.Content>

@@ -17,6 +17,7 @@ import { ChevronsRight } from 'lucide-react';
 import { TreeNode } from '@shared/Tree';
 import { ParametricPreviewSection } from '@/components/viewer/ParametricPreviewSection';
 import { ParametricPreviewDialog } from '@/components/viewer/ParametricPreviewDialog';
+import { DxfExporter } from '@/utils/downloadUtils';
 
 // Panel size constants
 const PANEL_SIZES = {
@@ -74,6 +75,7 @@ export default function ParametricView({
   const [isParametersPanelCollapsed, setIsParametersPanelCollapsed] =
     useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [dxfExporter, setDxfExporter] = useState<DxfExporter | null>(null);
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
   const parameterPanelRef = useRef<ImperativePanelHandle>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -201,6 +203,12 @@ export default function ParametricView({
     }
   }, []);
 
+  const handleDxfExportChange = useCallback((exporter: DxfExporter | null) => {
+    // The state value is itself a function, so we use the lazy-set form;
+    // a bare setDxfExporter(exporter) would invoke it as a state updater.
+    setDxfExporter(() => exporter);
+  }, []);
+
   return (
     <div
       className="flex h-full w-full overflow-hidden bg-[#292828]"
@@ -220,9 +228,11 @@ export default function ParametricView({
           />
           <ParametricPreviewDialog
             onOutputChange={setCurrentOutput}
+            onDxfExportChange={handleDxfExportChange}
             fixError={!limitReached ? fixError : undefined}
             onSubmit={changeParameters}
             currentOutput={currentOutput}
+            dxfExporter={dxfExporter}
           />
         </div>
       ) : (
@@ -297,6 +307,7 @@ export default function ParametricView({
             <ParametricPreviewSection
               isLoading={isLoading}
               onOutputChange={setCurrentOutput}
+              onDxfExportChange={handleDxfExportChange}
               color={color}
               fixError={!limitReached ? fixError : undefined}
             />
@@ -363,6 +374,7 @@ export default function ParametricView({
                   }
                   onSubmit={changeParameters}
                   currentOutput={currentOutput}
+                  dxfExporter={dxfExporter}
                 />
               </div>
             )}

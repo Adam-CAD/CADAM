@@ -1,6 +1,11 @@
 import { generate3DModelFilename } from '@/utils/file-utils';
 import { Message } from '@shared/types';
 
+// On-demand DXF generator. The OpenSCAD worker produces DXF output by recompiling
+// the source through a top-down projection, so consumers receive a callback rather
+// than a ready blob.
+export type DxfExporter = () => Promise<Blob>;
+
 interface DownloadOptions {
   content: Blob | string;
   filename: string;
@@ -92,5 +97,24 @@ export function downloadOpenSCADFile(
     content: code,
     filename,
     mimeType: 'text/plain',
+  });
+}
+
+/**
+ * Downloads DXF file from blob
+ */
+export function downloadDXFFile(
+  output: Blob,
+  currentMessage?: Message | null,
+): void {
+  const filename = generateDownloadFilename({
+    currentMessage,
+    extension: 'dxf',
+  });
+
+  downloadFile({
+    content: output,
+    filename,
+    mimeType: 'application/dxf',
   });
 }

@@ -1,6 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { WorkerMessage, WorkerMessageType } from '@/worker/types';
+import {
+  OpenSCADWorkerResponseData,
+  WorkerMessage,
+  WorkerMessageType,
+} from '@/worker/types';
 import OpenSCADError from '@/lib/OpenSCADError';
+import { normalizeOpenSCADDxf } from '@/utils/dxfUtils';
 
 // Type for pending request resolvers
 type PendingRequest = {
@@ -145,8 +150,61 @@ export function useOpenSCAD() {
     [getWorker],
   );
 
+  // Export SCAD from the worker without changing preview state.
+  // Used for on-demand downloads like projected DXF.
+  const exportScad = useCallback(
+    async (code: string, fileType: string): Promise<Blob> => {
+      const worker = getWorker();
+      const requestId = `export-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      const responsePromise = new Promise<OpenSCADWorkerResponseData>(
+        (resolve, reject) => {
+          pendingRequestsRef.current.set(requestId, {
+            resolve: (value) => resolve(value as OpenSCADWorkerResponseData),
+            reject,
+          });
+        },
+      );
+
+      const message: WorkerMessage = {
+        id: requestId,
+        type: WorkerMessageType.EXPORT,
+        data: {
+          code,
+          params: [],
+          fileType,
+        },
+      };
+
+      worker.postMessage(message);
+      const response = await responsePromise;
+
+      if (!response.output) {
+        throw new Error('OpenSCAD did not return an export output');
+      }
+
+      // Copy worker bytes into a normal ArrayBuffer-backed view for Blob/TextDecoder.
+      const outputBytes = new Uint8Array(response.output);
+      const mimeType =
+        response.fileType === 'stl'
+          ? 'model/stl'
+          : response.fileType === 'dxf'
+            ? 'application/dxf'
+            : 'application/octet-stream';
+
+      if (response.fileType === 'dxf') {
+        const dxf = new TextDecoder().decode(outputBytes);
+        return new Blob([normalizeOpenSCADDxf(dxf)], { type: mimeType });
+      }
+
+      return new Blob([outputBytes], { type: mimeType });
+    },
+    [getWorker],
+  );
+
   return {
     compileScad,
+    exportScad,
     writeFile,
     isCompiling,
     output,

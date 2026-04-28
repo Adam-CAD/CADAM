@@ -31,7 +31,7 @@
 
 - 🤖 **AI-Powered Generation** - Transform natural language and images into 3D models
 - 🎛️ **Parametric Controls** - Interactive sliders for instant dimension adjustments
-- 📦 **Multiple Export Formats** - Export as .STL or .SCAD files
+- 📦 **Multiple Export Formats** - Export as .STL, .SCAD, or .DXF files
 - 🌐 **Browser-Based** - Runs entirely in your browser using WebAssembly
 - 📚 **Library Support** - Includes BOSL, BOSL2, and MCAD libraries
 

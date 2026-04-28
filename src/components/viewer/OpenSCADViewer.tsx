@@ -1,5 +1,5 @@
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
-import { useEffect, useState, useContext, useRef } from 'react';
+import { useCallback, useEffect, useState, useContext, useRef } from 'react';
 import { ThreeScene } from '@/components/viewer/ThreeScene';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import {
@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
 import { MeshFilesContext } from '@/contexts/MeshFilesContext';
+import { createDXFProjectionCode } from '@/utils/dxfUtils';
+import { DxfExporter } from '@/utils/downloadUtils';
 
 // Extract import() filenames from OpenSCAD code
 function extractImportFilenames(code: string): string[] {
@@ -45,6 +47,7 @@ interface OpenSCADPreviewProps {
   scadCode: string | null;
   color: string;
   onOutputChange?: (output: Blob | undefined) => void;
+  onDxfExportChange?: (exporter: DxfExporter | null) => void;
   fixError?: (error: OpenSCADError) => void;
   isMobile?: boolean;
   backgroundColor?: string;
@@ -54,12 +57,14 @@ export function OpenSCADPreview({
   scadCode,
   color,
   onOutputChange,
+  onDxfExportChange,
   fixError,
   isMobile,
   backgroundColor,
 }: OpenSCADPreviewProps) {
   const {
     compileScad,
+    exportScad,
     writeFile,
     isCompiling,
     output,
@@ -89,29 +94,38 @@ export function OpenSCADPreview({
     fallbackColorRef.current = color;
   }, [color]);
 
+  // Shared by preview compilation and on-demand exports so import() files are
+  // available in the OpenSCAD worker before either operation runs.
+  const prepareMeshFiles = useCallback(
+    async (code: string) => {
+      // Extract any import() filenames from the code
+      const importedFiles = extractImportFilenames(code);
+
+      // Write any mesh files that haven't been written yet
+      if (!meshFilesCtx) return;
+
+      for (const filename of importedFiles) {
+        const meshContent = meshFilesCtx.getMeshFile(filename);
+        const writtenBlob = writtenFilesRef.current.get(filename);
+        const needsWrite =
+          meshContent && (!writtenBlob || writtenBlob !== meshContent);
+
+        if (needsWrite && meshContent) {
+          await writeFile(filename, meshContent);
+          writtenFilesRef.current.set(filename, meshContent);
+        }
+      }
+    },
+    [writeFile, meshFilesCtx],
+  );
+
+  // Recompile the preview whenever the current SCAD code changes.
   useEffect(() => {
     if (!scadCode) return;
 
     const compileWithMeshFiles = async () => {
       try {
-        // Extract any import() filenames from the code
-        const importedFiles = extractImportFilenames(scadCode);
-
-        // Write any mesh files that haven't been written yet
-        if (meshFilesCtx) {
-          for (const filename of importedFiles) {
-            const meshContent = meshFilesCtx.getMeshFile(filename);
-            const writtenBlob = writtenFilesRef.current.get(filename);
-            const needsWrite =
-              meshContent && (!writtenBlob || writtenBlob !== meshContent);
-
-            if (needsWrite && meshContent) {
-              await writeFile(filename, meshContent);
-              writtenFilesRef.current.set(filename, meshContent);
-            }
-          }
-        }
-
+        await prepareMeshFiles(scadCode);
         compileScad(scadCode);
       } catch (err) {
         console.error('[OpenSCAD] Error preparing files for compilation:', err);
@@ -119,7 +133,20 @@ export function OpenSCADPreview({
     };
 
     compileWithMeshFiles();
-  }, [scadCode, compileScad, writeFile, meshFilesCtx]);
+  }, [scadCode, compileScad, prepareMeshFiles]);
+
+  // Register a parent-owned DXF exporter for the current SCAD code. The export
+  // runs only when the user chooses DXF from the download menu.
+  useEffect(() => {
+    if (!scadCode || !onDxfExportChange) return;
+
+    onDxfExportChange(async () => {
+      await prepareMeshFiles(scadCode);
+      return exportScad(createDXFProjectionCode(scadCode), 'dxf');
+    });
+
+    return () => onDxfExportChange(null);
+  }, [scadCode, exportScad, onDxfExportChange, prepareMeshFiles]);
 
   useEffect(() => {
     onOutputChange?.(output);
