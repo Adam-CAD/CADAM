@@ -1,6 +1,6 @@
 import { ChatSection } from '@/components/chat/ChatSection';
 import { ParameterSection } from '@/components/parameter/ParameterSection';
-import { Content, Message, Model, Parameter } from '@shared/types';
+import { Content, DesignNode, Message, Model, Parameter } from '@shared/types';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
 import { useRef, useState, useMemo, useCallback, useLayoutEffect } from 'react';
@@ -18,6 +18,7 @@ import { TreeNode } from '@shared/Tree';
 import { ParametricPreviewSection } from '@/components/viewer/ParametricPreviewSection';
 import { ParametricPreviewDialog } from '@/components/viewer/ParametricPreviewDialog';
 import { DxfExporter } from '@/utils/downloadUtils';
+import { parseDesignTree } from '@shared/designTree';
 
 // Panel size constants
 const PANEL_SIZES = {
@@ -76,6 +77,9 @@ export default function ParametricView({
     useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [dxfExporter, setDxfExporter] = useState<DxfExporter | null>(null);
+  const [selectedDesignNodeId, setSelectedDesignNodeId] = useState<
+    string | undefined
+  >();
   const chatPanelRef = useRef<ImperativePanelHandle>(null);
   const parameterPanelRef = useRef<ImperativePanelHandle>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -152,6 +156,22 @@ export default function ParametricView({
     () => !!currentMessage?.content.artifact,
     [currentMessage],
   );
+
+  const designTree = useMemo<DesignNode[]>(() => {
+    const artifact = currentMessage?.content.artifact;
+    if (!artifact?.code) return [];
+    if (artifact.designTree?.length) return artifact.designTree;
+    return parseDesignTree(artifact.code);
+  }, [currentMessage?.content.artifact]);
+
+  useLayoutEffect(() => {
+    if (
+      selectedDesignNodeId &&
+      !designTree.some((node) => node.id === selectedDesignNodeId)
+    ) {
+      setSelectedDesignNodeId(undefined);
+    }
+  }, [designTree, selectedDesignNodeId]);
 
   // `react-resizable-panels` only honors `defaultSize` at initial mount, and
   // the PanelGroup's `autoSaveId` can restore a persisted size of 0 from a
@@ -233,6 +253,9 @@ export default function ParametricView({
             onSubmit={changeParameters}
             currentOutput={currentOutput}
             dxfExporter={dxfExporter}
+            designTree={designTree}
+            selectedDesignNodeId={selectedDesignNodeId}
+            onSelectDesignNode={setSelectedDesignNodeId}
           />
         </div>
       ) : (
@@ -310,6 +333,9 @@ export default function ParametricView({
               onDxfExportChange={handleDxfExportChange}
               color={color}
               fixError={!limitReached ? fixError : undefined}
+              designTree={designTree}
+              selectedDesignNodeId={selectedDesignNodeId}
+              onSelectDesignNode={setSelectedDesignNodeId}
             />
           </Panel>
           {/*
@@ -375,6 +401,9 @@ export default function ParametricView({
                   onSubmit={changeParameters}
                   currentOutput={currentOutput}
                   dxfExporter={dxfExporter}
+                  designTree={designTree}
+                  selectedDesignNodeId={selectedDesignNodeId}
+                  onSelectDesignNode={setSelectedDesignNodeId}
                 />
               </div>
             )}

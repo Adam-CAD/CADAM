@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sheet';
 import { useEffect, useState, useRef } from 'react';
 import { ParameterSheetContent } from '@/components/parameter/ParameterSheetContent';
-import { Message, Parameter } from '@shared/types';
+import { DesignNode, Message, Parameter } from '@shared/types';
 import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
@@ -30,6 +30,9 @@ interface ParametricPreviewDialogProps {
   onOutputChange?: (output: Blob | undefined) => void;
   onDxfExportChange?: (exporter: DxfExporter | null) => void;
   fixError?: (error: OpenSCADError) => void;
+  designTree: DesignNode[];
+  selectedDesignNodeId?: string;
+  onSelectDesignNode: (nodeId: string | undefined) => void;
 }
 
 export function ParametricPreviewDialog({
@@ -39,6 +42,9 @@ export function ParametricPreviewDialog({
   onOutputChange,
   onDxfExportChange,
   fixError,
+  designTree,
+  selectedDesignNodeId,
+  onSelectDesignNode,
 }: ParametricPreviewDialogProps) {
   const { currentMessage, setCurrentMessage } = useCurrentMessage();
   const [open, setOpen] = useState(true);
@@ -167,6 +173,12 @@ export function ParametricPreviewDialog({
                       fixError={fixError}
                       isMobile={true}
                       backgroundColor="#212121"
+                      designTree={designTree}
+                      selectedDesignNodeId={selectedDesignNodeId}
+                      parameters={
+                        currentMessage.content.artifact.parameters ?? []
+                      }
+                      onSelectDesignNode={onSelectDesignNode}
                     />
                   </div>
                 </div>
@@ -178,6 +190,9 @@ export function ParametricPreviewDialog({
                   onSubmit={onSubmit}
                   currentOutput={currentOutput}
                   dxfExporter={dxfExporter}
+                  designTree={designTree}
+                  selectedDesignNodeId={selectedDesignNodeId}
+                  onSelectDesignNode={onSelectDesignNode}
                 />
               </div>
             </SheetPrimitive.Content>

@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
 import { MeshFilesContext } from '@/contexts/MeshFilesContext';
 import { createDXFProjectionCode } from '@/utils/dxfUtils';
 import { DxfExporter } from '@/utils/downloadUtils';
+import { DesignTreeViewerDrawer } from '@/components/design-tree/DesignTreeViewerDrawer';
+import { DesignNode, Parameter } from '@shared/types';
 
 // Extract import() filenames from OpenSCAD code
 function extractImportFilenames(code: string): string[] {
@@ -51,6 +53,10 @@ interface OpenSCADPreviewProps {
   fixError?: (error: OpenSCADError) => void;
   isMobile?: boolean;
   backgroundColor?: string;
+  designTree: DesignNode[];
+  selectedDesignNodeId?: string;
+  parameters: Parameter[];
+  onSelectDesignNode: (nodeId: string | undefined) => void;
 }
 
 export function OpenSCADPreview({
@@ -61,6 +67,10 @@ export function OpenSCADPreview({
   fixError,
   isMobile,
   backgroundColor,
+  designTree,
+  selectedDesignNodeId,
+  parameters,
+  onSelectDesignNode,
 }: OpenSCADPreviewProps) {
   const {
     compileScad,
@@ -326,8 +336,14 @@ export function OpenSCADPreview({
   }, []);
 
   return (
-    <div className="h-full w-full bg-adam-neutral-700/50 shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out">
+    <div className="relative h-full w-full overflow-hidden bg-adam-neutral-700/50 shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out">
       <div className="h-full w-full">
+        <DesignTreeViewerDrawer
+          nodes={designTree}
+          selectedNodeId={selectedDesignNodeId}
+          parameters={parameters}
+          onSelectNode={onSelectDesignNode}
+        />
         {geometry || coloredGroup ? (
           <div className="h-full w-full">
             <ThreeScene

@@ -17,6 +17,7 @@ import {
 } from '@/services/messageService';
 import { useAuth } from '@/contexts/AuthContext';
 import Tree from '@shared/Tree';
+import { parseDesignTree } from '@shared/designTree';
 import { useRequestCancellation } from '@/hooks/useRequestCancellation';
 import posthog from 'posthog-js';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -135,6 +136,7 @@ export function ParametricEditorView() {
           version: message.content.artifact?.version ?? '',
           code: newCode,
           parameters: updatedParameters,
+          designTree: parseDesignTree(newCode),
           suggestions: message.content.artifact?.suggestions ?? [],
         },
       };

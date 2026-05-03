@@ -4,6 +4,7 @@ import Loader from '@/components/viewer/Loader';
 import { OpenSCADPreview } from './OpenSCADViewer';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { DxfExporter } from '@/utils/downloadUtils';
+import { DesignNode } from '@shared/types';
 
 interface ParametricPreviewSectionProps {
   isLoading: boolean;
@@ -12,6 +13,9 @@ interface ParametricPreviewSectionProps {
   onDxfExportChange?: (exporter: DxfExporter | null) => void;
   fixError?: (error: OpenSCADError) => void;
   isMobile?: boolean;
+  designTree: DesignNode[];
+  selectedDesignNodeId?: string;
+  onSelectDesignNode: (nodeId: string | undefined) => void;
 }
 
 export function ParametricPreviewSection({
@@ -21,6 +25,9 @@ export function ParametricPreviewSection({
   onDxfExportChange,
   fixError,
   isMobile,
+  designTree,
+  selectedDesignNodeId,
+  onSelectDesignNode,
 }: ParametricPreviewSectionProps) {
   const { currentMessage: message } = useCurrentMessage();
 
@@ -44,6 +51,10 @@ export function ParametricPreviewSection({
               onOutputChange={onOutputChange}
               onDxfExportChange={onDxfExportChange}
               fixError={fixError}
+              designTree={designTree}
+              selectedDesignNodeId={selectedDesignNodeId}
+              parameters={message.content.artifact.parameters ?? []}
+              onSelectDesignNode={onSelectDesignNode}
             />
           )}
         </div>

@@ -70,7 +70,29 @@ export type ParametricArtifact = {
   version: string;
   code: string;
   parameters: Parameter[];
+  designTree?: DesignNode[];
   suggestions?: string[];
+};
+
+export type DesignNodeKind =
+  | 'assembly'
+  | 'part'
+  | 'operation'
+  | 'sketch'
+  | 'parameter-group'
+  | 'import';
+
+export type DesignNode = {
+  id: string;
+  kind: DesignNodeKind;
+  name: string;
+  parentId?: string;
+  children?: string[];
+  parameterNames?: string[];
+  codeRange?: { start: number; end: number };
+  visible?: boolean;
+  locked?: boolean;
+  color?: string;
 };
 
 export type ParameterOption = { value: string | number; label: string };

@@ -1,8 +1,8 @@
 import { Download, ChevronUp, Loader2 } from 'lucide-react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Message, Parameter } from '@shared/types';
+import { DesignNode, Message, Parameter } from '@shared/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +25,9 @@ interface ParameterSheetContentProps {
   onSubmit: (message: Message | null, parameters: Parameter[]) => void;
   currentOutput?: Blob;
   dxfExporter?: DxfExporter | null;
+  designTree: DesignNode[];
+  selectedDesignNodeId?: string;
+  onSelectDesignNode: (nodeId: string | undefined) => void;
 }
 
 type DownloadFormat = 'stl' | 'scad' | 'dxf';
@@ -34,11 +37,25 @@ export function ParameterSheetContent({
   onSubmit,
   currentOutput,
   dxfExporter,
+  designTree,
+  selectedDesignNodeId,
+  onSelectDesignNode,
 }: ParameterSheetContentProps) {
   const { currentMessage } = useCurrentMessage();
   const { toast } = useToast();
   const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>('stl');
   const [isExporting, setIsExporting] = useState(false);
+
+  const selectedDesignNode = useMemo(
+    () => designTree.find((node) => node.id === selectedDesignNodeId),
+    [designTree, selectedDesignNodeId],
+  );
+
+  const visibleParameters = useMemo(() => {
+    if (!selectedDesignNode?.parameterNames?.length) return parameters;
+    const selectedNames = new Set(selectedDesignNode.parameterNames);
+    return parameters.filter((param) => selectedNames.has(param.name));
+  }, [parameters, selectedDesignNode]);
 
   // Debounce timer for compilation
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -146,13 +163,32 @@ export function ParameterSheetContent({
     <>
       <ScrollArea className="h-full w-full px-4">
         <div className="flex flex-col gap-6 pb-4 pt-2">
-          {parameters.map((param) => (
+          {selectedDesignNode && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-adam-blue/30 bg-adam-blue/10 px-3 py-2">
+              <span className="min-w-0 truncate text-xs text-adam-text-primary">
+                {selectedDesignNode.name}
+              </span>
+              <Button
+                variant="ghost"
+                className="h-6 rounded px-2 text-xs text-adam-neutral-300 hover:bg-adam-neutral-800 hover:text-adam-text-primary"
+                onClick={() => onSelectDesignNode(undefined)}
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+          {visibleParameters.map((param) => (
             <ParameterInput
               key={param.name}
               param={param}
               handleCommit={handleCommit}
             />
           ))}
+          {visibleParameters.length === 0 && (
+            <p className="rounded-md border border-dashed border-adam-neutral-700 p-4 text-center text-xs text-adam-neutral-400">
+              This design node has no linked parameters.
+            </p>
+          )}
         </div>
       </ScrollArea>
       <div className="flex w-full flex-col gap-4 p-4">
