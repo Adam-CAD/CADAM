@@ -1,12 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { handleCreativeChatRequest } from '@/server/creativeChat';
+import { handleAiChatRequest } from '@/server/aiChat';
 
 export const Route = createFileRoute('/api/creative-chat')({
   server: {
     handlers: {
-      GET: ({ request }) => handleCreativeChatRequest(request),
-      POST: ({ request }) => handleCreativeChatRequest(request),
-      OPTIONS: ({ request }) => handleCreativeChatRequest(request),
+      GET: ({ request }) => handleAiChatRequest(request),
+      POST: ({ request }) => handleAiChatRequest(request),
+      OPTIONS: ({ request }) => handleAiChatRequest(request),
     },
   },
 });

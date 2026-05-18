@@ -21,7 +21,15 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShareContent } from '@/components/ui/ShareContent';
 
-export function ChatTitle() {
+interface ChatTitleProps {
+  activeMeshId?: string | null;
+  activeOpenscadCode?: string | null;
+}
+
+export function ChatTitle({
+  activeMeshId,
+  activeOpenscadCode,
+}: ChatTitleProps = {}) {
   const { conversation, updateConversation } = useConversation();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(conversation.title);
@@ -72,6 +80,13 @@ export function ChatTitle() {
     if (isEditingTitle) {
       inputRef.current?.select();
     }
+  };
+
+  const handlePrivacyChange = (privacy: 'public' | 'private') => {
+    updateConversation?.({
+      ...conversation,
+      privacy,
+    });
   };
 
   return (
@@ -172,7 +187,13 @@ export function ChatTitle() {
                       <DialogDescription className="hidden">
                         Share public link to chat
                       </DialogDescription>
-                      <ShareContent />
+                      <ShareContent
+                        conversationId={conversation.id}
+                        privacy={conversation.privacy}
+                        onPrivacyChange={handlePrivacyChange}
+                        meshId={activeMeshId ?? undefined}
+                        openscadCode={activeOpenscadCode ?? undefined}
+                      />
                     </DialogContent>
                   </Dialog>
                 ) : (

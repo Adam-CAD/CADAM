@@ -1,7 +1,6 @@
 import React, {
   useState,
   useRef,
-  ChangeEvent,
   KeyboardEvent,
   useEffect,
   useMemo,
@@ -24,17 +23,14 @@ import {
   PARAMETRIC_MODELS,
   parametricModelSupportsVision,
 } from '@/lib/utils';
-import { Content, CreativeModel, MeshFileType, Model } from '@shared/types';
+import { CreativeModel, MeshFileType, Model } from '@shared/types';
+import type { AppUIMessage } from '@shared/chatAi';
 import {
   shouldShowPolygonControls,
   getModelDefaultPolygonCount,
   getMaxPolygonCount,
+  isCreativeModel,
 } from '@/constants/meshConstants';
-
-// Local helper functions for this component
-const shouldShowQuadsControls = (model: Model): boolean => {
-  return shouldShowPolygonControls(model as CreativeModel);
-};
 import { MessageItem } from '../types/misc.ts';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -72,7 +68,7 @@ const promptResponseSchema = z.object({ prompt: z.string().optional() });
 
 interface TextAreaChatProps {
   type: 'parametric' | 'creative';
-  onSubmit: (content: Content) => void;
+  onSubmit: (parts: AppUIMessage['parts']) => void;
   onFocus?: () => void;
   isLoading?: boolean;
   placeholder?: string;
@@ -157,7 +153,7 @@ type PolygonInputState = { type: 'idle' } | { type: 'editing'; value: string };
 interface PolygonButtonProps {
   polygonCount: number;
   meshTopology: 'quads' | 'polys';
-  model: Model;
+  model: CreativeModel;
   showFullLabels: boolean;
   isLoading: boolean;
   disabled: boolean;
@@ -238,15 +234,9 @@ const PolygonButton = ({
   onReset,
 }: PolygonButtonProps) => {
   // Computed values - no useState needed
-  const maxPolygonCount = getMaxPolygonCount(
-    model as CreativeModel,
-    meshTopology,
-  );
+  const maxPolygonCount = getMaxPolygonCount(model, meshTopology);
   // Use model-specific default for determining if value is custom
-  const defaultPolygonCount = getModelDefaultPolygonCount(
-    model as CreativeModel,
-    meshTopology,
-  );
+  const defaultPolygonCount = getModelDefaultPolygonCount(model, meshTopology);
   const maxInputValue = Math.floor(maxPolygonCount / 1000);
   const isCustom = polygonCount !== defaultPolygonCount;
 
@@ -499,6 +489,11 @@ function TextAreaChat({
   const { session } = useAuth();
   const { images, mesh, setImages, setMesh } = useItemSelection();
   const meshFiles = useMeshFiles();
+  const creativeModel =
+    type === 'creative' && isCreativeModel(model) ? model : null;
+  const showPolygonControls = creativeModel
+    ? shouldShowPolygonControls(creativeModel)
+    : false;
 
   // Parametric mode: bounding box and filename from STL parsing
   const [meshBoundingBox, setMeshBoundingBox] = useState<BoundingBox | null>(
@@ -550,10 +545,10 @@ function TextAreaChat({
   // Set polygon count for current model+topology combination
   const setPolygonCountForCurrentModel = useCallback(
     (count: number) => {
-      if (type !== 'creative') return;
-      const modelTopologyKey = `${model}-${meshTopology}`;
+      if (!creativeModel) return;
+      const modelTopologyKey = `${creativeModel}-${meshTopology}`;
       const defaultCount = getModelDefaultPolygonCount(
-        model as CreativeModel,
+        creativeModel,
         meshTopology,
       );
 
@@ -570,34 +565,34 @@ function TextAreaChat({
         }));
       }
     },
-    [model, meshTopology, type],
+    [creativeModel, meshTopology],
   );
 
   // Persist meshTopology changes to localStorage
   const handleMeshTopologyChange = useCallback(
     (newTopology: 'quads' | 'polys') => {
       setMeshTopology(newTopology);
+      if (!creativeModel) return;
 
-      // Reset polygon count to the model-specific default for the new topology
-      const modelSpecificDefault = getModelDefaultPolygonCount(
-        model as CreativeModel,
-        newTopology,
-      );
-      setPolygonCountForCurrentModel(modelSpecificDefault);
+      // Reset polygon count to the model-specific default for the new topology.
+      const modelTopologyKey = `${creativeModel}-${newTopology}`;
+      setPolygonOverrides((prev) => {
+        const { [modelTopologyKey]: _, ...rest } = prev;
+        return rest;
+      });
     },
-    [setPolygonCountForCurrentModel, model],
+    [creativeModel],
   );
 
   // Derived polygon count - no useState needed, calculated from model + topology + overrides
   const polygonCount = useMemo(() => {
-    if (type !== 'creative') return 0;
-    const modelTopologyKey = `${model}-${meshTopology}`;
+    if (!creativeModel) return 0;
+    const modelTopologyKey = `${creativeModel}-${meshTopology}`;
     const userOverride = polygonOverrides[modelTopologyKey];
     return (
-      userOverride ??
-      getModelDefaultPolygonCount(model as CreativeModel, meshTopology)
+      userOverride ?? getModelDefaultPolygonCount(creativeModel, meshTopology)
     );
-  }, [model, meshTopology, polygonOverrides, type]);
+  }, [creativeModel, meshTopology, polygonOverrides]);
 
   // Persist polygon overrides to localStorage
   useEffect(() => {
@@ -618,26 +613,26 @@ function TextAreaChat({
 
   // Reset polygon count to default for current model and topology
   const resetPolygonCount = useCallback(() => {
-    const modelTopologyKey = `${model}-${meshTopology}`;
+    if (!creativeModel) return;
+    const modelTopologyKey = `${creativeModel}-${meshTopology}`;
     setPolygonOverrides((prev) => {
       const { [modelTopologyKey]: _, ...rest } = prev;
       return rest;
     });
-  }, [model, meshTopology]);
+  }, [creativeModel, meshTopology]);
 
   // When model changes, clear any polygon overrides to use the new model's defaults
   useEffect(() => {
-    if (type !== 'creative') return;
+    if (!creativeModel) return;
 
     // Clear all overrides when switching models to ensure we use the new model's defaults
     setPolygonOverrides({});
-  }, [model, type]);
+  }, [creativeModel]);
 
   // Computed polygon values for server submission
-  const maxPolygonCount =
-    type === 'creative'
-      ? getMaxPolygonCount(model as CreativeModel, meshTopology)
-      : 0;
+  const maxPolygonCount = creativeModel
+    ? getMaxPolygonCount(creativeModel, meshTopology)
+    : 0;
 
   // Refs for the two hot-zones
   const topDropZoneRef = useRef<HTMLDivElement>(null);
@@ -734,42 +729,64 @@ function TextAreaChat({
   }, [images, setModel, model, type]);
 
   const handleSubmit = async () => {
-    // Debug the early return conditions
-    const hasNoContent = images.length === 0 && !input?.trim() && !mesh;
+    const hasNoInput = images.length === 0 && !input?.trim() && !mesh;
     const hasUploadingImages = images.some((img) => img.isUploading);
 
-    if (hasNoContent || isLoading || hasUploadingImages) {
+    if (hasNoInput || isLoading || hasUploadingImages) {
       return;
     }
-    let content: Content = {
-      ...(input.trim() !== '' && { text: input.trim() }),
-      ...(images.length > 0 && { images: images.map((img) => img.id) }),
-      model: model,
-    };
-    if (type === 'creative') {
-      content = {
-        ...content,
-        ...(mesh && {
-          mesh: { id: mesh.id, fileType: mesh.fileType || 'glb' },
-        }),
-        // Include meshTopology preference for standard and ultra models
-        ...(shouldShowPolygonControls(model as CreativeModel) && {
-          meshTopology,
-        }),
-        // Include polygonCount preference for standard and ultra (respect quads mode limit)
-        ...(shouldShowPolygonControls(model as CreativeModel) && {
-          polygonCount: Math.min(polygonCount, maxPolygonCount),
-        }),
-      };
-    } else if (type === 'parametric' && mesh) {
-      content = {
-        ...content,
-        mesh: { id: mesh.id, fileType: 'stl' },
-        ...(meshBoundingBox && { meshBoundingBox }),
-        ...(meshFilename && { meshFilename }),
-      };
+    const text = input.trim();
+    const parts: AppUIMessage['parts'] = [];
+
+    if (text) {
+      parts.push({ type: 'text', text });
     }
-    onSubmit(content);
+
+    for (const image of images) {
+      if (!image.url || image.isUploading) continue;
+      parts.push({
+        type: 'file',
+        mediaType: 'image/png',
+        url: image.url,
+        filename: `${image.id}.png`,
+      });
+    }
+
+    const submittedMesh = mesh
+      ? { id: mesh.id, fileType: mesh.fileType || ('glb' as MeshFileType) }
+      : undefined;
+
+    if (creativeModel) {
+      if (submittedMesh) {
+        parts.push({
+          type: 'data-mesh-context',
+          data: {
+            meshId: submittedMesh.id,
+            fileType: submittedMesh.fileType,
+          },
+        });
+      }
+      if (showPolygonControls) {
+        parts.push({
+          type: 'data-mesh-preferences',
+          data: {
+            topology: meshTopology,
+            polygonCount: Math.min(polygonCount, maxPolygonCount),
+          },
+        });
+      }
+    } else if (type === 'parametric' && mesh) {
+      parts.push({
+        type: 'data-mesh-context',
+        data: {
+          meshId: mesh.id,
+          fileType: 'stl',
+          filename: meshFilename || 'model.stl',
+          ...(meshBoundingBox ? { boundingBox: meshBoundingBox } : {}),
+        },
+      });
+    }
+    onSubmit(parts);
     setInput('');
     setImages([]);
     setMesh(null);
@@ -1102,8 +1119,7 @@ function TextAreaChat({
     setIsDragHover(false);
   };
 
-  const handleItemsChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedItems = event.target.files;
+  const handleItemsChange = (selectedItems: FileList | null) => {
     if (selectedItems && selectedItems.length > 0) {
       addItems(selectedItems);
     }
@@ -1198,9 +1214,7 @@ function TextAreaChat({
     const handleDragLeave = (e: DragEvent) => {
       e.preventDefault();
       // When leaving the window entirely (relatedTarget is null), reset dragging state
-      if (
-        (e as unknown as { relatedTarget: Node | null }).relatedTarget === null
-      ) {
+      if (e.relatedTarget === null) {
         setIsDragging(false);
         setIsDragHover(false);
       }
@@ -1594,11 +1608,7 @@ function TextAreaChat({
                         ? SUPPORTED_MESH_EXTENSIONS.join(', ')
                         : '.stl'
                     }`;
-                    input.onchange = (event) => {
-                      handleItemsChange(
-                        event as unknown as ChangeEvent<HTMLInputElement>,
-                      );
-                    };
+                    input.onchange = () => handleItemsChange(input.files);
                     input.click();
                   }}
                   disabled={disabled}
@@ -1640,7 +1650,7 @@ function TextAreaChat({
             )}
 
             {/* Quads vs Polys toggle button - show for standard and ultra models */}
-            {type === 'creative' && shouldShowQuadsControls(model) && (
+            {showPolygonControls && (
               <QuadsButton
                 meshTopology={meshTopology}
                 showFullLabels={showFullLabels}
@@ -1655,11 +1665,11 @@ function TextAreaChat({
             )}
 
             {/* Polygon Count button - show for standard and ultra models */}
-            {type === 'creative' && shouldShowQuadsControls(model) && (
+            {creativeModel && showPolygonControls && (
               <PolygonButton
                 polygonCount={polygonCount}
                 meshTopology={meshTopology}
-                model={model}
+                model={creativeModel}
                 showFullLabels={showFullLabels}
                 isLoading={isLoading}
                 disabled={disabled || false}

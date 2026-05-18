@@ -917,3 +917,29 @@ input::placeholder {
     left: 100%;
   }
 }
+
+@keyframes adam-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) scale(1.05);
+  }
+}
+
+.animate-adam-bounce {
+  animation: adam-bounce 1.2s ease-in-out infinite;
+}
+
+@keyframes mesh-dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 1;
+  }
+}

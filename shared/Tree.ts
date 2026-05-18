@@ -50,8 +50,8 @@ class Tree<T extends TreeElement> {
     this.rootNodes = rootNodes;
   }
 
-  getPath(id: string) {
-    const path = [];
+  getPath(id: string): TreeNode<T>[] {
+    const path: TreeNode<T>[] = [];
     let currentNode = this.allNodes.get(id);
 
     while (currentNode) {

@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Message, Model, Parameter } from '@shared/types';
+import { Parameter } from '@shared/types';
 import { ModelConfig } from '../types/misc.ts';
 
 export function cn(...inputs: ClassValue[]) {
@@ -298,30 +298,8 @@ export const CREATIVE_MODELS: ModelConfig[] = [
 
 // Whether the selected parametric model can accept image / STL-render inputs.
 // Unknown ids (e.g. historical messages tagged with a removed model) fall back
-// to `true` so legacy conversations keep rendering normally.
+// to `true` so older saved rows still render normally.
 export function parametricModelSupportsVision(modelId: string): boolean {
   const cfg = PARAMETRIC_MODELS.find((m) => m.id === modelId);
   return cfg?.supportsVision !== false;
-}
-
-export function getBackupModel({
-  message,
-  parentMessage,
-  type,
-}: {
-  message: Message;
-  parentMessage?: Message;
-  type: 'parametric' | 'creative';
-}): Model {
-  if (message.content.model) {
-    return message.content.model;
-  }
-  if (parentMessage?.content.model) {
-    return parentMessage.content.model;
-  }
-  if (type === 'parametric') {
-    return 'fast';
-  } else {
-    return 'quality';
-  }
 }

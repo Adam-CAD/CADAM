@@ -32,18 +32,20 @@ const fragmentShader = quantizeFragmentShader;
 export function MeshGifPreview({
   ref,
   meshId,
+  externalGltf,
   setIsGenerating,
   setProgress,
   setReadyToDownload,
 }: {
   ref: React.RefObject<{ downloadGIF: () => Promise<void> } | null>;
-  meshId: string;
+  meshId?: string;
+  externalGltf?: GLTF | null;
   setIsGenerating: (isGenerating: boolean) => void;
   setProgress: (progress: number) => void;
   setReadyToDownload: (readyToDownload: boolean) => void;
 }) {
   const { conversation } = useConversation();
-  const [gltf, setGltf] = useState<GLTF | null>(null);
+  const [gltf, setGltf] = useState<GLTF | null>(externalGltf ?? null);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const logoImage = useMemo(() => {
     const img = new Image();
@@ -113,17 +115,22 @@ export function MeshGifPreview({
   }, [cleanupThreeJS]);
 
   useEffect(() => {
+    if (externalGltf !== undefined) {
+      setGltf(externalGltf);
+      return;
+    }
     setGltf(null);
-  }, [meshId]);
+  }, [meshId, externalGltf]);
 
   const {
     data: { data: meshData, isLoading: isMeshDataLoading },
     blob: { data: mesh, isLoading: isMeshLoading },
   } = useMeshData({
-    id: meshId,
+    id: meshId ?? '',
   });
 
   useEffect(() => {
+    if (externalGltf) return; // skip blob load when caller provided gltf directly
     const loadMesh = async (meshBlob: Blob) => {
       try {
         const fileType = meshData?.file_type || 'glb';
@@ -289,7 +296,7 @@ export function MeshGifPreview({
     if (mesh && meshData) {
       loadMesh(mesh);
     }
-  }, [mesh, meshData]);
+  }, [mesh, meshData, externalGltf]);
 
   const renderer = useMemo(() => {
     if (!canvas) {
@@ -646,7 +653,7 @@ export function MeshGifPreview({
     });
   }, [gltf, renderer]);
 
-  if (isMeshDataLoading || isMeshLoading) {
+  if (!externalGltf && (isMeshDataLoading || isMeshLoading)) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin" />
@@ -654,7 +661,7 @@ export function MeshGifPreview({
     );
   }
 
-  if (!meshData || !mesh) {
+  if (!externalGltf && (!meshData || !mesh)) {
     return null;
   }
 

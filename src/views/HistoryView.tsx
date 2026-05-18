@@ -11,7 +11,8 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
-import { Content, Conversation, ConversationSettings } from '@shared/types';
+import { Conversation, ConversationSettings } from '@shared/types';
+import type { AppUIMessage } from '@shared/chatAi';
 import { HistoryConversation } from '../types/misc.ts';
 import { ConversationCard } from '@/components/history/ConversationCard';
 import { VisualCard } from '@/components/history/VisualCard';
@@ -44,7 +45,7 @@ export function HistoryView() {
         await supabase
           .from('conversations')
           .select(
-            `*, first_message:messages(content), messagesCount:messages(count)`,
+            `*, first_message:messages(parts), messagesCount:messages(count)`,
           )
           .eq('user_id', user?.id ?? '')
           .order('updated_at', { ascending: false })
@@ -55,16 +56,12 @@ export function HistoryView() {
       if (conversationsError) throw conversationsError;
 
       const formattedConversations = conversationsData.map((conv) => {
-        const rawContent = conv.first_message?.[0]?.content;
-        const firstMessageContent =
-          typeof rawContent === 'object' && rawContent !== null
-            ? (rawContent as Content)
-            : { text: '' };
+        const parts = conv.first_message?.[0]?.parts;
         const messageCount = conv.messagesCount?.[0]?.count ?? 0;
 
         const formattedFirstMessage = {
-          text: firstMessageContent.text ?? '',
-          images: firstMessageContent.images ?? [],
+          text: textFromParts(parts),
+          images: imageIdsFromParts(parts),
         };
 
         return {
@@ -73,7 +70,7 @@ export function HistoryView() {
           updated_at:
             conv.updated_at || conv.created_at || new Date().toISOString(),
           message_count: messageCount,
-          first_message: formattedFirstMessage as Content,
+          first_message: formattedFirstMessage,
         };
       });
 
@@ -476,4 +473,28 @@ export function HistoryView() {
       </button>
     </>
   );
+}
+
+function asParts(parts: unknown): AppUIMessage['parts'] {
+  return Array.isArray(parts) ? (parts as AppUIMessage['parts']) : [];
+}
+
+function textFromParts(parts: unknown) {
+  return asParts(parts)
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('')
+    .trim();
+}
+
+function imageIdsFromParts(parts: unknown) {
+  return asParts(parts)
+    .filter(
+      (
+        part,
+      ): part is Extract<AppUIMessage['parts'][number], { type: 'file' }> =>
+        part.type === 'file' && part.mediaType.startsWith('image/'),
+    )
+    .map((part) => part.filename?.replace(/\.[^.]+$/, '') ?? '')
+    .filter(Boolean);
 }

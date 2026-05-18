@@ -151,29 +151,35 @@ export type Database = {
       };
       messages: {
         Row: {
-          content: Json;
           conversation_id: string;
+          content: Json | null;
           created_at: string;
           id: string;
+          metadata: Json;
           parent_message_id: string | null;
+          parts: Json;
           rating: number;
           role: string;
         };
         Insert: {
-          content: Json;
           conversation_id: string;
+          content?: Json | null;
           created_at?: string;
           id?: string;
+          metadata?: Json;
           parent_message_id?: string | null;
+          parts?: Json;
           rating?: number;
           role: string;
         };
         Update: {
-          content?: Json;
           conversation_id?: string;
+          content?: Json | null;
           created_at?: string;
           id?: string;
+          metadata?: Json;
           parent_message_id?: string | null;
+          parts?: Json;
           rating?: number;
           role?: string;
         };

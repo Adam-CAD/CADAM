@@ -3,13 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
-import { CreativeEditorView } from './CreativeEditorView';
-import { ParametricEditorView } from './ParametricEditorView';
+import { ModernConversationView } from './ModernConversationView';
 import { ConversationContext } from '@/contexts/ConversationContext';
-import { Conversation, Message } from '@shared/types';
+import { Conversation } from '@shared/types';
 import { MessageItem } from '../types/misc.ts';
 import { useEffect, useState } from 'react';
-import { CurrentMessageContext } from '@/contexts/CurrentMessageContext';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
 
 export default function EditorView() {
@@ -18,7 +16,6 @@ export default function EditorView() {
   });
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [currentMessage, setCurrentMessage] = useState<Message | null>(null);
   const [images, setImages] = useState<MessageItem[]>([]);
   const [mesh, setMesh] = useState<MessageItem | null>(null);
   const navigate = useNavigate();
@@ -114,29 +111,23 @@ export default function EditorView() {
   }
 
   return (
-    <CurrentMessageContext.Provider
+    <ConversationContext.Provider
       value={{
-        currentMessage,
-        setCurrentMessage,
+        conversation,
+        updateConversation,
+        updateConversationAsync,
       }}
     >
-      <ConversationContext.Provider
-        value={{
-          conversation,
-          updateConversation,
-          updateConversationAsync,
-        }}
+      <SelectedItemsContext.Provider
+        value={{ images, setImages, mesh, setMesh }}
       >
-        <SelectedItemsContext.Provider
-          value={{ images, setImages, mesh, setMesh }}
-        >
-          {conversation.type === 'creative' ? (
-            <CreativeEditorView />
-          ) : (
-            <ParametricEditorView />
-          )}
-        </SelectedItemsContext.Provider>
-      </ConversationContext.Provider>
-    </CurrentMessageContext.Provider>
+        {/* `ModernConversationView` resets activePreview/parameters/etc.
+            internally via an effect keyed on conversation.id — we deliberately
+            avoid `key={conversation.id}` here because TanStack Router's lazy
+            Outlet resolves async and would otherwise discard the keyed subtree
+            mid-hydration, causing a tree-wide remount cycle. */}
+        <ModernConversationView />
+      </SelectedItemsContext.Provider>
+    </ConversationContext.Provider>
   );
 }

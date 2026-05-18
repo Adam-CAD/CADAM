@@ -5,15 +5,15 @@ import vertexShader from '@/utils/points.vert?raw';
 import fragmentShader from '@/utils/points.frag?raw';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { adamLogoVertices } from '@/utils/adamLogoVertices';
-import { CreativeModel } from '@shared/types';
-import { useLoadingProgress } from '@/hooks/useLoadingProgress';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 interface GlbPreviewProps {
+  /**
+   * GLB blob (typically the Hunyuan turbo preview returned during mesh generation).
+   * While undefined, the Adam-logo particle cloud holds. As soon as the blob arrives
+   * the logo dissolves and the mesh point cloud diffuses into place.
+   */
   glbBlob?: Blob;
-  updatedAt?: number;
-  startTime: number;
-  model?: CreativeModel;
 }
 
 // Optimize vertex count based on performance
@@ -30,12 +30,7 @@ const POINT_SIZE_MOBILE = 0.1;
 const LOGO_DISSOLVE_DURATION = 2000;
 const DIFFUSION_DURATION = 3000;
 
-export function GlbPreview({
-  glbBlob,
-  updatedAt,
-  startTime,
-  model,
-}: GlbPreviewProps) {
+export function GlbPreview({ glbBlob }: GlbPreviewProps) {
   // canvas ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isMobile = useIsMobile();
@@ -53,37 +48,12 @@ export function GlbPreview({
   const diffusionStartTimeRef = useRef<number | null>(null); // when mesh diffusion starts
   const mouseRef = useRef(new THREE.Vector2(0, 0)); // Track normalized mouse position
 
-  // Track Adam logo dissolve timing
+  // Dissolve timing is driven by glbBlob arrival, not wall-clock guesses
   const logoDissolveStartTimeRef = useRef<number | null>(null);
   const logoDissolveCompletedRef = useRef<boolean>(false);
 
   // Store vertices of the loaded mesh until ready to display
   const pendingMeshVerticesRef = useRef<number[] | null>(null);
-
-  // Use loading progress to calculate expected stage 2 start time
-  const { timing } = useLoadingProgress('mesh', startTime, model);
-
-  // Set diffusion start time based on updatedAt timestamp or expected stage 2 start time
-  useEffect(() => {
-    if (startTime && timing) {
-      const now = Date.now();
-      // Calculate expected stage 2 start time (15% of expected time)
-      const expectedStage2StartTime = startTime + timing.expected * 0.15;
-      const realStartTime = Math.max(
-        expectedStage2StartTime,
-        updatedAt ?? expectedStage2StartTime,
-      );
-
-      logoDissolveStartTimeRef.current = realStartTime;
-      diffusionStartTimeRef.current = realStartTime + LOGO_DISSOLVE_DURATION;
-      if (now > diffusionStartTimeRef.current) {
-        logoDissolveCompletedRef.current = true;
-      }
-      if (now > diffusionStartTimeRef.current + DIFFUSION_DURATION) {
-        meshLoadedRef.current = true;
-      }
-    }
-  }, [updatedAt, startTime, timing]);
 
   // Build / rebuild renderer whenever the canvas mounts or resizes
   const initThree = useCallback(() => {
@@ -246,6 +216,9 @@ export function GlbPreview({
 
     // Create Adam-logo points immediately (scene is ready now)
     createAdamLogoPoints();
+    logoDissolveStartTimeRef.current = null;
+    logoDissolveCompletedRef.current = false;
+    diffusionStartTimeRef.current = null;
 
     // If no glbBlob, just keep the Adam logo indefinitely
     if (!glbBlob) {
@@ -258,6 +231,11 @@ export function GlbPreview({
         }
       };
     }
+
+    // Blob has arrived — start dissolve immediately
+    logoDissolveStartTimeRef.current = Date.now();
+    diffusionStartTimeRef.current =
+      logoDissolveStartTimeRef.current + LOGO_DISSOLVE_DURATION;
 
     // If glbBlob exists, load it and replace random points once loaded
     const loader = new GLTFLoader();

@@ -18,9 +18,10 @@ import {
   DEFAULT_ROUGHNESS,
   DEFAULT_NORMAL_INTENSITY,
   getModelDefaultBrightness,
+  isCreativeModel,
   shouldShowNormalIntensity,
 } from '@/constants/meshConstants';
-import { CreativeModel, Model } from '@shared/types';
+import { Model } from '@shared/types';
 import posthog from 'posthog-js';
 
 interface LightingControlsProps {
@@ -49,16 +50,18 @@ export function LightingControls({
   const [isOpen, setIsOpen] = useState(
     localStorage.getItem('lightingControlsOpen') !== 'false',
   );
+  const creativeModel =
+    modelQuality && isCreativeModel(modelQuality) ? modelQuality : null;
 
   // Use centralized model configuration
-  const showNormalIntensityControl = modelQuality
-    ? shouldShowNormalIntensity(modelQuality as CreativeModel)
+  const showNormalIntensityControl = creativeModel
+    ? shouldShowNormalIntensity(creativeModel)
     : false;
   // Upscaled models need higher brightness to show color correctly
   const defaultBrightness = isUpscaled
     ? DEFAULT_BRIGHTNESS_UPSCALED
-    : modelQuality
-      ? getModelDefaultBrightness(modelQuality as CreativeModel)
+    : creativeModel
+      ? getModelDefaultBrightness(creativeModel)
       : DEFAULT_BRIGHTNESS;
 
   // Check if values have changed from defaults

@@ -7,13 +7,7 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
-import {
-  Download,
-  Frown,
-  HeartCrack,
-  Loader2,
-  ChevronDown,
-} from 'lucide-react';
+import { Download, Frown, HeartCrack, ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import * as THREE from 'three';
 import { GLTF, GLTFLoader, GLTFParser } from 'three-stdlib';
@@ -22,7 +16,8 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { Button } from '@/components/ui/button';
 
-import { CreativeLoadingBar } from './CreativeLoadingBar';
+import { GlbPreview } from './GlbPreview';
+import { useGlbPreview } from '@/hooks/useGlbPreview';
 import { LightingControls } from './LightingControls';
 
 import posthog from 'posthog-js';
@@ -39,8 +34,8 @@ import {
   DEFAULT_ROUGHNESS,
   DEFAULT_NORMAL_INTENSITY,
   getModelDefaultBrightness,
+  isCreativeModel,
 } from '@/constants/meshConstants';
-import { CreativeModel } from '@shared/types';
 
 /**
  * ModelWithControls - Renders a 3D model with adjustable material properties.
@@ -494,10 +489,11 @@ export function MeshPreview({ meshId }: { meshId: string }) {
     setViewMode('textured');
     // Set brightness based on model configuration
     // Upscaled models need higher brightness to show color correctly
+    const promptModel = meshData?.prompt.model;
     const modelBrightness = isUpscaled
       ? DEFAULT_BRIGHTNESS_UPSCALED
-      : meshData?.prompt.model
-        ? getModelDefaultBrightness(meshData.prompt.model as CreativeModel)
+      : promptModel && isCreativeModel(promptModel)
+        ? getModelDefaultBrightness(promptModel)
         : DEFAULT_BRIGHTNESS;
     setBrightness(modelBrightness);
     setRoughness(DEFAULT_ROUGHNESS);
@@ -752,28 +748,12 @@ export function MeshPreview({ meshId }: { meshId: string }) {
       meshId,
     });
   };
-
-  if (meshData && meshData.status === 'pending') {
-    return (
-      <div className="flex h-full w-full items-center justify-center p-4">
-        <CreativeLoadingBar
-          startTime={new Date(meshData.created_at).getTime()}
-          modelType="mesh"
-          modelName={
-            (meshData?.prompt.model ?? undefined) as CreativeModel | undefined
-          }
-          meshId={meshId}
-        />
-      </div>
-    );
-  }
-
-  if (isMeshDataLoading || isMeshLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+  if (
+    isMeshDataLoading ||
+    isMeshLoading ||
+    (meshData && meshData.status === 'pending')
+  ) {
+    return <MeshPreviewPending meshId={meshId} />;
   }
 
   if (!meshData) {
@@ -960,6 +940,17 @@ export function MeshPreview({ meshId }: { meshId: string }) {
           </DownloadMenu>
         </div>
       )}
+    </div>
+  );
+}
+
+function MeshPreviewPending({ meshId }: { meshId: string }) {
+  const { data: previewBlob } = useGlbPreview({ id: meshId });
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[#3B3B3B]">
+      <div className="h-full w-full">
+        <GlbPreview glbBlob={previewBlob ?? undefined} />
+      </div>
     </div>
   );
 }

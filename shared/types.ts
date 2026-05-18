@@ -1,4 +1,5 @@
 import { Database } from './database.ts';
+import type { AppUIMessage } from './chatAi.ts';
 export type Model = string;
 export type CreativeModel = 'quality' | 'fast' | 'ultra';
 
@@ -9,15 +10,16 @@ export type Prompt = {
   model?: Model;
 };
 
-export type Message = Omit<
-  Database['public']['Tables']['messages']['Row'],
-  'content' | 'role'
+type MessageRow = Database['public']['Tables']['messages']['Row'];
+
+export type Message = Pick<
+  MessageRow,
+  'conversation_id' | 'created_at' | 'id' | 'parent_message_id' | 'rating'
 > & {
   role: 'user' | 'assistant';
-  content: Content;
+  metadata: AppUIMessage['metadata'];
+  parts: AppUIMessage['parts'];
 };
-
-export type CoreMessage = Pick<Message, 'id' | 'role' | 'content'>;
 
 export type MeshFileType = Database['public']['Enums']['mesh_file_type'];
 
@@ -33,48 +35,12 @@ export type MeshData = Omit<
   prompt: Prompt;
 };
 
-export type ToolCall = {
-  name: string;
-  status: 'pending' | 'error';
-  id?: string;
-  error?: string;
-  result?: { id: string; fileType?: MeshFileType };
-};
-
-export type Content = {
-  text?: string;
-  model?: Model;
-  // When the user sends an error, its related to the fix with AI function
-  // When the assistant sends an error, its related to any error that occurred during generation
-  error?: string;
-  artifact?: ParametricArtifact;
-  index?: number;
-  images?: string[];
-  mesh?: Mesh;
-  // Parametric mode: bounding box dimensions from STL parsing
-  meshBoundingBox?: { x: number; y: number; z: number };
-  // Parametric mode: original filename for import() in OpenSCAD
-  meshFilename?: string;
-  suggestions?: string[];
-  // For streaming support - shows in-progress tool calls
-  toolCalls?: ToolCall[];
-  // Mesh topology preference (quads vs polys) for quality model
-  meshTopology?: 'quads' | 'polys';
-  // Polygon count preference for quality model
-  polygonCount?: number;
-  // File format preference for quad topology models
-  preferredFormat?: 'glb' | 'fbx';
-};
-
 export type ParametricArtifact = {
   title: string;
   version: string;
   code: string;
   parameters: Parameter[];
   parts?: ParametricPart[];
-  legacy?: {
-    parameters?: Parameter[];
-  };
   suggestions?: string[];
 };
 

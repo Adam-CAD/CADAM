@@ -244,7 +244,7 @@ export function ParameterInput({
                           (paramState.value as number[]).map(
                             (itemValue, itemIndex) =>
                               itemIndex === index
-                                ? (e.target.value as unknown as number)
+                                ? Number(e.target.value)
                                 : itemValue,
                           ),
                         )

@@ -19,10 +19,16 @@ export function useOpenSCAD() {
   const [isError, setIsError] = useState(false);
   const [output, setOutput] = useState<Blob | undefined>();
   const [offOutput, setOffOutput] = useState<Blob | undefined>();
+  // Per-instance worker. Each useOpenSCAD() call owns its own Web Worker so
+  // listeners only see their own compile/export results — sharing a single
+  // worker across multiple useOpenSCAD() consumers means every listener fires
+  // on every other consumer's responses, which corrupts state (STL bytes from
+  // a `VisualCard` thumbnail compile leaking into `OpenSCADViewer`'s output,
+  // for instance) and produces "Array buffer allocation failed" parse errors.
   const workerRef = useRef<Worker | null>(null);
-  // Track files written to the worker filesystem
+  // Track files written to the worker filesystem.
   const writtenFilesRef = useRef<Set<string>>(new Set());
-  // Track pending requests waiting for worker responses
+  // Track pending requests waiting for worker responses.
   const pendingRequestsRef = useRef<Map<string, PendingRequest>>(new Map());
 
   const getWorker = useCallback(() => {

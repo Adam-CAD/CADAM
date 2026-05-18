@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router';
-import type { Content, CoreMessage } from '@shared/types';
 import { createAnthropicText } from '@/server/anthropic';
 import {
   isRecord,
@@ -9,35 +8,21 @@ import {
   preflight,
   requireUser,
 } from '@/server/api';
-import { getAnonSupabaseClient } from '@/server/supabaseClient';
-import { formatUserMessage } from '@/server/messageUtils';
 
 const TITLE_SYSTEM_PROMPT =
   'Generate a concise, descriptive title under 80 characters for this CAD conversation. Return only the title. If unclear, return "New Conversation".';
 
-function isContent(value: unknown): value is Content {
-  if (!isRecord(value)) return false;
+function textFromParts(parts: unknown): string {
+  if (!Array.isArray(parts)) return '';
 
-  for (const key of ['text', 'model', 'error']) {
-    const field = Reflect.get(value, key);
-    if (field !== undefined && typeof field !== 'string') return false;
-  }
-
-  const images = Reflect.get(value, 'images');
-  if (
-    images !== undefined &&
-    (!Array.isArray(images) ||
-      images.some((image) => typeof image !== 'string'))
-  ) {
-    return false;
-  }
-
-  for (const key of ['artifact', 'mesh', 'meshBoundingBox']) {
-    const field = Reflect.get(value, key);
-    if (field !== undefined && !isRecord(field)) return false;
-  }
-
-  return true;
+  return parts
+    .flatMap((part) =>
+      isRecord(part) && part.type === 'text' && typeof part.text === 'string'
+        ? [part.text]
+        : [],
+    )
+    .join('\n')
+    .trim();
 }
 
 export const Route = createFileRoute('/api/title-generator')({
@@ -46,9 +31,8 @@ export const Route = createFileRoute('/api/title-generator')({
       GET: methodNotAllowed,
       OPTIONS: preflight,
       POST: async ({ request }) => {
-        let user;
         try {
-          user = await requireUser(request);
+          await requireUser(request);
         } catch (err) {
           if (isUnauthorizedError(err)) {
             return json({ error: 'Unauthorized' }, 401);
@@ -57,36 +41,20 @@ export const Route = createFileRoute('/api/title-generator')({
         }
         try {
           const body: unknown = await request.json();
-          if (
-            !isRecord(body) ||
-            typeof body.conversationId !== 'string' ||
-            !isContent(body.content)
-          ) {
+          if (!isRecord(body)) {
             return json({ title: 'New Conversation' });
           }
-          const supabase = getAnonSupabaseClient({
-            global: {
-              headers: {
-                Authorization: request.headers.get('Authorization') ?? '',
-              },
-            },
-          });
-          const message: CoreMessage = {
-            id: '1',
-            role: 'user',
-            content: body.content,
-          };
-          const formatted = await formatUserMessage(
-            message,
-            supabase,
-            user.id,
-            body.conversationId,
-          );
+          const text =
+            typeof body.text === 'string'
+              ? body.text.trim()
+              : textFromParts(body.parts);
+          if (!text) return json({ title: 'New Conversation' });
+
           const title = await createAnthropicText({
             model: 'claude-haiku-4-5-20251001',
             maxTokens: 100,
             system: TITLE_SYSTEM_PROMPT,
-            content: formatted.content,
+            content: text,
           });
           return json({ title: title || 'New Conversation' });
         } catch {

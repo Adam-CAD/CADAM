@@ -3,6 +3,7 @@
  */
 
 import { Message } from '@shared/types';
+import { getBuildParametricModelOutput } from '@shared/parametricParts';
 
 /**
  * Creates a safe filename from a given string by removing/replacing invalid characters
@@ -26,10 +27,10 @@ export function getSafeFilename(
 }
 
 /**
- * Extracts a meaningful filename from assistant message content
+ * Extracts a meaningful filename from assistant message parts
  * @param message The assistant message to extract filename from
  * @param fallback Fallback filename if extraction fails
- * @returns A meaningful filename extracted from the message content
+ * @returns A meaningful filename extracted from the message parts
  */
 export function extractFilenameFromMessage(
   message: Message,
@@ -38,11 +39,20 @@ export function extractFilenameFromMessage(
   let baseFilename = fallback;
 
   // For parametric messages, use the artifact title if available
-  if (message.content.artifact?.title) {
-    baseFilename = message.content.artifact.title;
-  } else if (message.content.text && message.content.text.trim()) {
+  const artifact = getBuildParametricModelOutput(message.parts);
+  const text = Array.isArray(message.parts)
+    ? message.parts
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('')
+        .trim()
+    : '';
+
+  if (artifact?.title) {
+    baseFilename = artifact.title;
+  } else if (text) {
     // Extract from the assistant message text
-    const messageText = message.content.text.trim();
+    const messageText = text;
 
     // Look for patterns like "Here is your [object name]" or similar
     const objectPatterns = [

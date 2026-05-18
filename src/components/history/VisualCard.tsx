@@ -7,7 +7,6 @@ import {
   Trash2,
   Pencil,
   Box,
-  Loader2,
   LockKeyhole,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,15 +32,12 @@ import { HistoryConversation } from '../../types/misc.ts';
 import { GoodEarth } from '../icons/ui/GoodEarth';
 import { supabase } from '@/lib/supabase';
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
-import { Canvas } from '@react-three/fiber';
-import {
-  OrbitControls,
-  Stage,
-  Environment,
-  PerspectiveCamera,
-} from '@react-three/drei';
-import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { BufferGeometry } from 'three';
+import { usePreview } from '@/hooks/usePreview';
+import { generatePreview } from '@/utils/meshUtils';
+import { useQuery } from '@tanstack/react-query';
+import { getBuildParametricModelOutput } from '@shared/parametricParts';
+import type { AppUIMessage } from '@shared/chatAi';
+import type { MeshFileType } from '@shared/types';
 
 interface VisualCardProps {
   conversation: HistoryConversation;
@@ -53,46 +49,10 @@ interface VisualCardProps {
   ) => void;
 }
 
-function ThreePreview({ geometry }: { geometry: BufferGeometry }) {
-  return (
-    <Canvas className="h-full w-full">
-      <color attach="background" args={['#1a1a1a']} />
-      <PerspectiveCamera
-        makeDefault
-        position={[-100, 100, 100]}
-        fov={45}
-        near={0.1}
-        far={1000}
-        zoom={0.4}
-      />
-      <Stage environment={null} intensity={0.6} position={[0, 0, 0]}>
-        <Environment files={`${import.meta.env.BASE_URL}/city.hdr`} />
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[5, 5, 5]} intensity={1.2} />
-        <directionalLight position={[-5, 5, 5]} intensity={0.2} />
-        <mesh
-          geometry={geometry}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0, 0]}
-        >
-          <meshStandardMaterial
-            color="#00A6FF"
-            metalness={0.6}
-            roughness={0.3}
-            envMapIntensity={0.3}
-          />
-        </mesh>
-      </Stage>
-      <OrbitControls
-        makeDefault
-        enableDamping={false}
-        enableZoom={false}
-        autoRotate={true}
-        autoRotateSpeed={1}
-      />
-    </Canvas>
-  );
-}
+type VisualPreview =
+  | { type: 'artifact'; key: string; code: string }
+  | { type: 'mesh'; key: string; meshId: string; fileType: MeshFileType }
+  | null;
 
 export function VisualCard({
   conversation,
@@ -100,108 +60,60 @@ export function VisualCard({
   onRename,
   onTogglePrivacy,
 }: VisualCardProps) {
-  const [artifactCode, setArtifactCode] = useState<string | null>(null);
-  const [geometry, setGeometry] = useState<BufferGeometry | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const { compileScad, isCompiling, output, isError } = useOpenSCAD();
+  const { exportScad } = useOpenSCAD();
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(entry.isIntersecting);
-      },
+      ([entry]) => setIsVisible(entry.isIntersecting),
       { rootMargin: '100px' },
     );
-
-    if (cardRef.current) {
-      observer.observe(cardRef.current);
-    }
-
-    return () => {
-      if (cardRef.current) {
-        observer.unobserve(cardRef.current);
-      }
-    };
+    if (cardRef.current) observer.observe(cardRef.current);
+    return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const fetchLastArtifact = async () => {
-      try {
-        const { data: messages, error } = await supabase
-          .from('messages')
-          .select('content')
-          .eq('conversation_id', conversation.id)
-          .eq('role', 'assistant')
-          .order('created_at', { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
-
-        const messageWithArtifact = messages?.find(
-          (msg) =>
-            msg.content &&
-            typeof msg.content === 'object' &&
-            'artifact' in msg.content &&
-            msg.content.artifact,
-        );
-
-        if (
-          messageWithArtifact &&
-          messageWithArtifact.content &&
-          typeof messageWithArtifact.content === 'object' &&
-          'artifact' in messageWithArtifact.content
-        ) {
-          const artifact = messageWithArtifact.content.artifact;
-          if (
-            artifact &&
-            typeof artifact === 'object' &&
-            'code' in artifact &&
-            typeof artifact.code === 'string'
-          ) {
-            setArtifactCode(artifact.code);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching artifact:', error);
+  const { data: preview } = useQuery<VisualPreview>({
+    queryKey: ['conversation-latest-preview', conversation.id],
+    enabled: isVisible,
+    queryFn: async () => {
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select('id, parts')
+        .eq('conversation_id', conversation.id)
+        .eq('role', 'assistant')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      for (const message of messages ?? []) {
+        const latest = findLatestVisualPreview(message.parts, message.id);
+        if (latest) return latest;
       }
-    };
+      return null;
+    },
+    staleTime: 60_000,
+  });
 
-    fetchLastArtifact();
-  }, [conversation.id]);
-
-  useEffect(() => {
-    if (artifactCode) {
-      compileScad(artifactCode);
-    }
-  }, [artifactCode, compileScad]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (output && output instanceof Blob) {
-      output
-        .arrayBuffer()
-        .then((buffer) => {
-          if (isMounted) {
-            const loader = new STLLoader();
-            const geom = loader.parse(buffer);
-            geom.center();
-            geom.computeVertexNormals();
-            setGeometry(geom);
-          }
-        })
-        .catch((error) => {
-          console.error('Error loading STL:', error);
-        });
-    } else {
-      setGeometry(null);
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [output]);
+  const { data: thumbnailUrl } = usePreview({
+    id: preview?.key,
+    conversationId: conversation.id,
+    userId: conversation.user_id,
+    enabled: !!preview,
+    generateBlob: async () => {
+      if (!preview) throw new Error('No preview');
+      if (preview.type === 'mesh') {
+        const { data: meshBlob, error } = await supabase.storage
+          .from('meshes')
+          .download(
+            `${conversation.user_id}/${conversation.id}/${preview.meshId}.${preview.fileType}`,
+          );
+        if (error || !meshBlob) throw error ?? new Error('Mesh blob missing');
+        return dataUrlToBlob(await generatePreview(meshBlob, preview.fileType));
+      }
+      const stl = await exportScad(preview.code, 'stl');
+      return dataUrlToBlob(await generatePreview(stl, 'stl'));
+    },
+  });
 
   return (
     <div
@@ -210,27 +122,18 @@ export function VisualCard({
     >
       <Link to="/editor/$id" params={{ id: conversation.id }}>
         <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-adam-background-1 to-adam-background-2">
-          {!isVisible ? (
+          {thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt={conversation.title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
             <div className="flex h-full w-full items-center justify-center">
               <Box className="text-adam-neutral-600 h-16 w-16 opacity-30" />
             </div>
-          ) : isCompiling ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="h-8 w-8 animate-spin text-adam-blue" />
-                <span className="text-xs text-adam-neutral-400">
-                  Compiling...
-                </span>
-              </div>
-            </div>
-          ) : isError || !geometry ? (
-            <div className="flex h-full w-full items-center justify-center">
-              <Box className="text-adam-neutral-600 h-16 w-16 opacity-50" />
-            </div>
-          ) : (
-            <ThreePreview geometry={geometry} />
           )}
-
           <div className="absolute inset-0 bg-gradient-to-t from-adam-background-2/90 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
         </div>
 
@@ -343,4 +246,42 @@ export function VisualCard({
       </div>
     </div>
   );
+}
+
+function asParts(parts: unknown): AppUIMessage['parts'] {
+  return Array.isArray(parts) ? (parts as AppUIMessage['parts']) : [];
+}
+
+function findLatestVisualPreview(
+  parts: unknown,
+  messageId: string,
+): VisualPreview {
+  const messageParts = asParts(parts);
+  for (let index = messageParts.length - 1; index >= 0; index -= 1) {
+    const part = messageParts[index];
+    if (part.type === 'tool-create_mesh' && part.state === 'output-available') {
+      return {
+        type: 'mesh',
+        key: part.output.id,
+        meshId: part.output.id,
+        fileType: part.output.fileType,
+      };
+    }
+    if (part.type === 'tool-build_parametric_model') {
+      const artifact = getBuildParametricModelOutput([part]);
+      if (artifact?.code) {
+        const key =
+          'toolCallId' in part && typeof part.toolCallId === 'string'
+            ? part.toolCallId
+            : messageId;
+        return { type: 'artifact', key, code: artifact.code };
+      }
+    }
+  }
+  return null;
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl);
+  return response.blob();
 }

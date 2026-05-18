@@ -16,7 +16,6 @@ import {
 import { useConversation } from '@/contexts/ConversationContext';
 import { useToast } from '@/hooks/use-toast';
 import { generate3DModelFilename } from '@/utils/file-utils';
-import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
 import { GLTF, OBJExporter, GLTFExporter } from 'three-stdlib';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import * as Sentry from '@sentry/react';
@@ -53,7 +52,6 @@ export function DownloadMenu({
 }) {
   const { conversation } = useConversation();
   const { toast, dismiss } = useToast();
-  const { currentMessage } = useCurrentMessage();
   const isMobile = useIsMobile();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -86,16 +84,10 @@ export function DownloadMenu({
   const filename = useMemo(() => {
     return generate3DModelFilename({
       conversationTitle: conversation?.title,
-      assistantMessage: currentMessage || undefined,
       modelName: meshData?.prompt.model,
       fallback: `3d-model-${meshData.id}`,
     });
-  }, [
-    conversation?.title,
-    currentMessage,
-    meshData?.prompt.model,
-    meshData.id,
-  ]);
+  }, [conversation?.title, meshData?.prompt.model, meshData.id]);
 
   const downloadSTL = useCallback(() => {
     posthog.capture('3d_model_download', {

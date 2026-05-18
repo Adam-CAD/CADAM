@@ -1,12 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { handleParametricChatRequest } from '@/server/parametricChat';
+import { handleAiChatRequest } from '@/server/aiChat';
 
 export const Route = createFileRoute('/api/parametric-chat')({
   server: {
     handlers: {
-      GET: ({ request }) => handleParametricChatRequest(request),
-      POST: ({ request }) => handleParametricChatRequest(request),
-      OPTIONS: ({ request }) => handleParametricChatRequest(request),
+      GET: ({ request }) => handleAiChatRequest(request),
+      POST: ({ request }) => handleAiChatRequest(request),
+      OPTIONS: ({ request }) => handleAiChatRequest(request),
     },
   },
 });

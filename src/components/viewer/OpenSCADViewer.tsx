@@ -326,7 +326,7 @@ export function OpenSCADPreview({
   }, []);
 
   return (
-    <div className="h-full w-full bg-adam-neutral-700/50 shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out">
+    <div className="relative h-full w-full bg-adam-neutral-700/50 transition-all duration-300 ease-in-out">
       <div className="h-full w-full">
         {geometry || coloredGroup ? (
           <div className="h-full w-full">
@@ -348,7 +348,7 @@ export function OpenSCADPreview({
           </>
         )}
         {isCompiling && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-adam-neutral-700/30 backdrop-blur-sm">
+          <div className="absolute inset-0 flex items-center justify-center bg-adam-neutral-700/30 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-6 w-6 animate-spin text-adam-blue" />
               <p className="text-xs font-medium text-adam-text-primary/70">

@@ -8,7 +8,7 @@ import {
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Message, Parameter } from '@shared/types';
+import type { Parameter } from '@shared/types';
 import {
   Tooltip,
   TooltipContent,
@@ -31,31 +31,31 @@ import {
   validateParameterValue,
   isColorParameter,
 } from '@/utils/parameterUtils';
-import { useCurrentMessage } from '@/contexts/CurrentMessageContext';
 import {
   downloadSTLFile,
   downloadOpenSCADFile,
   downloadDXFFile,
-  DxfExporter,
 } from '@/utils/downloadUtils';
+import type { DxfExporter } from '@/utils/downloadUtils';
 import { useToast } from '@/hooks/use-toast';
 
 interface ParameterSectionProps {
   parameters: Parameter[];
-  onSubmit: (message: Message | null, parameters: Parameter[]) => void;
+  onParameterChange: (parameters: Parameter[]) => void;
   currentOutput?: Blob;
   dxfExporter?: DxfExporter | null;
+  code?: string;
 }
 
 type DownloadFormat = 'stl' | 'scad' | 'dxf';
 
 export function ParameterSection({
   parameters,
-  onSubmit,
+  onParameterChange,
   currentOutput,
   dxfExporter,
+  code,
 }: ParameterSectionProps) {
-  const { currentMessage } = useCurrentMessage();
   const { toast } = useToast();
   const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>('stl');
   const [isExporting, setIsExporting] = useState(false);
@@ -76,7 +76,7 @@ export function ParameterSection({
   const [dimensionsOpen, setDimensionsOpen] = useState(true);
 
   // Debounce timer for compilation
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingParametersRef = useRef<Parameter[] | null>(null);
 
   // Cleanup debounce timer on unmount
@@ -102,12 +102,12 @@ export function ParameterSection({
       // Set new debounced timer (200ms delay)
       debounceTimerRef.current = setTimeout(() => {
         if (pendingParametersRef.current) {
-          onSubmit(currentMessage, pendingParametersRef.current);
+          onParameterChange(pendingParametersRef.current);
           pendingParametersRef.current = null;
         }
       }, 200);
     },
-    [onSubmit, currentMessage],
+    [onParameterChange],
   );
 
   const handleCommit = (param: Parameter, value: Parameter['value']) => {
@@ -123,12 +123,12 @@ export function ParameterSection({
 
   const handleDownloadSTL = () => {
     if (!currentOutput) return;
-    downloadSTLFile(currentOutput, currentMessage);
+    downloadSTLFile(currentOutput);
   };
 
   const handleDownloadOpenSCAD = () => {
-    if (!currentMessage?.content.artifact?.code) return;
-    downloadOpenSCADFile(currentMessage.content.artifact.code, currentMessage);
+    if (!code) return;
+    downloadOpenSCADFile(code);
   };
 
   const handleDownloadDXF = async () => {
@@ -138,7 +138,7 @@ export function ParameterSection({
     try {
       setIsExporting(true);
       const dxfOutput = await dxfExporter();
-      downloadDXFFile(dxfOutput, currentMessage);
+      downloadDXFFile(dxfOutput);
     } catch (error) {
       console.error('[OpenSCAD] Failed to export DXF:', error);
       // Optional user-facing feedback to surface the failure
@@ -163,7 +163,7 @@ export function ParameterSection({
   };
   const formatAvailable: Record<DownloadFormat, boolean> = {
     stl: !!currentOutput,
-    scad: !!currentMessage?.content.artifact?.code,
+    scad: !!code,
     dxf: !!dxfExporter && !isExporting,
   };
 
@@ -194,7 +194,7 @@ export function ParameterSection({
                     ...param,
                     value: param.defaultValue,
                   }));
-                  onSubmit(currentMessage, newParameters);
+                  onParameterChange(newParameters);
                 }}
               >
                 <RefreshCcw className="h-4 w-4" />

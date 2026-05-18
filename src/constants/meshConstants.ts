@@ -1,4 +1,4 @@
-import { CreativeModel } from '@shared/types';
+import { CreativeModel, Model } from '@shared/types';
 
 // Mesh generation constants
 
@@ -82,6 +82,16 @@ export const MODEL_CONFIGS: Record<CreativeModel, ModelConfig> = {
     showNormalIntensity: true,
     maxPolygonCount: POLYGON_COUNTS.ULTRA_MAX, // Meshy v6 limit is 300k
   },
+};
+
+const CREATIVE_MODEL_LOOKUP: Record<CreativeModel, true> = {
+  fast: true,
+  quality: true,
+  ultra: true,
+};
+
+export const isCreativeModel = (model: Model): model is CreativeModel => {
+  return Object.prototype.hasOwnProperty.call(CREATIVE_MODEL_LOOKUP, model);
 };
 
 // Helper functions for model configuration

@@ -1,4 +1,4 @@
-import { Content, Conversation, MeshFileType, Model } from '@shared/types';
+import { Conversation, MeshFileType, Model } from '@shared/types';
 
 // Type for conversations with messages (used in HistoryView)
 export type HistoryConversation = Omit<
@@ -7,7 +7,10 @@ export type HistoryConversation = Omit<
 > & {
   created_at: string;
   updated_at: string;
-  first_message: Content;
+  first_message: {
+    text: string;
+    images: string[];
+  };
   message_count: number;
 };
 
