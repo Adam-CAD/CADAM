@@ -33,6 +33,26 @@
     --radius: 0.5rem;
     --transition: 0.25s;
     --spark: 1.8s;
+
+    /*
+     * TAILWIND v4 SHIM — DELETE WHEN MIGRATING TO TAILWIND v4.
+     *
+     * AI Elements components (Shimmer, Reasoning, etc.) reference
+     * `var(--color-muted-foreground)` and `var(--color-background)`.
+     * Those are Tailwind v4-style token names — v4 auto-emits a
+     * `--color-*` variable for every color entry under `@theme`. We're
+     * still on Tailwind v3, which uses `--background` / `--muted-foreground`
+     * (HSL components consumed via `hsl(var(--background))`) and never
+     * exposes a `--color-*` namespace.
+     *
+     * Without these aliases the Shimmer's bg-clip-text gradient computes
+     * to transparent and the "Thinking..." label disappears mid-stream.
+     * Once we run `npx @tailwindcss/upgrade` and port the adam-* palette
+     * into `@theme` blocks, Tailwind v4 will emit these variables
+     * automatically. At that point this whole block can be removed.
+     */
+    --color-background: #d7d7d7;
+    --color-muted-foreground: #949494;
   }
 
   .dark {

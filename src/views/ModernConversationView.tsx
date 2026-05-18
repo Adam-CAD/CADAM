@@ -17,12 +17,16 @@ import { useConversation } from '@/contexts/ConversationContext';
 import { useCachedAiChat } from '@/hooks/useCachedAiChat';
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { apiUrl } from '@/services/api';
-import { useMessagesQuery } from '@/services/messageService';
+import {
+  useChangeRatingMutation,
+  useMessagesQuery,
+  useRestoreMessageMutation,
+  useUpscaleMutation,
+} from '@/services/messageService';
 import {
   ensureInputRecords,
   messageRowToModernMessage,
   messageRowToUIMessage,
-  uiMessageToModernMessage,
   type ModernChatMessage,
 } from '@/lib/aiMessages';
 import { cn, updateParameter } from '@/lib/utils';
@@ -68,7 +72,8 @@ type ActivePreview =
   | null;
 
 export function ModernConversationView() {
-  const { conversation, updateConversation } = useConversation();
+  const { conversation, updateConversation, updateConversationAsync } =
+    useConversation();
   const { user, billing } = useAuth();
   const queryClient = useQueryClient();
   const totalTokens = billing?.tokens.total ?? 0;
@@ -245,8 +250,15 @@ export function ModernConversationView() {
     },
   });
 
-  const { messages, setMessages, sendMessage, addToolOutput, status, stop } =
-    useChat<AppUIMessage>({ chat });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    regenerate,
+    addToolOutput,
+    status,
+    stop,
+  } = useChat<AppUIMessage>({ chat });
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
@@ -258,34 +270,65 @@ export function ModernConversationView() {
     }
   }, [isLoading, messages, selectedBranch, selectedBranchKey, setMessages]);
 
-  const activeMessages = useMemo(() => {
-    return messages.map((message, index) => {
-      const parentMessageId =
-        parentByIdRef.current.get(message.id) ??
-        (index === 0 ? null : messages[index - 1].id);
-      parentByIdRef.current.set(message.id, parentMessageId);
-      return uiMessageToModernMessage({
-        message,
-        conversationId: conversation.id,
-        parentMessageId,
-      });
-    });
-  }, [messages, conversation.id]);
-
+  // Merge the two sources without coercing either to look like the other.
+  //
+  //  * `useChat.messages` is the source of truth for live `parts`/`metadata`
+  //    while a turn is streaming.
+  //  * `dbMessages` (from useMessagesQuery) is the source of truth for the
+  //    persisted columns — `rating`, `created_at`, `conversation_id`,
+  //    `parent_message_id`, plus the post-onFinish version of `parts`.
+  //
+  // For each id, take parts/metadata from the active stream if it's present
+  // there, and take rating/created_at/conversation_id from the DB row. That
+  // way a thumbs-up optimistic update on the DB cache stays visible — the
+  // old code coerced active messages into rating: 0, clobbering the change.
   const treeMessages = useMemo(() => {
-    const byId = new Map<string, ModernChatMessage>();
-    for (const message of dbMessages) {
-      byId.set(message.id, messageRowToModernMessage(message));
+    const dbById = new Map<string, ModernChatMessage>();
+    for (const row of dbMessages) {
+      dbById.set(row.id, messageRowToModernMessage(row));
     }
-    for (const message of activeMessages) {
-      byId.set(message.id, message);
+
+    const merged = new Map<string, ModernChatMessage>();
+
+    // Seed with DB rows so messages that aren't in the active stream
+    // (older turns, alternate branches) still appear.
+    for (const [id, row] of dbById) {
+      merged.set(id, row);
     }
-    return Array.from(byId.values());
-  }, [dbMessages, activeMessages]);
+
+    // Overlay active stream messages — they own the live `parts`/`metadata`
+    // but we preserve the DB row's persisted columns.
+    for (let i = 0; i < messages.length; i += 1) {
+      const active = messages[i];
+      const dbRow = dbById.get(active.id);
+      const parentMessageId =
+        parentByIdRef.current.get(active.id) ??
+        dbRow?.parent_message_id ??
+        (i === 0 ? null : messages[i - 1].id);
+      parentByIdRef.current.set(active.id, parentMessageId);
+
+      merged.set(active.id, {
+        ...active,
+        parent_message_id: parentMessageId,
+        ...(dbRow
+          ? {
+              conversation_id: dbRow.conversation_id,
+              created_at: dbRow.created_at,
+              rating: dbRow.rating,
+              ...(dbRow.isLegacy
+                ? { isLegacy: true, legacyContent: dbRow.legacyContent }
+                : {}),
+            }
+          : { conversation_id: conversation.id }),
+      });
+    }
+
+    return Array.from(merged.values());
+  }, [dbMessages, messages, conversation.id]);
 
   const messageTree = useMemo(() => new Tree(treeMessages), [treeMessages]);
   const activeLeafId =
-    activeMessages.at(-1)?.id ?? conversation.current_message_leaf_id ?? '';
+    messages.at(-1)?.id ?? conversation.current_message_leaf_id ?? '';
   const currentBranch = useMemo(
     () => messageTree.getPath(activeLeafId),
     [messageTree, activeLeafId],
@@ -447,6 +490,68 @@ export function ModernConversationView() {
     [messageTree, sendPayload, setMessages],
   );
 
+  const { mutate: changeRating } = useChangeRatingMutation({
+    conversationId: conversation.id,
+  });
+  const { mutate: restoreMessageMutation } = useRestoreMessageMutation({
+    conversation,
+    updateConversationAsync,
+  });
+  const { mutate: upscaleMesh } = useUpscaleMutation({
+    conversation,
+    updateConversationAsync,
+  });
+
+  const retryFromAssistant = useCallback(
+    async (assistant: ModernChatMessage, nextModel: Model) => {
+      // Re-generate this assistant turn as a NEW sibling of the existing one.
+      //
+      // Using the AI SDK's `regenerate({ messageId })` instead of crafting a
+      // new sendMessage call is what produces a real branch:
+      //
+      //   1. The SDK truncates the local chat state to just before the
+      //      assistant message being regenerated.
+      //   2. It POSTs the truncated messages to our chat endpoint with
+      //      `trigger: 'regenerate-message'`. The user message that produced
+      //      the original assistant is still the last item in the array.
+      //   3. The server streams a fresh assistant response. Our onFinish
+      //      writes it as a new row with `parent_message_id` = the user
+      //      message's id — exactly the parent the original assistant has.
+      //   4. dbMessages now contains two assistants with the same parent,
+      //      so `messageTree` exposes them as siblings and BranchNavigation
+      //      lights up.
+      //
+      // (Previously we were calling `sendPayload(parent.parts, grandparentId)`
+      // which appended a new user message at the grandparent — that creates
+      // a separate user-message branch, not an assistant sibling, so the
+      // branch arrows never appeared.)
+      // The user message that produced this assistant turn — used here only
+      // as a guard (we need it to exist to retry). We deliberately DO NOT
+      // pass it as `parentMessageId` in the request body: on regenerate the
+      // user message IS the last item in the SDK-truncated message array,
+      // and the server's user-upsert path would clobber its
+      // `parent_message_id` with whatever we send — producing a self-cycle
+      // (parent_message_id === id) and locking the chat tree into an
+      // infinite getPath() loop on the next render.
+      const parentId = assistant.parent_message_id;
+      if (!parentId) return;
+      if (nextModel !== model) {
+        updateSelectedModel(nextModel);
+      }
+      const token = (await supabase.auth.getSession()).data.session
+        ?.access_token;
+      await regenerate({
+        messageId: assistant.id,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: {
+          conversationId: conversation.id,
+          model: nextModel,
+        },
+      });
+    },
+    [conversation.id, model, regenerate, updateSelectedModel],
+  );
+
   const selectLeaf = useCallback(
     (messageId: string) => {
       updateConversation?.({
@@ -591,71 +696,125 @@ export function ModernConversationView() {
           order={0}
         >
           <div className="relative flex h-full min-w-0 flex-col border-r border-adam-neutral-700 bg-adam-bg-secondary-dark">
-            <div className="flex h-14 shrink-0 items-center gap-2 border-b border-adam-neutral-700 px-4">
-              <div className="min-w-0 flex-1">
-                <ChatTitle
-                  activeMeshId={
-                    sharePreview?.type === 'mesh'
-                      ? sharePreview.meshId
-                      : undefined
-                  }
-                  activeOpenscadCode={
-                    sharePreview?.type === 'artifact'
-                      ? sharePreview.artifact.code
-                      : undefined
-                  }
-                />
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 rounded-md"
-                  >
-                    <Share className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  className="w-96 border-adam-neutral-700 bg-adam-background-1"
-                >
-                  <ShareContent
-                    conversationId={conversation.id}
-                    privacy={conversation.privacy}
-                    onPrivacyChange={updatePrivacy}
-                    meshId={
+            {/* `pl-12` reserves space for the rotated "Chat" expand button
+                that sits in the left gutter when the chat panel is collapsed,
+                so the title and share button don't get covered. Mirrors
+                legacy ChatSection's header padding. */}
+            <div className="flex w-full items-center justify-between bg-transparent p-3 pl-12">
+              <div className="flex min-w-0 flex-1 items-center space-x-2">
+                <div className="min-w-0 flex-1">
+                  <ChatTitle
+                    activeMeshId={
                       sharePreview?.type === 'mesh'
                         ? sharePreview.meshId
                         : undefined
                     }
-                    openscadCode={
+                    activeOpenscadCode={
                       sharePreview?.type === 'artifact'
                         ? sharePreview.artifact.code
                         : undefined
                     }
                   />
-                </PopoverContent>
-              </Popover>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="flex h-8 items-center gap-2 rounded-full px-3 text-adam-text-primary hover:bg-adam-neutral-950 hover:text-adam-neutral-10 focus-visible:ring-0"
+                    >
+                      <Share className="h-[14px] w-[14px] min-w-[14px]" />
+                      <span>Share</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    className="w-72 rounded-xl bg-adam-background-1 p-3"
+                  >
+                    <ShareContent
+                      conversationId={conversation.id}
+                      privacy={conversation.privacy}
+                      onPrivacyChange={updatePrivacy}
+                      meshId={
+                        sharePreview?.type === 'mesh'
+                          ? sharePreview.meshId
+                          : undefined
+                      }
+                      openscadCode={
+                        sharePreview?.type === 'artifact'
+                          ? sharePreview.artifact.code
+                          : undefined
+                      }
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             <ScrollArea className="min-h-0 flex-1 p-4" ref={scrollRef}>
               <div className="mx-auto flex max-w-3xl flex-col gap-4">
-                {currentBranch.map((message) => (
-                  <ModernMessageBubble
-                    key={message.id}
-                    message={message}
-                    isLoading={isLoading}
-                    onSelectLeaf={selectLeaf}
-                    onEditUserText={
-                      message.role === 'user' ? editUserText : undefined
-                    }
-                    onViewArtifact={(artifact) =>
-                      showArtifact(artifact, message.id)
-                    }
-                    onViewMesh={(meshId) => showMesh(meshId, message.id)}
-                  />
-                ))}
+                {currentBranch.map((message, index) => {
+                  const isLastMessage = index === currentBranch.length - 1;
+                  return (
+                    <ModernMessageBubble
+                      key={message.id}
+                      message={message}
+                      isLoading={isLoading}
+                      isLastMessage={isLastMessage}
+                      currentModel={model}
+                      onSelectLeaf={selectLeaf}
+                      onEditUserText={
+                        message.role === 'user' ? editUserText : undefined
+                      }
+                      onViewArtifact={(artifact) =>
+                        showArtifact(artifact, message.id)
+                      }
+                      onViewMesh={(meshId) => showMesh(meshId, message.id)}
+                      onChangeRating={
+                        message.role === 'assistant'
+                          ? (rating) =>
+                              changeRating({
+                                messageId: message.id,
+                                rating,
+                              })
+                          : undefined
+                      }
+                      onRetry={
+                        message.role === 'assistant'
+                          ? (nextModel) =>
+                              void retryFromAssistant(message, nextModel)
+                          : undefined
+                      }
+                      onRestore={
+                        message.role === 'assistant' && !isLastMessage
+                          ? () =>
+                              restoreMessageMutation({
+                                message: {
+                                  role: 'assistant',
+                                  parts: JSON.parse(
+                                    JSON.stringify(message.parts),
+                                  ),
+                                  metadata: JSON.parse(
+                                    JSON.stringify(message.metadata ?? {}),
+                                  ),
+                                  parent_message_id: message.parent_message_id,
+                                },
+                              })
+                          : undefined
+                      }
+                      onUpscale={
+                        message.role === 'assistant'
+                          ? (meshId) =>
+                              upscaleMesh({
+                                meshId,
+                                parentMessageId: message.parent_message_id,
+                              })
+                          : undefined
+                      }
+                    />
+                  );
+                })}
               </div>
             </ScrollArea>
 

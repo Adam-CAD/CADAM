@@ -2,11 +2,21 @@ import { supabase } from '@/lib/supabase';
 import type { AppUIMessage } from '@shared/chatAi';
 import type { Message } from '@shared/types';
 
+/**
+ * Tree-friendly assistant/user message used throughout the chat view.
+ *
+ * `id`, `role`, `parts`, `metadata` come from the AI SDK side (live during
+ * streaming). `parent_message_id` is required because `Tree` builds parent
+ * pointers from it. Everything else (`rating`, `created_at`, `conversation_id`,
+ * legacy content) is DB-only and only present once the row has been persisted
+ * — so it stays optional. Renderers default these fields gracefully
+ * (`message.rating ?? 0`, etc.) instead of relying on placeholders.
+ */
 export type ModernChatMessage = AppUIMessage & {
-  conversation_id: string;
   parent_message_id: string | null;
-  created_at: string;
-  rating: number;
+  conversation_id?: string;
+  created_at?: string;
+  rating?: number;
   isLegacy?: boolean;
   legacyContent?: unknown;
 };
@@ -40,24 +50,6 @@ export function messageRowToModernMessage(message: Message): ModernChatMessage {
     created_at: message.created_at,
     rating: message.rating,
     ...(isLegacy ? { isLegacy: true, legacyContent } : {}),
-  };
-}
-
-export function uiMessageToModernMessage({
-  message,
-  conversationId,
-  parentMessageId,
-}: {
-  message: AppUIMessage;
-  conversationId: string;
-  parentMessageId: string | null;
-}): ModernChatMessage {
-  return {
-    ...message,
-    conversation_id: conversationId,
-    parent_message_id: parentMessageId,
-    created_at: new Date().toISOString(),
-    rating: 0,
   };
 }
 

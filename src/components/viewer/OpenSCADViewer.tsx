@@ -10,7 +10,8 @@ import {
   Mesh,
   MeshStandardMaterial,
 } from 'three';
-import { Loader2, CircleAlert, Wrench } from 'lucide-react';
+import { CircleAlert, Wrench } from 'lucide-react';
+import { AdamLoading } from '@/components/viewer/AdamLoading';
 import { parseColoredOff } from '@/utils/offParser';
 import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
@@ -349,12 +350,11 @@ export function OpenSCADPreview({
         )}
         {isCompiling && (
           <div className="absolute inset-0 flex items-center justify-center bg-adam-neutral-700/30 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="h-6 w-6 animate-spin text-adam-blue" />
-              <p className="text-xs font-medium text-adam-text-primary/70">
-                Compiling...
-              </p>
-            </div>
+            <AdamLoading
+              label="Compiling..."
+              size={56}
+              className="text-adam-text-primary/70"
+            />
           </div>
         )}
       </div>

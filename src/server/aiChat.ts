@@ -7,6 +7,7 @@ import {
   consumeStream,
   generateText,
   Output,
+  smoothStream,
   stepCountIs,
   streamText,
   validateUIMessages,
@@ -62,6 +63,14 @@ type ChatBody = {
   model: Model;
   parentMessageId?: string | null;
   thinking?: boolean;
+  /**
+   * Submitted automatically by `@ai-sdk/react`'s `regenerate()` so we can
+   * distinguish a fresh user turn from a re-roll of an existing assistant.
+   * When `'regenerate-message'`, the last item in `messages` is an
+   * already-persisted user message we must NOT re-upsert (doing so could
+   * clobber its persisted `parent_message_id`).
+   */
+  trigger?: 'submit-message' | 'regenerate-message';
 };
 
 type ConversationAccess = Pick<Conversation, 'id' | 'type' | 'user_id'>;
@@ -74,7 +83,10 @@ function isChatBody(value: unknown): value is ChatBody {
     typeof value.model === 'string' &&
     (value.parentMessageId == null ||
       typeof value.parentMessageId === 'string') &&
-    (value.thinking == null || typeof value.thinking === 'boolean')
+    (value.thinking == null || typeof value.thinking === 'boolean') &&
+    (value.trigger == null ||
+      value.trigger === 'submit-message' ||
+      value.trigger === 'regenerate-message')
   );
 }
 
@@ -323,26 +335,35 @@ export async function handleAiChatRequest(req: Request) {
     apiKey: requiredEnv('OPENROUTER_API_KEY'),
   });
   const parentMessageId = rawBody.parentMessageId ?? null;
+  const isRegenerate = rawBody.trigger === 'regenerate-message';
 
   if (lastMessage.role === 'user') {
-    const { error: userMessageError } = await supabaseClient
-      .from('messages')
-      .upsert({
-        id: lastMessage.id,
-        conversation_id: conversation.id,
-        role: lastMessage.role,
-        metadata: JSON.parse(
-          JSON.stringify({
-            ...(lastMessage.metadata ?? {}),
-            model: rawBody.model,
-          }),
-        ),
-        parts: JSON.parse(JSON.stringify(lastMessage.parts)),
-        parent_message_id: parentMessageId,
-      });
+    // On regenerate, the last message is an already-persisted user message
+    // (the SDK truncates to before the assistant being re-rolled and the
+    // user turn that prompted it is the new tail). We must NOT re-upsert it
+    // here: doing so overwrites its `parent_message_id` with whatever the
+    // client put in the body, which has historically produced self-cycles
+    // that lock the chat-tree `getPath()` walk into an infinite loop.
+    if (!isRegenerate) {
+      const { error: userMessageError } = await supabaseClient
+        .from('messages')
+        .upsert({
+          id: lastMessage.id,
+          conversation_id: conversation.id,
+          role: lastMessage.role,
+          metadata: JSON.parse(
+            JSON.stringify({
+              ...(lastMessage.metadata ?? {}),
+              model: rawBody.model,
+            }),
+          ),
+          parts: JSON.parse(JSON.stringify(lastMessage.parts)),
+          parent_message_id: parentMessageId,
+        });
 
-    if (userMessageError) {
-      return jsonResponse({ error: 'Failed to persist user message' }, 500);
+      if (userMessageError) {
+        return jsonResponse({ error: 'Failed to persist user message' }, 500);
+      }
     }
   } else {
     const { error: assistantMessageError } = await supabaseClient
@@ -414,6 +435,13 @@ export async function handleAiChatRequest(req: Request) {
     stopWhen: stepCountIs(5),
     maxOutputTokens: rawBody.thinking ? 20000 : 16000,
     abortSignal: req.signal,
+    // Decouple our render cadence from the provider's native chunking.
+    // OpenRouter (and the underlying provider) sometimes emits text in
+    // paragraph-sized frames; smoothStream rebuckets the deltas into
+    // word-sized chunks at a steady cadence so the chat panel reads
+    // word-by-word the way the rest of the AI ecosystem does. Default
+    // delay is 10ms — bumped to 30ms for a more readable cadence.
+    experimental_transform: smoothStream({ delayInMs: 30 }),
   });
 
   return result.toUIMessageStreamResponse<AppUIMessage>({

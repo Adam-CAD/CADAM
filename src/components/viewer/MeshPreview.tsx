@@ -8,7 +8,14 @@ import {
 } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Download, Frown, HeartCrack, ChevronDown } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from 'react';
 import * as THREE from 'three';
 import { GLTF, GLTFLoader, GLTFParser } from 'three-stdlib';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
@@ -791,49 +798,56 @@ export function MeshPreview({ meshId }: { meshId: string }) {
           isMobile && 'aspect-square overflow-hidden rounded-lg bg-[#3B3B3B]',
         )}
       >
-        <Canvas
-          gl={{ toneMapping: THREE.NoToneMapping }}
-          style={{
-            width: '100%',
-            height: '100%',
-            touchAction: 'none',
-          }}
-        >
-          <color attach="background" args={['#3B3B3B']} />
-          <PerspectiveCamera
-            makeDefault
-            position={[-1, 1, 1]}
-            fov={45}
-            near={0.1}
-            far={1000}
-            zoom={0.4}
-          />
-          <Environment preset="city" />
-          <Stage
-            environment={null}
-            intensity={brightness / 50}
-            adjustCamera={false}
+        {/* Local Suspense boundary — r3f's <Canvas> rethrows suspension
+            upward when <Environment preset="city" /> or any other asset
+            loader is in flight. Without this boundary the suspension
+            unwinds to <Await> in TanStack's StartClient and tears down
+            the entire app. */}
+        <Suspense fallback={<div className="h-full w-full bg-[#3B3B3B]" />}>
+          <Canvas
+            gl={{ toneMapping: THREE.NoToneMapping }}
+            style={{
+              width: '100%',
+              height: '100%',
+              touchAction: 'none',
+            }}
           >
-            <ambientLight intensity={brightness / 100} />
-            {gltf && (
-              <ModelWithControls
-                gltf={gltf}
-                brightness={brightness}
-                roughness={roughness}
-                normalIntensity={normalIntensity}
-                showTexture={showTexture}
-                wireframe={wireframe}
-                isUpscaled={isUpscaled}
-              />
+            <color attach="background" args={['#3B3B3B']} />
+            <PerspectiveCamera
+              makeDefault
+              position={[-1, 1, 1]}
+              fov={45}
+              near={0.1}
+              far={1000}
+              zoom={0.4}
+            />
+            <Environment preset="city" />
+            <Stage
+              environment={null}
+              intensity={brightness / 50}
+              adjustCamera={false}
+            >
+              <ambientLight intensity={brightness / 100} />
+              {gltf && (
+                <ModelWithControls
+                  gltf={gltf}
+                  brightness={brightness}
+                  roughness={roughness}
+                  normalIntensity={normalIntensity}
+                  showTexture={showTexture}
+                  wireframe={wireframe}
+                  isUpscaled={isUpscaled}
+                />
+              )}
+            </Stage>
+            <OrbitControls makeDefault />
+            {!isMobile && (
+              <GizmoHelper alignment="top-left" margin={[80, 65]}>
+                <GizmoViewcube />
+              </GizmoHelper>
             )}
-          </Stage>
-          <OrbitControls makeDefault />
-          {!isMobile && (
-            <GizmoHelper alignment="top-left" margin={[80, 65]}>
-              <GizmoViewcube />
-            </GizmoHelper>
-          )}
-        </Canvas>
+          </Canvas>
+        </Suspense>
       </div>
 
       {/* Bottom center controls for view mode */}
