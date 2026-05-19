@@ -28,6 +28,5 @@
       "@shared/*": ["./shared/*"]
     }
   },
-  "include": ["src", "shared"],
-  "exclude": ["src/legacy"]
+  "include": ["src", "shared"]
 }

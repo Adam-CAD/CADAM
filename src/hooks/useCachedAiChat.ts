@@ -39,10 +39,13 @@ function touch(id: string) {
 
 function evictIfNeeded() {
   while (chatCache.size > MAX_CACHE_SIZE) {
-    const oldest = chatCache.keys().next().value;
-    if (!oldest) break;
-    chatCache.delete(oldest);
-    callbackRefs.delete(oldest);
+    // Truthy-check the value would treat an empty-string id as iterator-end,
+    // letting the cache grow unbounded. Use `done` instead so any string key
+    // (including '') is correctly evicted.
+    const result = chatCache.keys().next();
+    if (result.done) break;
+    chatCache.delete(result.value);
+    callbackRefs.delete(result.value);
   }
 }
 

@@ -77,7 +77,15 @@ export function OpenSCADGifPreview({
           }
         }
 
-        // Fallback: build a single-color STL mesh.
+        // Fallback: build a single-color STL mesh. If we previously mounted
+        // a colored OFF group, dispose its GPU resources now — otherwise an
+        // OFF→STL transition keeps the prior group's buffers alive until
+        // unmount.
+        if (lastColoredGroupRef.current) {
+          disposeColoredGroup(lastColoredGroupRef.current);
+          lastColoredGroupRef.current = null;
+        }
+
         const arrayBuffer = await stl.arrayBuffer();
         if (stale) return;
 

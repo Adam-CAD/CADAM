@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS "public"."messages" (
     "content" "jsonb",
     "rating" smallint DEFAULT '0'::smallint NOT NULL,
     "parent_message_id" "uuid",
-    CONSTRAINT "messages_role_check" CHECK (("role" = ANY (ARRAY['user'::"text", 'assistant'::"text"])))
+    CONSTRAINT "messages_role_check" CHECK (("role" = ANY (ARRAY['user'::"text", 'assistant'::"text"]))),
+    CONSTRAINT "messages_payload_present" CHECK ((jsonb_array_length("parts") > 0) OR ("content" IS NOT NULL))
 );
 
 

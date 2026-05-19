@@ -46,30 +46,26 @@ export default function parseParameters(script: string): Parameter[] {
   const groupRegex = /^\/\*\s*\[([^\]]+)\]\s*\*\//gm;
 
   // Build a list of source ranges keyed by group, so a `/* [Group] */`
-  // marker influences only the variables declared below it.
-  const groupSections: { id: string; group: string; code: string }[] = [
-    { id: '', group: '', code: script },
+  // marker influences only the variables declared below it. We track each
+  // group's start offset directly off the regex match position — using the
+  // marker text as an id and then `indexOf`-ing it would collide whenever
+  // the same group label appears twice in the source.
+  const groupSections: { startIndex: number; group: string; code: string }[] = [
+    { startIndex: 0, group: '', code: script },
   ];
-  let tmpGroup;
+  let tmpGroup: RegExpExecArray | null;
   while ((tmpGroup = groupRegex.exec(script))) {
     groupSections.push({
-      id: tmpGroup[0],
+      startIndex: tmpGroup.index,
       group: tmpGroup[1].trim(),
       code: '',
     });
   }
   groupSections.forEach((group, index) => {
     const nextGroup = groupSections[index + 1];
-    const startIndex = script.indexOf(group.id);
-    const endIndex = nextGroup ? script.indexOf(nextGroup.id) : script.length;
-    group.code = script.substring(startIndex, endIndex);
+    const endIndex = nextGroup ? nextGroup.startIndex : script.length;
+    group.code = script.substring(group.startIndex, endIndex);
   });
-  if (groupSections.length > 1) {
-    groupSections[0].code = script.substring(
-      0,
-      script.indexOf(groupSections[1].id),
-    );
-  }
 
   groupSections.forEach((groupSection) => {
     let match;
@@ -159,9 +155,13 @@ export default function parseParameters(script: string): Parameter[] {
 
       // Snake_case → Title Case for the visible label. `$fn` gets a
       // special name because OpenSCAD users recognise it as resolution.
+      // Filtering empty tokens guards against names with leading, trailing,
+      // or repeated underscores (e.g. `__width`) producing `word[0]` on an
+      // empty string and crashing.
       let displayName = name
         .replace(/_/g, ' ')
         .split(' ')
+        .filter(Boolean)
         .map((word) => word[0].toUpperCase() + word.slice(1))
         .join(' ');
       if (name === '$fn') displayName = 'Resolution';
@@ -251,7 +251,7 @@ function convertType(rawValue: string): {
       .map((item) => item.trim());
     if (
       arrayValue.length > 0 &&
-      arrayValue.every((item) => /^\d+(\.\d+)?$/.test(item))
+      arrayValue.every((item) => /^-?\d+(\.\d+)?$/.test(item))
     ) {
       return {
         value: arrayValue.map((item) => parseFloat(item)),

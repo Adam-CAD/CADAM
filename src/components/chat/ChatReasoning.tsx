@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Streamdown } from 'streamdown';
+import { cjk } from '@streamdown/cjk';
+import { code } from '@streamdown/code';
+import { math } from '@streamdown/math';
+import { mermaid } from '@streamdown/mermaid';
 import {
   Reasoning,
   ReasoningTrigger,
@@ -7,6 +11,11 @@ import {
 import { CollapsibleContent } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+
+// Mirrors `streamdownPlugins` from ai-elements/reasoning.tsx ReasoningContent
+// so our custom-scrolling body keeps full markdown feature parity (code
+// highlighting, math, mermaid, CJK) instead of regressing to bare Streamdown.
+const streamdownPlugins = { cjk, code, math, mermaid };
 
 interface ChatReasoningProps {
   text: string;
@@ -97,7 +106,9 @@ function ChatReasoningBody({
         ref={scrollRootRef}
         className="w-full pr-3 [&_[data-radix-scroll-area-viewport]]:max-h-72"
       >
-        <Streamdown parseIncompleteMarkdown>{children}</Streamdown>
+        <Streamdown parseIncompleteMarkdown plugins={streamdownPlugins}>
+          {children}
+        </Streamdown>
       </ScrollArea>
     </CollapsibleContent>
   );

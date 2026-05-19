@@ -44,10 +44,9 @@ export const Route = createFileRoute('/api/title-generator')({
           if (!isRecord(body)) {
             return json({ title: 'New Conversation' });
           }
-          const text =
-            typeof body.text === 'string'
-              ? body.text.trim()
-              : textFromParts(body.parts);
+          const trimmedText =
+            typeof body.text === 'string' ? body.text.trim() : '';
+          const text = trimmedText || textFromParts(body.parts);
           if (!text) return json({ title: 'New Conversation' });
 
           const title = await createAnthropicText({

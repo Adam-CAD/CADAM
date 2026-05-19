@@ -5,8 +5,33 @@ import type {
 } from './chatAi.ts';
 import type { ParametricArtifact } from './types.ts';
 
+/**
+ * Narrow an unknown DB jsonb value into the AI SDK's UI part array.
+ *
+ * Every callsite (`messages.parts` from supabase, draft message rows held
+ * in cache, etc.) crosses an untrusted boundary, so a bare
+ * `parts as AppUIMessage['parts']` would let a malformed row or an
+ * upstream SDK shape change crash the renderer before any part-specific
+ * narrowing runs.
+ *
+ * Element-level validation is intentionally minimal: we require each
+ * element to be a non-null object with a string `type` discriminator,
+ * which is what every downstream `switch (part.type)` already keys on.
+ * Beyond that we trust the SDK union — adding a full zod schema for the
+ * dozen+ part shapes would have to be kept in lock-step with the AI SDK
+ * release on every bump, and silently rejected parts (e.g. a new
+ * `source-document`) would degrade messages instead of just rendering
+ * what we know how to render.
+ */
 export function asParametricParts(parts: unknown): AppUIMessage['parts'] {
-  return Array.isArray(parts) ? (parts as AppUIMessage['parts']) : [];
+  if (!Array.isArray(parts)) return [];
+  return parts.filter(
+    (part): part is AppUIMessage['parts'][number] =>
+      typeof part === 'object' &&
+      part !== null &&
+      'type' in part &&
+      typeof (part as { type: unknown }).type === 'string',
+  );
 }
 
 export function getMeshContextPart(

@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
 import { Conversation, ConversationSettings } from '@shared/types';
 import type { AppUIMessage } from '@shared/chatAi';
+import { asParametricParts } from '@shared/parametricParts';
 import { HistoryConversation } from '../types/misc.ts';
 import { ConversationCard } from '@/components/history/ConversationCard';
 import { VisualCard } from '@/components/history/VisualCard';
@@ -475,12 +476,8 @@ export function HistoryView() {
   );
 }
 
-function asParts(parts: unknown): AppUIMessage['parts'] {
-  return Array.isArray(parts) ? (parts as AppUIMessage['parts']) : [];
-}
-
 function textFromParts(parts: unknown) {
-  return asParts(parts)
+  return asParametricParts(parts)
     .filter((part) => part.type === 'text')
     .map((part) => part.text)
     .join('')
@@ -488,12 +485,14 @@ function textFromParts(parts: unknown) {
 }
 
 function imageIdsFromParts(parts: unknown) {
-  return asParts(parts)
+  return asParametricParts(parts)
     .filter(
       (
         part,
       ): part is Extract<AppUIMessage['parts'][number], { type: 'file' }> =>
-        part.type === 'file' && part.mediaType.startsWith('image/'),
+        part.type === 'file' &&
+        typeof part.mediaType === 'string' &&
+        part.mediaType.startsWith('image/'),
     )
     .map((part) => part.filename?.replace(/\.[^.]+$/, '') ?? '')
     .filter(Boolean);

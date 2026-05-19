@@ -1,11 +1,6 @@
 import { tool, type InferUITools, type UIMessage } from 'ai';
 import { z } from 'zod';
 import type { MeshFileType, Model } from './types.ts';
-import { parametricArtifactSchema } from './parametricSchema.ts';
-export {
-  parameterSchema,
-  parametricArtifactSchema,
-} from './parametricSchema.ts';
 
 export const createMeshInputSchema = z.object({
   text: z.string().optional(),
@@ -19,6 +14,12 @@ export const createMeshInputSchema = z.object({
 export const createMeshOutputSchema = z.object({
   id: z.string(),
   fileType: z.enum(['glb', 'stl', 'obj', 'fbx']),
+});
+
+export const parametricArtifactSchema = z.object({
+  title: z.string().min(1),
+  version: z.string().default('v1'),
+  code: z.string().min(20),
 });
 
 export const parametricCompileOutputSchema = z.object({

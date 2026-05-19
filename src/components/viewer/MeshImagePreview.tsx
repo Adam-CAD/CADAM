@@ -52,14 +52,20 @@ export function MeshImagePreview({ meshId }: { meshId: string }) {
     );
   }
 
-  if (!meshPreview) {
-    return null;
-  }
-
   return (
     <div className="overflow-hidden rounded-lg">
-      <div className="relative aspect-square w-full bg-adam-neutral-950">
-        <img src={meshPreview} alt="" className="h-full w-full object-cover" />
+      <div
+        className={`relative aspect-square w-full bg-adam-neutral-950 ${
+          meshPreview ? '' : 'animate-pulse'
+        }`}
+      >
+        {meshPreview ? (
+          <img
+            src={meshPreview}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : null}
       </div>
       <div className="flex h-10 w-full items-center gap-2 bg-black/80 px-3">
         <Box className="h-4 w-4 text-white" />

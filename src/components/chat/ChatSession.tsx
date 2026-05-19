@@ -194,32 +194,89 @@ export function ChatSession({
       };
     }) => {
       if (toolCall.toolName !== 'build_parametric_model') return;
-      const input = isParametricArtifact(toolCall.input)
-        ? toolCall.input
-        : null;
       const chat = chatRef.current;
       if (!chat) return;
 
-      // Find the assistant message that owns this toolCallId so we can
-      // compute its next parts and tell the parent which row to UPDATE.
-      const assistant = messagesRef.current.find(
-        (msg) =>
-          msg.role === 'assistant' &&
-          msg.parts.some(
-            (p) =>
-              p.type === 'tool-build_parametric_model' &&
-              p.toolCallId === toolCall.toolCallId,
-          ),
-      );
-      if (!assistant) return;
+      // Prefer the SDK's live `chat.messages` — it's always current.
+      // `messagesRef.current` is a React-mirrored copy that lags one
+      // commit behind, and onToolCall can fire before that commit lands.
+      const findAssistant = (msgs: readonly AppUIMessage[]) =>
+        msgs.find(
+          (msg) =>
+            msg.role === 'assistant' &&
+            msg.parts.some(
+              (p) =>
+                p.type === 'tool-build_parametric_model' &&
+                p.toolCallId === toolCall.toolCallId,
+            ),
+        );
+      const assistant =
+        findAssistant(chat.messages as AppUIMessage[]) ??
+        findAssistant(messagesRef.current);
 
-      if (!input) {
+      // Build the next parts array for `assistant`, replacing the
+      // matching tool part with `replacement` and normalising any
+      // streaming reasoning/text to `done` (some providers skip the
+      // closing chunk; persisting an intermediate snapshot leaves the
+      // UI showing "Thinking..." on refresh).
+      const buildNextParts = (
+        replacement: AppUIMessage['parts'][number],
+      ): AppUIMessage['parts'] | null => {
+        if (!assistant) return null;
+        return assistant.parts.map((existing) => {
+          if (
+            existing.type === 'tool-build_parametric_model' &&
+            existing.toolCallId === toolCall.toolCallId
+          ) {
+            return replacement;
+          }
+          if (
+            (existing.type === 'reasoning' || existing.type === 'text') &&
+            existing.state === 'streaming'
+          ) {
+            return { ...existing, state: 'done' as const };
+          }
+          return existing;
+        }) as AppUIMessage['parts'];
+      };
+
+      // Always finish the tool — both in memory (spinner clears, SDK
+      // can auto-continue) and on disk (refresh doesn't resurrect the
+      // stuck `input-available` state, which would break every
+      // subsequent send because the server can't continue a
+      // conversation with an unresolved tool call).
+      const finishWithError = async (errorText: string) => {
         chat.addToolOutput({
           state: 'output-error',
           tool: 'build_parametric_model',
           toolCallId: toolCall.toolCallId,
-          errorText: 'CAD tool input was not a valid OpenSCAD artifact.',
+          errorText,
         });
+        if (!assistant) return;
+        const errorPart = {
+          type: 'tool-build_parametric_model',
+          toolCallId: toolCall.toolCallId,
+          state: 'output-error',
+          input: toolCall.input,
+          errorText,
+        } as AppUIMessage['parts'][number];
+        const nextParts = buildNextParts(errorPart);
+        if (!nextParts) return;
+        try {
+          await onToolOutput(assistant.id, nextParts);
+        } catch (persistError) {
+          console.warn('Failed to persist tool error to DB:', persistError);
+        }
+      };
+
+      const input = isParametricArtifact(toolCall.input)
+        ? toolCall.input
+        : null;
+
+      if (!input) {
+        await finishWithError(
+          'CAD tool input was not a valid OpenSCAD artifact.',
+        );
         return;
       }
 
@@ -265,42 +322,21 @@ export function ChatSession({
             'Compilation successful. The 3D model is now displayed to the user.',
         };
 
-        // Build the assistant's next `parts` array — same transformation
-        // `addToolOutput` will apply locally — and persist it before
-        // calling `addToolOutput`. Auto-resubmit then reads the updated
-        // row from DB.
-        //
-        // Also normalise any `state: 'streaming'` part (reasoning / text)
-        // to `'done'`. Some providers don't emit the closing chunk that
-        // the SDK uses to transition states, and if we persist that
-        // intermediate snapshot the UI keeps showing "Thinking..." on
-        // the next page load. Same fix lives on the server's
-        // onFinish — applied here too because this code path PERSISTS
-        // chat state directly without going through onFinish.
-        const nextParts = assistant.parts.map((existing) => {
-          if (
-            existing.type !== 'tool-build_parametric_model' ||
-            existing.toolCallId !== toolCall.toolCallId
-          ) {
-            if (
-              (existing.type === 'reasoning' || existing.type === 'text') &&
-              existing.state === 'streaming'
-            ) {
-              return { ...existing, state: 'done' as const };
-            }
-            return existing;
-          }
-          return {
-            ...existing,
-            state: 'output-available' as const,
-            output,
-          };
-        }) as AppUIMessage['parts'];
+        const successPart = {
+          type: 'tool-build_parametric_model',
+          toolCallId: toolCall.toolCallId,
+          state: 'output-available',
+          input,
+          output,
+        } as AppUIMessage['parts'][number];
+        const nextParts = buildNextParts(successPart);
 
-        try {
-          await onToolOutput(assistant.id, nextParts);
-        } catch (persistError) {
-          console.warn('Failed to persist tool output to DB:', persistError);
+        if (nextParts && assistant) {
+          try {
+            await onToolOutput(assistant.id, nextParts);
+          } catch (persistError) {
+            console.warn('Failed to persist tool output to DB:', persistError);
+          }
         }
 
         chat.addToolOutput({
@@ -309,12 +345,9 @@ export function ChatSession({
           output,
         });
       } catch (error) {
-        chat.addToolOutput({
-          state: 'output-error',
-          tool: 'build_parametric_model',
-          toolCallId: toolCall.toolCallId,
-          errorText: `Compilation failed:\n${error instanceof Error ? error.message : String(error)}`,
-        });
+        await finishWithError(
+          `Compilation failed:\n${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     },
     [conversation.id, previewScadColored, onToolOutput, user?.id],
@@ -418,6 +451,65 @@ export function ChatSession({
     chatRef.current = chat;
     messagesRef.current = messages;
   }, [chat, messages]);
+
+  // Load-time recovery for tool parts that never finished in a previous
+  // session. If the last assistant in DB has a `tool-build_parametric_model`
+  // stuck at `input-streaming` / `input-available`, the UI shows a perma-
+  // spinner AND every subsequent send 500s because the server can't
+  // continue a conversation with an unresolved tool call. Rewrite to
+  // `output-error` so the chat is in a valid state — the user can retry
+  // or send a new message. Use setMessages (not addToolOutput) so we
+  // don't trigger an unwanted auto-resubmit on load.
+  const recoveredChatRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (recoveredChatRef.current === chat) return;
+    recoveredChatRef.current = chat;
+
+    const stuckByMessageId = new Map<string, AppUIMessage['parts']>();
+    for (const msg of chat.messages as AppUIMessage[]) {
+      if (msg.role !== 'assistant') continue;
+      let dirty = false;
+      const nextParts = msg.parts.map((p) => {
+        if (
+          p.type === 'tool-build_parametric_model' &&
+          (p.state === 'input-streaming' || p.state === 'input-available')
+        ) {
+          dirty = true;
+          return {
+            ...p,
+            state: 'output-error' as const,
+            errorText:
+              'Tool execution did not complete in the previous session.',
+          };
+        }
+        if (
+          (p.type === 'reasoning' || p.type === 'text') &&
+          p.state === 'streaming'
+        ) {
+          dirty = true;
+          return { ...p, state: 'done' as const };
+        }
+        return p;
+      }) as AppUIMessage['parts'];
+      if (dirty) stuckByMessageId.set(msg.id, nextParts);
+    }
+
+    if (stuckByMessageId.size === 0) return;
+
+    setMessages(
+      (chat.messages as AppUIMessage[]).map((msg) =>
+        stuckByMessageId.has(msg.id)
+          ? { ...msg, parts: stuckByMessageId.get(msg.id)! }
+          : msg,
+      ),
+    );
+
+    for (const [messageId, nextParts] of stuckByMessageId) {
+      void onToolOutput(messageId, nextParts).catch((err) => {
+        console.warn('Failed to persist stuck-tool recovery:', err);
+      });
+    }
+  }, [chat, onToolOutput, setMessages]);
 
   const isLoading = status === 'submitted' || status === 'streaming';
 

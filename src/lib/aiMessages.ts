@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { AppUIMessage } from '@shared/chatAi';
+import { asParametricParts } from '@shared/parametricParts';
 import type { Message } from '@shared/types';
 
 /**
@@ -31,16 +32,12 @@ export function messageRowToUIMessage(message: Message): AppUIMessage {
       !Array.isArray(message.metadata)
         ? message.metadata
         : {},
-    parts: Array.isArray(message.parts)
-      ? (message.parts as AppUIMessage['parts'])
-      : [],
+    parts: asParametricParts(message.parts),
   };
 }
 
 export function messageRowToChatMessage(message: Message): ChatMessage {
-  const parts = Array.isArray(message.parts)
-    ? (message.parts as AppUIMessage['parts'])
-    : [];
+  const parts = asParametricParts(message.parts);
   const legacyContent = (message as Message & { content?: unknown }).content;
   const isLegacy = parts.length === 0 && legacyContent != null;
   return {

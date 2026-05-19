@@ -39,12 +39,12 @@ export function logError(
 ) {
   const serialized = serializeError(error);
   const payload = {
+    ...context.additionalContext,
     fn: context.functionName,
     status: context.statusCode,
     userId: context.userId,
     conversationId: context.conversationId,
     error: serialized,
-    ...context.additionalContext,
   };
 
   // Two writes on purpose:

@@ -35,8 +35,10 @@ import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { usePreview } from '@/hooks/usePreview';
 import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
 import { useQuery } from '@tanstack/react-query';
-import { getBuildParametricModelOutput } from '@shared/parametricParts';
-import type { AppUIMessage } from '@shared/chatAi';
+import {
+  asParametricParts,
+  getBuildParametricModelOutput,
+} from '@shared/parametricParts';
 import type { MeshFileType } from '@shared/types';
 
 interface VisualCardProps {
@@ -256,15 +258,11 @@ export function VisualCard({
   );
 }
 
-function asParts(parts: unknown): AppUIMessage['parts'] {
-  return Array.isArray(parts) ? (parts as AppUIMessage['parts']) : [];
-}
-
 function findLatestVisualPreview(
   parts: unknown,
   messageId: string,
 ): VisualPreview {
-  const messageParts = asParts(parts);
+  const messageParts = asParametricParts(parts);
   for (let index = messageParts.length - 1; index >= 0; index -= 1) {
     const part = messageParts[index];
     if (part.type === 'tool-create_mesh' && part.state === 'output-available') {

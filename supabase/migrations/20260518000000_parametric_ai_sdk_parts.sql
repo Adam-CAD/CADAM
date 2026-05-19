@@ -229,5 +229,36 @@ WHERE c.id = m.conversation_id
 ALTER TABLE public.messages
 ALTER COLUMN content DROP NOT NULL;
 
+-- With `content` now nullable and `parts` defaulting to `[]`, an INSERT
+-- that supplies neither would land as a record with no actual payload.
+-- Require at least one populated payload column.
+ALTER TABLE public.messages
+DROP CONSTRAINT IF EXISTS messages_payload_present;
+
+ALTER TABLE public.messages
+ADD CONSTRAINT messages_payload_present
+CHECK (jsonb_array_length(parts) > 0 OR content IS NOT NULL);
+
 ALTER TABLE public.conversations
 DROP COLUMN IF EXISTS legacy;
+
+-- Atomic write for `conversations.settings.suggestions`. The chat server
+-- previously read settings, merged the new suggestions array client-side,
+-- and wrote the whole object back — which under concurrent assistant
+-- turns (e.g. two parallel branches finishing close together) could
+-- silently drop the other update. `jsonb_set` runs in one statement so
+-- only the `suggestions` key is touched and other settings (model, etc.)
+-- stay intact.
+CREATE OR REPLACE FUNCTION public.set_conversation_suggestions(
+  p_conversation_id uuid,
+  p_suggestions jsonb
+) RETURNS void LANGUAGE sql VOLATILE SECURITY INVOKER AS $$
+  UPDATE public.conversations
+  SET settings = jsonb_set(
+    COALESCE(settings, '{}'::jsonb),
+    '{suggestions}',
+    p_suggestions,
+    true
+  )
+  WHERE id = p_conversation_id;
+$$;
