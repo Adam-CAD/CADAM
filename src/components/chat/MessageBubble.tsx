@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import type { ModernChatMessage } from '@/lib/aiMessages';
+import type { ChatMessage } from '@/lib/aiMessages';
 import type { ParametricArtifact } from '@shared/types';
 import type { TreeNode } from '@shared/Tree';
 import { isParametricArtifact } from '@shared/parametricParts';
@@ -47,13 +47,13 @@ import type { Model } from '@shared/types';
 import { useConversation } from '@/contexts/ConversationContext';
 import { useMeshData } from '@/hooks/useMeshData';
 
-type ModernMessageBubbleProps = {
-  message: TreeNode<ModernChatMessage>;
+type MessageBubbleProps = {
+  message: TreeNode<ChatMessage>;
   isLoading: boolean;
   isLastMessage?: boolean;
   currentModel?: Model;
   onSelectLeaf?: (messageId: string) => void;
-  onEditUserText?: (message: ModernChatMessage, text: string) => void;
+  onEditUserText?: (message: ChatMessage, text: string) => void;
   onViewArtifact?: (artifact: ParametricArtifact) => void;
   onViewMesh?: (meshId: string) => void;
   onChangeRating?: (rating: number) => void;
@@ -62,7 +62,7 @@ type ModernMessageBubbleProps = {
   onUpscale?: (meshId: string) => void;
 };
 
-export function ModernMessageBubble(props: ModernMessageBubbleProps) {
+export function MessageBubble(props: MessageBubbleProps) {
   return props.message.role === 'user' ? (
     <UserBubble {...props} />
   ) : (
@@ -75,7 +75,7 @@ function UserBubble({
   isLoading,
   onSelectLeaf,
   onEditUserText,
-}: ModernMessageBubbleProps) {
+}: MessageBubbleProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -344,7 +344,7 @@ function AssistantBubble({
   onRetry,
   onRestore,
   onUpscale,
-}: ModernMessageBubbleProps) {
+}: MessageBubbleProps) {
   const { conversation } = useConversation();
   const modelOptions =
     conversation.type === 'creative' ? CREATIVE_MODELS : PARAMETRIC_MODELS;
@@ -401,7 +401,7 @@ function AssistantBubble({
         <Avatar className="h-9 w-9 border border-adam-neutral-700 bg-adam-neutral-950">
           <div style={{ padding: '0.6rem 0.5rem 0.5rem 0.55rem' }}>
             <AvatarImage
-              src={`${import.meta.env.BASE_URL}adam-logo.svg`}
+              src={`${import.meta.env.BASE_URL}/adam-logo.svg`}
               alt="Adam"
             />
           </div>

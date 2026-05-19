@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Parameter, ParametricPart } from './types.ts';
+import type { Parameter } from './types.ts';
 
 const parameterValueSchema = z.union([
   z.string(),
@@ -41,24 +41,8 @@ export const parameterSchema: z.ZodType<Parameter> = z.object({
   maxLength: z.number().optional(),
 });
 
-export const parametricPartSchema: z.ZodType<ParametricPart> = z.object({
-  id: z
-    .string()
-    .regex(/^[a-z][a-z0-9_]*$/)
-    .describe('Stable snake_case identifier for this part.'),
-  displayName: z.string().min(1),
-  description: z.string().min(1),
-  colorParameter: z.string().optional(),
-  parameterNames: z
-    .array(z.string())
-    .describe('Exact parameter names that control this part.'),
-});
-
 export const parametricArtifactSchema = z.object({
   title: z.string().min(1),
   version: z.string().default('v1'),
   code: z.string().min(20),
-  parameters: z.array(parameterSchema),
-  parts: z.array(parametricPartSchema).optional(),
-  suggestions: z.array(z.string()).optional(),
 });

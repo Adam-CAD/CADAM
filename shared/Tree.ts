@@ -52,9 +52,22 @@ class Tree<T extends TreeElement> {
 
   getPath(id: string): TreeNode<T>[] {
     const path: TreeNode<T>[] = [];
+    // Visited-set defense against `parent_message_id` cycles in the data
+    // (e.g. a row that points at itself). Without this guard `getPath`
+    // walks the chain forever and locks the entire UI. The server contract
+    // shouldn't allow cycles to land in the DB, but the tree is rendered
+    // straight from a Supabase query so we treat it as untrusted.
+    const visited = new Set<string>();
     let currentNode = this.allNodes.get(id);
 
     while (currentNode) {
+      if (visited.has(currentNode.id)) {
+        console.warn(
+          `[Tree.getPath] cycle detected at message ${currentNode.id} — truncating walk`,
+        );
+        break;
+      }
+      visited.add(currentNode.id);
       path.unshift(currentNode);
       if (currentNode.parent) {
         currentNode = currentNode.parent;

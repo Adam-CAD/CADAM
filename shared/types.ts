@@ -39,17 +39,6 @@ export type ParametricArtifact = {
   title: string;
   version: string;
   code: string;
-  parameters: Parameter[];
-  parts?: ParametricPart[];
-  suggestions?: string[];
-};
-
-export type ParametricPart = {
-  id: string;
-  displayName: string;
-  description: string;
-  colorParameter?: string;
-  parameterNames: string[];
 };
 
 export type ParameterOption = { value: string | number; label: string };
@@ -89,6 +78,13 @@ export type GenerationStatus = Database['public']['Enums']['generation-status'];
 
 export type ConversationSettings = {
   model?: Model;
+  /**
+   * Per-conversation follow-up suggestions rendered as pills above the
+   * chat input. Regenerated server-side after each non-tool-call
+   * assistant turn — see `emitConversationSuggestions` in
+   * `src/server/aiChat.ts`.
+   */
+  suggestions?: string[];
 } | null;
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];

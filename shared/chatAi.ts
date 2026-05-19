@@ -5,7 +5,6 @@ import { parametricArtifactSchema } from './parametricSchema.ts';
 export {
   parameterSchema,
   parametricArtifactSchema,
-  parametricPartSchema,
 } from './parametricSchema.ts';
 
 export const createMeshInputSchema = z.object({
@@ -57,9 +56,32 @@ export type MeshPreferencesData = {
   polygonCount: number;
 };
 
+/**
+ * Conversation-level signals the server emits as transient stream parts
+ * (`writer.write({ transient: true, type: 'data-X', data })`). Transient
+ * parts never land in `messages.parts` — they're side-channel updates the
+ * client folds straight into the conversation query cache.
+ *
+ *  * `title-update`    fires once when the server generates a title for
+ *    a fresh conversation; client updates `conversations.title`.
+ *  * `suggestions-update` fires after each assistant turn finishes;
+ *    client updates `conversations.settings.suggestions` so the pills
+ *    below the input refresh in lock-step with the response.
+ */
+export type ConversationTitleUpdate = {
+  conversationId: string;
+  title: string;
+};
+export type ConversationSuggestionsUpdate = {
+  conversationId: string;
+  suggestions: string[];
+};
+
 export type AppDataTypes = {
   'mesh-context': MeshContextData;
   'mesh-preferences': MeshPreferencesData;
+  'title-update': ConversationTitleUpdate;
+  'suggestions-update': ConversationSuggestionsUpdate;
 };
 
 export const meshContextDataSchema = z.object({

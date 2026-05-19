@@ -26,6 +26,7 @@ import {
 import { createAndCacheAiChat } from '@/hooks/useCachedAiChat';
 import type { AppUIMessage } from '@shared/chatAi';
 import { ensureInputRecords } from '@/lib/aiMessages';
+import { persistUserMessage } from '@/services/messageService';
 
 const EXTENSION_PILLS = [
   {
@@ -161,7 +162,19 @@ export function PromptView() {
         userId: user.id,
       });
       if (parts.length === 0) throw new Error('No message parts to send');
-      const userMessageId = crypto.randomUUID();
+
+      // Persist the user message before kicking off the chat. The
+      // `update_leaf_trigger` on `public.messages` advances the
+      // conversation's `current_message_leaf_id` to this row, which is
+      // what the server-side chat handler walks to build the model
+      // branch — so the row has to land first.
+      const userMessageId = await persistUserMessage({
+        conversationId: conversation.id,
+        parts,
+        metadata: { model },
+        parentMessageId: null,
+      });
+
       const chat = createAndCacheAiChat({
         id: conversation.id,
         generateId: () => crypto.randomUUID(),
@@ -170,7 +183,6 @@ export function PromptView() {
           api: apiUrl(
             type === 'creative' ? 'creative-chat' : 'parametric-chat',
           ),
-          body: { conversationId: conversation.id, model },
           headers: async (): Promise<Record<string, string>> => {
             const accessToken = (await supabase.auth.getSession()).data.session
               ?.access_token;
@@ -178,23 +190,18 @@ export function PromptView() {
             if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
             return headers;
           },
-        }),
-        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
-      });
-      const token = (await supabase.auth.getSession()).data.session
-        ?.access_token;
-      void chat
-        .sendMessage(
-          { id: userMessageId, parts, metadata: { model } },
-          {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          prepareSendMessagesRequest: ({ body }) => ({
             body: {
               conversationId: conversation.id,
               model,
-              parentMessageId: null,
+              ...(body ?? {}),
             },
-          },
-        )
+          }),
+        }),
+        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+      });
+      void chat
+        .sendMessage({ id: userMessageId, parts, metadata: { model } })
         .catch((error) => {
           Sentry.captureException(error, {
             extra: {

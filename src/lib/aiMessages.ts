@@ -12,7 +12,7 @@ import type { Message } from '@shared/types';
  * — so it stays optional. Renderers default these fields gracefully
  * (`message.rating ?? 0`, etc.) instead of relying on placeholders.
  */
-export type ModernChatMessage = AppUIMessage & {
+export type ChatMessage = AppUIMessage & {
   parent_message_id: string | null;
   conversation_id?: string;
   created_at?: string;
@@ -37,7 +37,7 @@ export function messageRowToUIMessage(message: Message): AppUIMessage {
   };
 }
 
-export function messageRowToModernMessage(message: Message): ModernChatMessage {
+export function messageRowToChatMessage(message: Message): ChatMessage {
   const parts = Array.isArray(message.parts)
     ? (message.parts as AppUIMessage['parts'])
     : [];

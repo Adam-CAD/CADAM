@@ -105,10 +105,10 @@ export function isParametricArtifact(
     return false;
   }
   const artifact = value as Partial<ParametricArtifact>;
+  // Title + code are the only load-bearing fields. `version` is metadata
+  // and `parts` is optional. Parameters are derived client-side from
+  // `code` via `parseParameters` so we don't check for them here either.
   return (
-    typeof artifact.title === 'string' &&
-    typeof artifact.version === 'string' &&
-    typeof artifact.code === 'string' &&
-    Array.isArray(artifact.parameters)
+    typeof artifact.title === 'string' && typeof artifact.code === 'string'
   );
 }

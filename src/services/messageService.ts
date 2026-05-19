@@ -1,8 +1,68 @@
 import { useConversation } from '@/contexts/ConversationContext';
 import { supabase } from '@/lib/supabase';
 import { apiUrl } from '@/services/api';
+import type { AppUIMessage } from '@shared/chatAi';
 import type { Conversation, Message } from '@shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+/**
+ * Insert a new user message into the conversation. The `update_leaf_trigger`
+ * on `public.messages` automatically advances
+ * `conversations.current_message_leaf_id` to the inserted row's id, which
+ * is what the server-side chat handler walks to build the branch — so a
+ * single INSERT is sufficient to set up the next generation request.
+ *
+ * Returns the new id so the caller can re-use it for the optimistic
+ * `useChat` user bubble (keeping the local-state id and the DB id in
+ * sync prevents a duplicate-render flash when the messages query
+ * refetches after the stream completes).
+ */
+export async function persistUserMessage({
+  conversationId,
+  parts,
+  metadata,
+  parentMessageId,
+}: {
+  conversationId: string;
+  parts: AppUIMessage['parts'];
+  metadata: AppUIMessage['metadata'];
+  parentMessageId: string | null;
+}): Promise<string> {
+  const id = crypto.randomUUID();
+  const { error } = await supabase.from('messages').insert({
+    id,
+    conversation_id: conversationId,
+    role: 'user',
+    parts: JSON.parse(JSON.stringify(parts)),
+    metadata: JSON.parse(JSON.stringify(metadata ?? {})),
+    parent_message_id: parentMessageId,
+  });
+  if (error) throw error;
+  return id;
+}
+
+/**
+ * Persist updated `parts` on an existing assistant row. Used after the
+ * client compiles a `build_parametric_model` tool call locally — we need
+ * the DB row to reflect the completed tool output before the server reads
+ * the leaf and continues the stream.
+ */
+export async function persistAssistantParts({
+  conversationId,
+  messageId,
+  parts,
+}: {
+  conversationId: string;
+  messageId: string;
+  parts: AppUIMessage['parts'];
+}) {
+  const { error } = await supabase
+    .from('messages')
+    .update({ parts: JSON.parse(JSON.stringify(parts)) })
+    .eq('id', messageId)
+    .eq('conversation_id', conversationId);
+  if (error) throw error;
+}
 
 export const useMessagesQuery = () => {
   const { conversation } = useConversation();

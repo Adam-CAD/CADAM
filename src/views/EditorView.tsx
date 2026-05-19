@@ -1,32 +1,74 @@
+import { ChatTitle } from '@/components/chat/ChatTitle';
+import { ChatSession } from '@/components/chat/ChatSession';
+import { ParameterSection } from '@/components/parameter/ParameterSection';
+import { Button } from '@/components/ui/button';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { ShareContent } from '@/components/ui/ShareContent';
+import { OpenSCADPreview } from '@/components/viewer/OpenSCADViewer';
+import { MeshPreview } from '@/components/viewer/MeshPreview';
+import { useAuth } from '@/contexts/AuthContext';
+import { ConversationContext } from '@/contexts/ConversationContext';
+import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
+import { useConversation } from '@/contexts/ConversationContext';
+import {
+  ensureInputRecords,
+  messageRowToChatMessage,
+  type ChatMessage,
+} from '@/lib/aiMessages';
+import parseParameters from '@shared/parseParameters';
 import { supabase } from '@/lib/supabase';
+import { updateParameter } from '@/lib/utils';
+import {
+  persistAssistantParts,
+  persistUserMessage,
+  useChangeRatingMutation,
+  useMessagesQuery,
+  useUpscaleMutation,
+} from '@/services/messageService';
+import type { DxfExporter } from '@/utils/downloadUtils';
+import type { AppUIMessage } from '@shared/chatAi';
+import { isParametricArtifact } from '@shared/parametricParts';
+import Tree from '@shared/Tree';
+import type {
+  Conversation,
+  Message,
+  Model,
+  Parameter,
+  ParametricArtifact,
+} from '@shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { useAuth } from '@/contexts/AuthContext';
-import { Loader2 } from 'lucide-react';
-import { ModernConversationView } from './ModernConversationView';
-import { ConversationContext } from '@/contexts/ConversationContext';
-import { Conversation } from '@shared/types';
-import { MessageItem } from '../types/misc.ts';
-import { useEffect, useState } from 'react';
-import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
+import { Loader2, Share } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MessageItem } from '../types/misc.ts';
+import { ConversationView } from './ConversationView';
 
+/**
+ * Route-level entry for `/editor/$id`.
+ *
+ * Owns the conversation fetch + auth gate + provider wiring. The actual
+ * editor logic lives inside `<ConversationEditor>` which assumes the
+ * conversation is loaded and the contexts are mounted.
+ */
 export default function EditorView() {
   const { id: conversationId } = useParams({
     from: '/_layout/_auth/editor/$id',
   });
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [images, setImages] = useState<MessageItem[]>([]);
   const [mesh, setMesh] = useState<MessageItem | null>(null);
-  const navigate = useNavigate();
 
   const { data: conversation, isLoading: isConversationLoading } = useQuery({
     queryKey: ['conversation', conversationId],
     enabled: !!conversationId,
     queryFn: async () => {
-      if (!conversationId) {
-        throw new Error('Conversation ID is required');
-      }
+      if (!conversationId) throw new Error('Conversation ID is required');
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
@@ -34,11 +76,7 @@ export default function EditorView() {
         .eq('user_id', user?.id ?? '')
         .limit(1)
         .single();
-
-      if (error) {
-        throw error;
-      }
-
+      if (error) throw error;
       return data as Conversation;
     },
   });
@@ -53,11 +91,7 @@ export default function EditorView() {
           .select()
           .single()
           .overrideTypes<Conversation>();
-
-        if (error) {
-          throw error;
-        }
-
+        if (error) throw error;
         return data;
       },
       onMutate(conversation) {
@@ -75,9 +109,7 @@ export default function EditorView() {
         queryClient.invalidateQueries({
           queryKey: ['conversation', conversationId],
         });
-        queryClient.invalidateQueries({
-          queryKey: ['conversations'],
-        });
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
       },
       onError(_error, conversation, context) {
         queryClient.setQueryData(
@@ -88,9 +120,7 @@ export default function EditorView() {
     });
 
   useEffect(() => {
-    if (!conversationId) {
-      navigate({ to: '/' });
-    }
+    if (!conversationId) navigate({ to: '/' });
   }, [conversationId, navigate]);
 
   if (isConversationLoading) {
@@ -112,22 +142,522 @@ export default function EditorView() {
 
   return (
     <ConversationContext.Provider
-      value={{
-        conversation,
-        updateConversation,
-        updateConversationAsync,
-      }}
+      value={{ conversation, updateConversation, updateConversationAsync }}
     >
       <SelectedItemsContext.Provider
         value={{ images, setImages, mesh, setMesh }}
       >
-        {/* `ModernConversationView` resets activePreview/parameters/etc.
-            internally via an effect keyed on conversation.id — we deliberately
-            avoid `key={conversation.id}` here because TanStack Router's lazy
-            Outlet resolves async and would otherwise discard the keyed subtree
-            mid-hydration, causing a tree-wide remount cycle. */}
-        <ModernConversationView />
+        {/* `key` forces a full remount whenever the conversation changes,
+            so all per-conversation state inside the editor (active
+            preview, parameter values, model selector, dxf exporter, etc.)
+            reinitialises naturally instead of needing a manual reset
+            effect that would race with `ChatSession`'s auto-switch. */}
+        <ConversationEditor key={conversation.id} />
       </SelectedItemsContext.Provider>
     </ConversationContext.Provider>
   );
+}
+
+type ActivePreview =
+  | { type: 'artifact'; messageId: string; artifact: ParametricArtifact }
+  | { type: 'mesh'; messageId: string; meshId: string }
+  | null;
+
+/**
+ * Owns the DB/tree layer for the editor: builds the tree from
+ * `useMessagesQuery`, derives the visible branch from the conversation's
+ * `current_message_leaf_id`, holds preview/parameter UI state, and
+ * implements the action handlers that translate user intent into the right
+ * DB writes (`persistUserMessage`, `updateConversationAsync`, etc.).
+ *
+ * The handlers return whatever data `<ChatSession>` needs to keep its
+ * `useChat` state in sync after the write lands. That keeps the
+ * DB-vs-SDK ordering explicit: parent persists, then child streams.
+ */
+function ConversationEditor() {
+  const { conversation, updateConversation, updateConversationAsync } =
+    useConversation();
+  const { user, billing } = useAuth();
+  const queryClient = useQueryClient();
+  const totalTokens = billing?.tokens.total ?? 0;
+
+  // ── Per-conversation UI state ───────────────────────────────────────────
+  const [model, setModel] = useState<Model>(
+    conversation.settings?.model ??
+      (conversation.type === 'creative'
+        ? 'quality'
+        : 'google/gemini-3.1-pro-preview'),
+  );
+  const [activePreview, setActivePreview] = useState<ActivePreview>(null);
+  const [parameters, setParameters] = useState<Parameter[]>([]);
+  const [currentOutput, setCurrentOutput] = useState<Blob | undefined>();
+  const [dxfExporter, setDxfExporter] = useState<DxfExporter | null>(null);
+  const baseCodeRef = useRef<string | null>(null);
+
+  // `dxfExporter` is itself a function, so we MUST use the lazy-set form
+  // when OpenSCADPreview hands us a new exporter — `setDxfExporter(fn)`
+  // would make React treat the function as an updater and call it
+  // immediately, which fires `exportScad`/`writeFile` and queues
+  // requests onto the worker that get rejected as "Worker terminated"
+  // on the next cleanup.
+  const handleDxfExporterChange = useCallback(
+    (exporter: DxfExporter | null) => {
+      setDxfExporter(() => exporter);
+    },
+    [],
+  );
+
+  // ── Source of truth: DB messages → tree → branch ───────────────────────
+  const { data: dbMessages = [], isFetched: areMessagesFetched } =
+    useMessagesQuery();
+  const chatMessages = useMemo(
+    () => dbMessages.map(messageRowToChatMessage),
+    [dbMessages],
+  );
+  const dbTree = useMemo(() => new Tree(chatMessages), [chatMessages]);
+  const branchForLeaf = useCallback(
+    (leafId: string): AppUIMessage[] =>
+      dbTree.getPath(leafId).map((node) => ({
+        id: node.id,
+        role: node.role,
+        parts: node.parts,
+        metadata: node.metadata,
+      })),
+    [dbTree],
+  );
+  const leafId =
+    conversation.current_message_leaf_id ?? dbMessages.at(-1)?.id ?? '';
+  const initialBranch = useMemo(
+    () => branchForLeaf(leafId),
+    [branchForLeaf, leafId],
+  );
+
+  const updateSelectedModel = useCallback(
+    (nextModel: Model) => {
+      setModel(nextModel);
+      updateConversation?.({
+        ...conversation,
+        settings: {
+          ...(typeof conversation.settings === 'object'
+            ? conversation.settings
+            : {}),
+          model: nextModel,
+        },
+      });
+    },
+    [conversation, updateConversation],
+  );
+
+  // ── Action handlers — single responsibility: write the DB rows that
+  // describe the next tree state, then return whatever ChatSession needs
+  // to keep `chat.messages` aligned. ──────────────────────────────────
+  const handleSendParts = useCallback(
+    async (parts: AppUIMessage['parts']) => {
+      if (!user?.id) throw new Error('User must be authenticated');
+      await ensureInputRecords({
+        parts,
+        conversationId: conversation.id,
+        userId: user.id,
+      });
+      const parentMessageId = conversation.current_message_leaf_id ?? null;
+      const userMessageId = await persistUserMessage({
+        conversationId: conversation.id,
+        parts,
+        metadata: { model },
+        parentMessageId,
+      });
+      // The `update_leaf_trigger` advances the DB leaf to `userMessageId`;
+      // mirror that in the cache so the next render shows the user bubble
+      // immediately even before the messages query refetches.
+      queryClient.setQueryData(
+        ['conversation', conversation.id],
+        (old: Conversation | undefined) =>
+          old ? { ...old, current_message_leaf_id: userMessageId } : old,
+      );
+      return { userMessageId };
+    },
+    [conversation, model, queryClient, user?.id],
+  );
+
+  const handleRetry = useCallback(
+    async (assistant: ChatMessage) => {
+      const parentId = assistant.parent_message_id;
+      if (!parentId) return;
+      await updateConversationAsync?.({
+        ...conversation,
+        current_message_leaf_id: parentId,
+      });
+    },
+    [conversation, updateConversationAsync],
+  );
+
+  const handleEdit = useCallback(
+    async (original: ChatMessage, parts: AppUIMessage['parts']) => {
+      if (!user?.id) throw new Error('User must be authenticated');
+      await ensureInputRecords({
+        parts,
+        conversationId: conversation.id,
+        userId: user.id,
+      });
+      const parentId = original.parent_message_id;
+      const newUserMessageId = await persistUserMessage({
+        conversationId: conversation.id,
+        parts,
+        metadata: { model },
+        parentMessageId: parentId,
+      });
+      queryClient.setQueryData(
+        ['conversation', conversation.id],
+        (old: Conversation | undefined) =>
+          old ? { ...old, current_message_leaf_id: newUserMessageId } : old,
+      );
+      const parentPath = parentId ? branchForLeaf(parentId) : [];
+      return { newUserMessageId, parentPath };
+    },
+    [branchForLeaf, conversation, model, queryClient, user?.id],
+  );
+
+  const handleRestore = useCallback(
+    async (assistant: ChatMessage) => {
+      const newId = crypto.randomUUID();
+      const parts = JSON.parse(JSON.stringify(assistant.parts));
+      const metadata = JSON.parse(JSON.stringify(assistant.metadata ?? {}));
+      // Restore only fires for assistants in the UI, so the role is
+      // narrowed here for the strict `messages` row type ('user' |
+      // 'assistant'); the broader `'system'` slot on UIMessage is
+      // never legitimate to copy.
+      const role: Message['role'] = 'assistant';
+      const { error } = await supabase.from('messages').insert({
+        id: newId,
+        conversation_id: conversation.id,
+        role,
+        parts,
+        metadata,
+        parent_message_id: assistant.parent_message_id,
+        rating: 0,
+      });
+      if (error) throw error;
+
+      // Mirror the trigger's leaf advance + add the copy to the messages
+      // cache optimistically so the new branch resolves before refetch.
+      queryClient.setQueryData(
+        ['conversation', conversation.id],
+        (old: Conversation | undefined) =>
+          old ? { ...old, current_message_leaf_id: newId } : old,
+      );
+      queryClient.setQueryData(
+        ['messages', conversation.id],
+        (old: Message[] | undefined): Message[] => [
+          ...(old ?? []),
+          {
+            id: newId,
+            conversation_id: conversation.id,
+            role,
+            parts,
+            metadata,
+            parent_message_id: assistant.parent_message_id,
+            rating: 0,
+            created_at: new Date().toISOString(),
+          },
+        ],
+      );
+      queryClient.invalidateQueries({
+        queryKey: ['messages', conversation.id],
+      });
+
+      const parentPath = assistant.parent_message_id
+        ? branchForLeaf(assistant.parent_message_id)
+        : [];
+      const newBranch: AppUIMessage[] = [
+        ...parentPath,
+        { id: newId, role, parts, metadata },
+      ];
+      return { newBranch };
+    },
+    [branchForLeaf, conversation.id, queryClient],
+  );
+
+  const handleSelectLeaf = useCallback(
+    async (messageId: string) => {
+      await updateConversationAsync?.({
+        ...conversation,
+        current_message_leaf_id: messageId,
+      });
+    },
+    [conversation, updateConversationAsync],
+  );
+
+  const handleToolOutput = useCallback(
+    async (messageId: string, nextParts: AppUIMessage['parts']) => {
+      await persistAssistantParts({
+        conversationId: conversation.id,
+        messageId,
+        parts: nextParts,
+      });
+      queryClient.setQueryData(
+        ['messages', conversation.id],
+        (old: Message[] | undefined): Message[] =>
+          (old ?? []).map((row) =>
+            row.id === messageId ? { ...row, parts: nextParts } : row,
+          ),
+      );
+    },
+    [conversation.id, queryClient],
+  );
+
+  const { mutate: changeRatingMutation } = useChangeRatingMutation({
+    conversationId: conversation.id,
+  });
+  const handleChangeRating = useCallback(
+    (messageId: string, rating: number) => {
+      changeRatingMutation({ messageId, rating });
+    },
+    [changeRatingMutation],
+  );
+
+  const { mutate: upscaleMesh } = useUpscaleMutation({
+    conversation,
+    updateConversationAsync,
+  });
+  const handleUpscale = useCallback(
+    (meshId: string, parentMessageId: string | null) => {
+      upscaleMesh({ meshId, parentMessageId });
+    },
+    [upscaleMesh],
+  );
+
+  // ── Preview-pane callbacks (called by ChatSession when a new artifact /
+  // mesh lands, or by the user clicking the Eye icon on a bubble). ──────
+  const handleViewArtifact = useCallback(
+    (artifact: ParametricArtifact, messageId: string) => {
+      baseCodeRef.current = artifact.code;
+      // Parameters are derived from the OpenSCAD source — same code
+      // always yields the same `<ParameterSection>`, no matter which
+      // model wrote it.
+      setParameters(parseParameters(artifact.code));
+      setCurrentOutput(undefined);
+      setDxfExporter(() => null);
+      setActivePreview({ type: 'artifact', messageId, artifact });
+    },
+    [],
+  );
+  const handleViewMesh = useCallback((meshId: string, messageId: string) => {
+    setCurrentOutput(undefined);
+    setDxfExporter(() => null);
+    setActivePreview({ type: 'mesh', messageId, meshId });
+  }, []);
+
+  const changeParameters = useCallback(
+    (nextParameters: Parameter[]) => {
+      if (!baseCodeRef.current || activePreview?.type !== 'artifact') return;
+      let nextCode = baseCodeRef.current;
+      for (const parameter of nextParameters) {
+        nextCode = updateParameter(nextCode, parameter);
+      }
+      setParameters(nextParameters);
+      setActivePreview({
+        ...activePreview,
+        artifact: {
+          ...activePreview.artifact,
+          code: nextCode,
+        },
+      });
+    },
+    [activePreview],
+  );
+
+  const updatePrivacy = useCallback(
+    (privacy: 'public' | 'private') => {
+      updateConversation?.({ ...conversation, privacy });
+    },
+    [conversation, updateConversation],
+  );
+
+  // Latest preview in the *persisted* branch — used as the share-popover
+  // fallback before the user has clicked any artifact and before any
+  // streaming completes (ChatSession's onToolCall auto-switches once a
+  // fresher preview arrives, which updates activePreview directly).
+  const persistedLatestPreview = useMemo(
+    () => findLatestPreview(initialBranch),
+    [initialBranch],
+  );
+  const sharePreview = activePreview ?? persistedLatestPreview;
+
+  const hasArtifact =
+    activePreview?.type === 'artifact' && parameters.length > 0;
+
+  // `useCachedAiChat` captures `initialBranch` once at Chat construction;
+  // if the messages query hasn't completed its first fetch yet the
+  // branch is `[]` and the Chat gets locked in empty for this
+  // conversation. Hold the render at a spinner until the messages query
+  // settles so the Chat is constructed with the real branch on its
+  // first frame.
+  if (!areMessagesFetched) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-adam-bg-secondary-dark text-adam-text-primary">
+        <Loader2 className="h-10 w-10 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <ConversationView
+      hasParameters={hasArtifact}
+      chatPanelSlot={
+        <>
+          {/* `pl-12` reserves space for the rotated "Chat" expand button
+              that sits in the left gutter when the chat panel is collapsed,
+              so the title and share button don't get covered. */}
+          <div className="flex w-full items-center justify-between bg-transparent p-3 pl-12">
+            <div className="flex min-w-0 flex-1 items-center space-x-2">
+              <div className="min-w-0 flex-1">
+                <ChatTitle
+                  activeMeshId={
+                    sharePreview?.type === 'mesh'
+                      ? sharePreview.meshId
+                      : undefined
+                  }
+                  activeOpenscadCode={
+                    sharePreview?.type === 'artifact'
+                      ? sharePreview.artifact.code
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="flex h-8 items-center gap-2 rounded-full px-3 text-adam-text-primary hover:bg-adam-neutral-950 hover:text-adam-neutral-10 focus-visible:ring-0"
+                  >
+                    <Share className="h-[14px] w-[14px] min-w-[14px]" />
+                    <span>Share</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-72 rounded-xl bg-adam-background-1 p-3"
+                >
+                  <ShareContent
+                    conversationId={conversation.id}
+                    privacy={conversation.privacy}
+                    onPrivacyChange={updatePrivacy}
+                    meshId={
+                      sharePreview?.type === 'mesh'
+                        ? sharePreview.meshId
+                        : undefined
+                    }
+                    openscadCode={
+                      sharePreview?.type === 'artifact'
+                        ? sharePreview.artifact.code
+                        : undefined
+                    }
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <ChatSession
+            conversation={conversation}
+            dbMessages={dbMessages as Message[]}
+            initialBranch={initialBranch}
+            model={model}
+            setModel={updateSelectedModel}
+            isDisabled={totalTokens <= 0}
+            onSendParts={handleSendParts}
+            onRetry={handleRetry}
+            onEdit={handleEdit}
+            onRestore={handleRestore}
+            onSelectLeaf={handleSelectLeaf}
+            branchForLeaf={branchForLeaf}
+            onToolOutput={handleToolOutput}
+            onChangeRating={handleChangeRating}
+            onUpscale={handleUpscale}
+            onViewArtifact={handleViewArtifact}
+            onViewMesh={handleViewMesh}
+          />
+        </>
+      }
+      previewSlot={
+        <div className="flex h-full w-full items-center justify-center bg-adam-neutral-700">
+          {activePreview?.type === 'artifact' ? (
+            <OpenSCADPreview
+              scadCode={activePreview.artifact.code}
+              color="#00A6FF"
+              onOutputChange={setCurrentOutput}
+              onDxfExportChange={handleDxfExporterChange}
+            />
+          ) : activePreview?.type === 'mesh' ? (
+            <MeshPreview meshId={activePreview.meshId} />
+          ) : (
+            <div className="text-sm text-adam-text-secondary">
+              Send a message to start creating
+            </div>
+          )}
+        </div>
+      }
+      parametersSlot={
+        <div className="relative h-full">
+          <ParameterSection
+            parameters={parameters}
+            onParameterChange={changeParameters}
+            currentOutput={currentOutput}
+            dxfExporter={dxfExporter}
+            code={
+              activePreview?.type === 'artifact'
+                ? activePreview.artifact.code
+                : undefined
+            }
+          />
+        </div>
+      }
+    />
+  );
+}
+
+type LatestPreview =
+  | { type: 'artifact'; messageId: string; artifact: ParametricArtifact }
+  | { type: 'mesh'; messageId: string; meshId: string }
+  | null;
+
+function findLatestPreview(messages: AppUIMessage[]): LatestPreview {
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex -= 1
+  ) {
+    const message = messages[messageIndex];
+    for (
+      let partIndex = message.parts.length - 1;
+      partIndex >= 0;
+      partIndex -= 1
+    ) {
+      const part = message.parts[partIndex];
+      if (
+        part.type === 'tool-build_parametric_model' &&
+        part.state !== 'input-streaming' &&
+        isParametricArtifact(part.input)
+      ) {
+        return {
+          type: 'artifact',
+          messageId: message.id,
+          artifact: part.input,
+        };
+      }
+      if (
+        part.type === 'tool-create_mesh' &&
+        part.state === 'output-available'
+      ) {
+        return {
+          type: 'mesh',
+          messageId: message.id,
+          meshId: part.output.id,
+        };
+      }
+    }
+  }
+  return null;
 }
