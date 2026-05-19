@@ -107,6 +107,7 @@
     "@types/react-dom": "^19.2.1",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.20",
+    "csv-parse": "^6.2.1",
     "eslint": "^9.11.1",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
