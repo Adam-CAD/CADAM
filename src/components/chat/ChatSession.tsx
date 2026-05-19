@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCachedAiChat } from '@/hooks/useCachedAiChat';
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
+import { useToast } from '@/hooks/use-toast';
 import { apiUrl } from '@/services/api';
 import { messageRowToChatMessage, type ChatMessage } from '@/lib/aiMessages';
 import { supabase } from '@/lib/supabase';
@@ -104,6 +105,7 @@ export function ChatSession({
 }: ChatSessionProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { previewScadColored } = useOpenSCAD();
 
   // ───────────────────────────────────────────────────────────────────────
@@ -116,6 +118,36 @@ export function ChatSession({
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, []);
 
+  // The chat endpoint returns 402 when the user is out of tokens. The AI
+  // SDK transport doesn't expose the response status on its `onError`
+  // hook — we have to intercept at the fetch layer. On 402 we invalidate
+  // the billing status query so PromptView's <LimitReachedMessage /> and
+  // EditorView's input-disable react immediately instead of waiting up
+  // to 30s for the next status poll. A toast covers the in-between
+  // moment where the user just hit send and got nothing back.
+  //
+  // We also set `billingErrorHandledRef` so the SDK's `onError` (which
+  // fires next, because a 402 isn't a valid SSE stream) doesn't stack a
+  // second generic toast on top of the specific billing one.
+  const billingErrorHandledRef = useRef(false);
+  const billingAwareFetch = useCallback<typeof fetch>(
+    async (input, init) => {
+      const response = await fetch(input, init);
+      if (response.status === 402) {
+        billingErrorHandledRef.current = true;
+        queryClient.invalidateQueries({ queryKey: ['billing', 'status'] });
+        toast({
+          title: "You're out of tokens",
+          description:
+            'Upgrade your plan or buy a token pack to keep chatting.',
+          variant: 'destructive',
+        });
+      }
+      return response;
+    },
+    [queryClient, toast],
+  );
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport<AppUIMessage>({
@@ -125,6 +157,7 @@ export function ChatSession({
             : 'parametric-chat',
         ),
         headers: authHeaders,
+        fetch: billingAwareFetch,
         prepareSendMessagesRequest: ({ body }) => ({
           body: {
             conversationId: conversation.id,
@@ -133,7 +166,7 @@ export function ChatSession({
           },
         }),
       }),
-    [authHeaders, conversation.id, conversation.type, model],
+    [authHeaders, billingAwareFetch, conversation.id, conversation.type, model],
   );
 
   // ───────────────────────────────────────────────────────────────────────
@@ -361,6 +394,18 @@ export function ChatSession({
     },
     onError: (error) => {
       console.error('[chat]', error);
+      // 402 is already surfaced by `billingAwareFetch` above with a
+      // tailored message — don't show a generic toast on top of it.
+      if (billingErrorHandledRef.current) {
+        billingErrorHandledRef.current = false;
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      toast({
+        title: 'Adam ran into a problem',
+        description: message || 'The model call failed. Please try again.',
+        variant: 'destructive',
+      });
     },
   });
 

@@ -3,8 +3,6 @@ import { Box, Frown, HeartCrack } from 'lucide-react';
 
 import { generatePreview } from '@/utils/meshUtils';
 import { useMeshData } from '@/hooks/useMeshData';
-import { useGlbPreview } from '@/hooks/useGlbPreview';
-import { GlbPreview } from './GlbPreview';
 
 export function MeshImagePreview({ meshId }: { meshId: string }) {
   const {
@@ -13,8 +11,6 @@ export function MeshImagePreview({ meshId }: { meshId: string }) {
   } = useMeshData({
     id: meshId,
   });
-
-  const { data: previewBlob } = useGlbPreview({ id: meshId });
 
   const { data: meshPreview } = useQuery({
     queryKey: ['meshPreview', meshId],
@@ -56,20 +52,14 @@ export function MeshImagePreview({ meshId }: { meshId: string }) {
     );
   }
 
-  const showFinalPreview = !!meshPreview;
+  if (!meshPreview) {
+    return null;
+  }
 
   return (
     <div className="overflow-hidden rounded-lg">
       <div className="relative aspect-square w-full bg-adam-neutral-950">
-        {showFinalPreview ? (
-          <img
-            src={meshPreview ?? undefined}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <GlbPreview glbBlob={previewBlob ?? undefined} />
-        )}
+        <img src={meshPreview} alt="" className="h-full w-full object-cover" />
       </div>
       <div className="flex h-10 w-full items-center gap-2 bg-black/80 px-3">
         <Box className="h-4 w-4 text-white" />

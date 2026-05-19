@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { ClipboardCheck, CopyIcon, Loader2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
 import {
   FacebookIcon,
   TwitterIcon,
@@ -69,24 +69,45 @@ export function ShareContent({
           {isPublic ? 'Anyone with the link can view' : 'Only you can view'}
         </div>
 
+        {/* Local Suspense boundary — anything inside the preview (the
+            OpenSCAD worker via `useOpenSCAD`, the mesh blob fetch in
+            `MeshGifPreview`, react-query effects, etc.) can throw a
+            promise during a normal page load. Without this fence, that
+            suspension bubbles up to TanStack StartClient's `<Await>` and
+            tears the whole popover subtree down — including the worker
+            that's mid-compile — so the OpenSCAD STL never lands and the
+            canvas stays black. Hot reload happens to skip the doomed
+            path, which is why it appears to "work" after HMR. */}
         {meshId ? (
-          <MeshGifPreview
-            ref={downloadGifRef}
-            meshId={meshId}
-            setIsGenerating={setIsGenerating}
-            setProgress={setProgress}
-            setReadyToDownload={setReadyToDownload}
-          />
-        ) : openscadCode ? (
-          <div className="h-56 overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-950">
-            <OpenSCADGifPreview
+          <Suspense
+            fallback={
+              <div className="h-56 overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-950" />
+            }
+          >
+            <MeshGifPreview
               ref={downloadGifRef}
-              code={openscadCode}
+              meshId={meshId}
               setIsGenerating={setIsGenerating}
               setProgress={setProgress}
               setReadyToDownload={setReadyToDownload}
             />
-          </div>
+          </Suspense>
+        ) : openscadCode ? (
+          <Suspense
+            fallback={
+              <div className="h-56 overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-950" />
+            }
+          >
+            <div className="h-56 overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-950">
+              <OpenSCADGifPreview
+                ref={downloadGifRef}
+                code={openscadCode}
+                setIsGenerating={setIsGenerating}
+                setProgress={setProgress}
+                setReadyToDownload={setReadyToDownload}
+              />
+            </div>
+          </Suspense>
         ) : null}
 
         <div

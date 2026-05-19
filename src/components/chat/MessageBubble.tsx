@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { usePreview } from '@/hooks/usePreview';
+import { useMeshData } from '@/hooks/useMeshData';
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
 import type { ChatMessage } from '@/lib/aiMessages';
@@ -519,34 +520,13 @@ function AssistantBubble({
               part.state === 'output-available' ? part.output : undefined;
             const meshId = output?.id;
             return (
-              <ToolBlock
+              <MeshToolBlock
                 key={index}
-                icon={<Box className="h-4 w-4" />}
-                title={
-                  part.state === 'output-error'
-                    ? 'Mesh generation failed'
-                    : meshId
-                      ? 'Mesh submitted'
-                      : 'Generating mesh...'
-                }
-                loading={
-                  part.state === 'input-streaming' ||
-                  part.state === 'input-available'
-                }
+                state={part.state}
+                meshId={meshId}
                 expanded={expandedTools.has(index)}
                 onToggle={() => toggleTool(index)}
-                onPrimary={meshId ? () => onViewMesh?.(meshId) : undefined}
-                previewBody={
-                  meshId ? (
-                    <button
-                      type="button"
-                      className="block w-full p-2"
-                      onClick={() => onViewMesh?.(meshId)}
-                    >
-                      <MeshImagePreview meshId={meshId} />
-                    </button>
-                  ) : null
-                }
+                onViewMesh={onViewMesh}
               />
             );
           }
@@ -869,6 +849,87 @@ function ToolBlock({
         </div>
       ) : null}
     </div>
+  );
+}
+
+// Full AI SDK v6 tool-state union. The `approval-*` and `output-denied`
+// states only fire when a tool opts into approval gating via
+// `needsApproval` — our tools don't, so those branches are
+// type-system-only. Still listed here so the prop type stays a
+// superset of `ToolUIPart['state']` and we don't lose type safety the
+// next time the SDK widens the union.
+type ToolPartState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'approval-requested'
+  | 'approval-responded'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied';
+
+function MeshToolBlock({
+  state,
+  meshId,
+  expanded,
+  onToggle,
+  onViewMesh,
+}: {
+  state: ToolPartState;
+  meshId: string | undefined;
+  expanded: boolean;
+  onToggle: () => void;
+  onViewMesh?: (meshId: string) => void;
+}) {
+  const {
+    data: { data: meshData },
+    blob: { data: meshBlob },
+  } = useMeshData({ id: meshId ?? '' });
+
+  const meshStatus = meshData?.status;
+  const isAwaitingMesh =
+    state === 'output-available' &&
+    !!meshId &&
+    meshStatus !== 'success' &&
+    meshStatus !== 'failure';
+  const showPreview =
+    state === 'output-available' &&
+    !!meshId &&
+    ((meshStatus === 'success' && !!meshBlob) || meshStatus === 'failure');
+
+  const isError = state === 'output-error' || state === 'output-denied';
+  const isPending =
+    state === 'input-streaming' ||
+    state === 'input-available' ||
+    state === 'approval-requested' ||
+    state === 'approval-responded';
+
+  const title =
+    isError || meshStatus === 'failure'
+      ? 'Mesh generation failed'
+      : meshStatus === 'success'
+        ? '3D Object'
+        : 'Generating mesh...';
+
+  return (
+    <ToolBlock
+      icon={<Box className="h-4 w-4" />}
+      title={title}
+      loading={isPending || isAwaitingMesh}
+      expanded={expanded}
+      onToggle={onToggle}
+      onPrimary={meshId ? () => onViewMesh?.(meshId) : undefined}
+      previewBody={
+        showPreview && meshId ? (
+          <button
+            type="button"
+            className="block w-full p-2"
+            onClick={() => onViewMesh?.(meshId)}
+          >
+            <MeshImagePreview meshId={meshId} />
+          </button>
+        ) : null
+      }
+    />
   );
 }
 

@@ -312,7 +312,12 @@ export function MeshGifPreview({
       canvas: canvas,
     });
 
-    renderer.setSize(canvas.clientWidth, canvas.clientWidth / 1.618);
+    // Size to the canvas's actual layout box instead of forcing a 1.618
+    // ratio — when the wrapper is, say, h-56 × ~262px the old math made a
+    // 262×162 buffer and left a 62px black bar below.
+    const width = canvas.clientWidth || 1;
+    const height = canvas.clientHeight || width;
+    renderer.setSize(width, height, false);
     renderer.setClearColor(0xffffff, 1);
     rendererRef.current = renderer;
 
@@ -325,11 +330,19 @@ export function MeshGifPreview({
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
     camera.position.set(0, 0, 3);
-    camera.aspect = 1.618;
-    camera.updateProjectionMatrix();
     cameraRef.current = camera;
     return camera;
   }, []);
+
+  // Keep the camera aspect matched to the canvas. Runs whenever the
+  // renderer (and therefore canvas dimensions) settles.
+  useEffect(() => {
+    if (!canvas || !camera) return;
+    const width = canvas.clientWidth || 1;
+    const height = canvas.clientHeight || width;
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }, [canvas, camera, renderer]);
 
   // Add effect to adjust camera so the mesh is fully in view
   useEffect(() => {
@@ -660,17 +673,13 @@ export function MeshGifPreview({
     });
   }, [gltf, renderer]);
 
-  if (!externalGltf && (isMeshDataLoading || isMeshLoading)) {
-    return (
-      <div className="flex h-full w-full items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!externalGltf && (!meshData || !mesh)) {
-    return null;
-  }
+  // Show a spinner whenever we don't yet have anything to draw — the
+  // meshId fetch path covers Tripo GLB downloads, and `!gltf` covers the
+  // OpenSCAD compile path where render() stays a no-op until the caller
+  // hands us a gltf via externalGltf. Without this the canvas just sits
+  // there as a transparent rectangle showing the dark wrapper through.
+  const meshLoading = !!meshId && (isMeshDataLoading || isMeshLoading);
+  const showLoader = !gltf && (meshLoading || !meshId);
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-2">
@@ -685,6 +694,11 @@ export function MeshGifPreview({
           alt="ADAM logo"
           className="pointer-events-none absolute bottom-3 right-3 w-[15%] select-none"
         />
+        {showLoader ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="h-10 w-10 animate-spin" />
+          </div>
+        ) : null}
       </div>
     </div>
   );

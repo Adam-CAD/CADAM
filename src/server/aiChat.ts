@@ -1,3 +1,5 @@
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { chatTools, type AppUIMessage, type AppTools } from '@shared/chatAi';
 import { getParametricText } from '@shared/parametricParts';
@@ -12,9 +14,11 @@ import {
   smoothStream,
   stepCountIs,
   streamText,
+  type LanguageModel,
   type LanguageModelUsage,
   type UIMessageStreamWriter,
 } from 'ai';
+import type { ProviderOptions } from '@ai-sdk/provider-utils';
 import { z } from 'zod';
 import { billing, BillingClientError } from './billingClient';
 import { corsHeaders, isRecord } from './api';
@@ -23,7 +27,56 @@ import { logError } from './serverLog';
 import { handleMeshRequest } from './mesh';
 import { getAnonSupabaseClient } from './supabaseClient';
 
-const FALLBACK_MODEL_TOKENS_PER_BILLING_TOKEN = 10_000;
+/**
+ * USD list price per **million** tokens, keyed by the same model IDs the
+ * client picker uses. `cacheRead` / `cacheWrite` are per-million prices
+ * for cached input — when omitted we apply provider-typical defaults:
+ *   - Anthropic: read = input × 0.10, write = input × 1.25 (5-min cache)
+ *
+ * Keep this in sync with each provider's pricing page. Any model that
+ * isn't listed here falls through to {@link FALLBACK_MODEL_PRICE}, which
+ * is intentionally set to the most expensive entry so an unrecognized
+ * model never free-bills the platform.
+ */
+const MODEL_PRICES: Record<
+  string,
+  { input: number; output: number; cacheRead?: number; cacheWrite?: number }
+> = {
+  // Anthropic
+  'anthropic/claude-opus-4.7': { input: 15, output: 75 },
+  'anthropic/claude-opus-4': { input: 15, output: 75 },
+  'anthropic/claude-sonnet-4.6': { input: 3, output: 15 },
+  'anthropic/claude-sonnet-4.5': { input: 3, output: 15 },
+  'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
+
+  // Google — cached content reads bill at ~25% of input price; there is
+  // no cache-write surcharge (cache storage is billed per-hour, which
+  // we don't track here).
+  'google/gemini-3.1-pro-preview': {
+    input: 1.25,
+    output: 10,
+    cacheRead: 0.31,
+    cacheWrite: 1.25,
+  },
+
+  // OpenAI — prompt-cache reads at 50% of input.
+  'openai/gpt-5.5': { input: 5, output: 20, cacheRead: 2.5, cacheWrite: 5 },
+
+  // MoonshotAI
+  'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
+};
+
+const FALLBACK_MODEL_PRICE = { input: 15, output: 75 };
+
+/**
+ * One billing token represents this many USD of inference cost.
+ * Tune to set the margin between subscription price and the model spend
+ * a tier covers. At $0.01:
+ *   - Pro (5,000 tokens) covers ~$50 of inference
+ *   - Standard (1,000) covers ~$10
+ *   - Free (50/day) covers ~$0.50/day
+ */
+const USD_PER_BILLING_TOKEN = 0.01;
 
 const PARAMETRIC_AGENT_PROMPT = `You are Adam, a concise CAD assistant.
 
@@ -111,17 +164,157 @@ function jsonResponse(body: unknown, status: number) {
   });
 }
 
-function reasoningOptions(thinking: boolean, tokens: number) {
-  return thinking ? { reasoning: { max_tokens: tokens } } : {};
+const THINKING_BUDGET_TOKENS = 9000;
+
+type ChatProvider = 'anthropic' | 'google' | 'openrouter';
+
+function providerFor(modelId: string): ChatProvider {
+  if (modelId.startsWith('anthropic/')) return 'anthropic';
+  if (modelId.startsWith('google/')) return 'google';
+  return 'openrouter';
 }
 
-function billingTokensFromUsage(usage: LanguageModelUsage) {
-  return Math.max(
-    1,
-    Math.ceil(
-      (usage.totalTokens ?? 0) / FALLBACK_MODEL_TOKENS_PER_BILLING_TOKEN,
-    ),
+type AnthropicProvider = ReturnType<typeof createAnthropic>;
+type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
+
+type ChatProviders = {
+  anthropic: AnthropicProvider;
+  google: GoogleProvider;
+  /** Lazy — only initialized if a non-Anthropic / non-Google model is used. */
+  openrouter: () => ReturnType<typeof createOpenRouter>;
+};
+
+function createChatProviders(): ChatProviders {
+  let openrouter: ReturnType<typeof createOpenRouter> | undefined;
+  return {
+    anthropic: createAnthropic({ apiKey: requiredEnv('ANTHROPIC_API_KEY') }),
+    google: createGoogleGenerativeAI({
+      apiKey: requiredEnv('GOOGLE_API_KEY'),
+    }),
+    openrouter: () => {
+      openrouter ??= createOpenRouter({
+        apiKey: requiredEnv('OPENROUTER_API_KEY'),
+      });
+      return openrouter;
+    },
+  };
+}
+
+/**
+ * Map a `<provider>/<model>` ID to a configured LanguageModel + the
+ * provider-specific options the AI SDK expects at the streamText boundary.
+ *
+ * Anthropic and Google are hit directly via their respective AI SDK providers.
+ * Everything else (OpenAI, MoonshotAI, …) keeps going through OpenRouter so we
+ * don't have to wire a dedicated provider per vendor.
+ */
+function buildChatModel(
+  modelId: string,
+  providers: ChatProviders,
+  thinking: boolean,
+): { model: LanguageModel; providerOptions?: ProviderOptions } {
+  if (modelId.startsWith('anthropic/')) {
+    // Anthropic's API uses dashes everywhere ("claude-haiku-4-5"), while the
+    // OpenRouter alias uses dots ("claude-haiku-4.5"). Normalize both.
+    const id = modelId.slice('anthropic/'.length).replace(/\./g, '-');
+    return {
+      model: providers.anthropic(id),
+      providerOptions: thinking
+        ? {
+            anthropic: {
+              thinking: {
+                type: 'enabled',
+                budgetTokens: THINKING_BUDGET_TOKENS,
+              },
+            },
+          }
+        : undefined,
+    };
+  }
+
+  if (modelId.startsWith('google/')) {
+    const id = modelId.slice('google/'.length);
+    return {
+      model: providers.google(id),
+      // Gemini 3 Pro (and most current Google reasoning models) always
+      // think internally — `thinkingBudget` only controls how MUCH, not
+      // whether. `includeThoughts` is what actually surfaces those
+      // thoughts in the stream as `reasoning-delta` parts. So we always
+      // ask for thoughts; the user's "thinking" toggle just bumps the
+      // budget. Without this, Google streams look as if the model isn't
+      // reasoning at all even though it is.
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            includeThoughts: true,
+            ...(thinking ? { thinkingBudget: THINKING_BUDGET_TOKENS } : {}),
+          },
+        },
+      },
+    };
+  }
+
+  return {
+    model: providers.openrouter().chat(modelId, {
+      ...(thinking
+        ? { reasoning: { max_tokens: THINKING_BUDGET_TOKENS } }
+        : {}),
+      usage: { include: true },
+    }),
+  };
+}
+
+function priceFor(modelId: string) {
+  const entry = MODEL_PRICES[modelId] ?? FALLBACK_MODEL_PRICE;
+  return {
+    input: entry.input,
+    output: entry.output,
+    cacheRead: entry.cacheRead ?? entry.input * 0.1,
+    cacheWrite: entry.cacheWrite ?? entry.input * 1.25,
+  };
+}
+
+/**
+ * Compute USD inference cost from the AI SDK's `LanguageModelUsage`
+ * breakdown.
+ *
+ * Field semantics (`ai`'s `LanguageModelUsage`):
+ *   - `inputTokens` — total of all input categories.
+ *   - `inputTokenDetails.noCacheTokens` — uncached portion (full price).
+ *   - `inputTokenDetails.cacheReadTokens` — cached-input read (discounted).
+ *   - `inputTokenDetails.cacheWriteTokens` — cache-creation write (surcharged).
+ *   - `outputTokens` — total output, **already including reasoning tokens**.
+ *     Providers bill reasoning at the output rate, so we never add
+ *     `outputTokenDetails.reasoningTokens` on top of `outputTokens`.
+ *
+ * When a provider omits the breakdown we treat the whole `inputTokens`
+ * value as uncached so we don't under-bill on a missing field.
+ */
+function usdCostFromUsage(modelId: string, usage: LanguageModelUsage): number {
+  const price = priceFor(modelId);
+  const cacheRead = usage.inputTokenDetails.cacheReadTokens ?? 0;
+  const cacheWrite = usage.inputTokenDetails.cacheWriteTokens ?? 0;
+  const inputTotal = usage.inputTokens ?? 0;
+  const noCacheInput =
+    usage.inputTokenDetails.noCacheTokens ??
+    Math.max(0, inputTotal - cacheRead - cacheWrite);
+  const outputTotal = usage.outputTokens ?? 0;
+
+  return (
+    (noCacheInput * price.input +
+      cacheRead * price.cacheRead +
+      cacheWrite * price.cacheWrite +
+      outputTotal * price.output) /
+    1_000_000
   );
+}
+
+function billingTokensFromUsage(
+  modelId: string,
+  usage: LanguageModelUsage,
+): number {
+  const usdCost = usdCostFromUsage(modelId, usage);
+  return Math.max(1, Math.ceil(usdCost / USD_PER_BILLING_TOKEN));
 }
 
 type SupabaseAnon = ReturnType<typeof getAnonSupabaseClient>;
@@ -236,16 +429,16 @@ async function loadBranchFromDb({
 }
 
 async function generateConversationTitle({
-  openrouter,
+  anthropic,
   firstMessage,
 }: {
-  openrouter: ReturnType<typeof createOpenRouter>;
+  anthropic: AnthropicProvider;
   firstMessage: AppUIMessage;
 }) {
   const text = getParametricText(firstMessage.parts) || 'New conversation';
   try {
     const result = await generateText({
-      model: openrouter.chat('anthropic/claude-haiku-4.5'),
+      model: anthropic('claude-haiku-4-5'),
       system:
         'Generate a short title for a 3D creation conversation. Return only the title.',
       prompt: text,
@@ -268,11 +461,11 @@ async function generateConversationTitle({
  * specific assistant turn.
  */
 async function generateConversationSuggestions({
-  openrouter,
+  anthropic,
   branch,
   conversationType,
 }: {
-  openrouter: ReturnType<typeof createOpenRouter>;
+  anthropic: AnthropicProvider;
   branch: AppUIMessage[];
   conversationType: 'parametric' | 'creative';
 }): Promise<string[]> {
@@ -290,19 +483,12 @@ async function generateConversationSuggestions({
   const summary = `User request: ${firstUserText.slice(0, 400)}\n\nMost recent assistant reply: ${lastAssistantText.slice(0, 400)}`;
   try {
     const result = await generateText({
-      model: openrouter.chat('anthropic/claude-haiku-4.5'),
+      model: anthropic('claude-haiku-4-5'),
       system:
         conversationType === 'creative'
           ? 'Given a 3D mesh design conversation, return an array of exactly 3 follow-up prompts the user might want to send next. Each prompt is a single concise instruction (under 8 words), not a question. Return exactly 3 items — no more, no fewer.'
           : 'Given a parametric CAD conversation, return an array of exactly 3 follow-up prompts the user might want to send next. Each prompt is a single concise instruction (under 8 words), not a question. Return exactly 3 items — no more, no fewer.',
       prompt: summary,
-      // No `.min`/`.max` on the array — those translate to JSON Schema
-      // `minItems` / `maxItems`, which Bedrock (OpenRouter's backend for
-      // Claude Haiku 4.5) rejects with a 400. We accept whatever
-      // count the model returns and slice to 3 below for durability:
-      // anything more is trimmed, anything between 1 and 3 is shown
-      // as-is, an empty array means "no suggestions this turn" and the
-      // pills just don't render.
       output: Output.object({
         schema: z.object({
           suggestions: z.array(z.string().min(1).max(80)),
@@ -500,6 +686,35 @@ export async function handleAiChatRequest(req: Request) {
     );
   }
 
+  // Pre-flight balance gate. A chat costs at least 1 billing token, so a
+  // total of 0 means we cannot let the stream start. We don't try to
+  // estimate the exact cost up front — chat is variable, and the billing
+  // service drains the remainder to zero if the actual usage exceeds
+  // what's left (see onFinish below).
+  try {
+    const status = await billing.getStatus(user.email);
+    if (status.tokens.total <= 0) {
+      return jsonResponse(
+        {
+          error: 'insufficient_tokens',
+          code: 'insufficient_tokens',
+          tokensRequired: 1,
+          tokensAvailable: 0,
+        },
+        402,
+      );
+    }
+  } catch (error) {
+    logError(error, {
+      functionName: 'ai-chat',
+      statusCode: error instanceof BillingClientError ? error.status : 502,
+      userId: user.id,
+      conversationId: conversation.id,
+      additionalContext: { operation: 'billing_preflight' },
+    });
+    return jsonResponse({ error: 'Billing service unavailable' }, 503);
+  }
+
   const tools =
     conversation.type === 'creative'
       ? creativeTools({ conversation, req, model: rawBody.model })
@@ -531,9 +746,24 @@ export async function handleAiChatRequest(req: Request) {
   }
 
   const leafMessageId = conversation.current_message_leaf_id;
-  const openrouter = createOpenRouter({
-    apiKey: requiredEnv('OPENROUTER_API_KEY'),
-  });
+
+  // `createChatProviders` calls `requiredEnv(...)` eagerly — a missing
+  // ANTHROPIC_API_KEY / GOOGLE_API_KEY throws here, before we've started
+  // a stream. Catch + log so the failure mode is "503 with a clear
+  // server log" instead of "500 with no logs".
+  let providers: ChatProviders;
+  try {
+    providers = createChatProviders();
+  } catch (error) {
+    logError(error, {
+      functionName: 'ai-chat',
+      statusCode: 500,
+      userId: user.id,
+      conversationId: conversation.id,
+      additionalContext: { operation: 'create_providers' },
+    });
+    return jsonResponse({ error: 'AI provider not configured on server' }, 503);
+  }
 
   // Title is generated INSIDE the stream's execute (below), as a transient
   // `data-title-update` part — that way the client receives it without a
@@ -574,11 +804,56 @@ export async function handleAiChatRequest(req: Request) {
     },
   );
 
+  // Resolve the actual model ID the request will run against. For
+  // `creative` conversations this is hardcoded to Sonnet regardless of
+  // what the client picked — billing has to price the model that ran,
+  // not the one the user requested.
+  const actualModelId = chatModel(conversation, rawBody.model);
+  const resolvedProvider = providerFor(actualModelId);
+
+  let chatLanguageModel: LanguageModel;
+  let chatProviderOptions: ProviderOptions | undefined;
+  try {
+    const built = buildChatModel(
+      actualModelId,
+      providers,
+      rawBody.thinking ?? false,
+    );
+    chatLanguageModel = built.model;
+    chatProviderOptions = built.providerOptions;
+  } catch (error) {
+    logError(error, {
+      functionName: 'ai-chat',
+      statusCode: 500,
+      userId: user.id,
+      conversationId: conversation.id,
+      additionalContext: {
+        operation: 'build_chat_model',
+        modelId: actualModelId,
+        provider: resolvedProvider,
+      },
+    });
+    return jsonResponse(
+      { error: `Failed to initialize model ${actualModelId}` },
+      500,
+    );
+  }
+
+  // Common context attached to every error we log out of this request —
+  // makes it trivial to tell "Anthropic rejected the model ID" apart from
+  // "Google rate-limited us" apart from "OpenRouter returned 502" in logs.
+  const logContext = {
+    userId: user.id,
+    conversationId: conversation.id,
+    modelId: actualModelId,
+    requestedModelId: rawBody.model,
+    provider: resolvedProvider,
+    thinking: rawBody.thinking ?? false,
+  };
+
   const result = streamText({
-    model: openrouter.chat(chatModel(conversation, rawBody.model), {
-      ...reasoningOptions(rawBody.thinking ?? false, 9000),
-      usage: { include: true },
-    }),
+    model: chatLanguageModel,
+    providerOptions: chatProviderOptions,
     system: systemPrompt(conversation),
     messages: modelMessages,
     tools,
@@ -592,6 +867,22 @@ export async function handleAiChatRequest(req: Request) {
     // word-by-word the way the rest of the AI ecosystem does. Default
     // delay is 10ms — bumped to 30ms for a more readable cadence.
     experimental_transform: smoothStream({ delayInMs: 30 }),
+    // Without this, provider errors mid-stream become silent `error`
+    // parts on the SSE stream — never logged, never visible in
+    // production. This is the primary observability hook for "the model
+    // call failed and I have no idea why".
+    onError: ({ error }) => {
+      logError(error, {
+        functionName: 'ai-chat',
+        statusCode: 500,
+        userId: logContext.userId,
+        conversationId: logContext.conversationId,
+        additionalContext: {
+          ...logContext,
+          operation: 'stream_text',
+        },
+      });
+    },
   });
 
   // Stream construction follows the onshape-extension pattern:
@@ -601,13 +892,33 @@ export async function handleAiChatRequest(req: Request) {
   // `messages.parts`; the client picks them up via `useChat`'s `onData`
   // and pokes the conversation query cache directly.
   const stream = createUIMessageStream<AppUIMessage>({
+    // `onError` runs for anything thrown inside `execute` OR inside the
+    // merged streamText output. Without overriding it, the AI SDK
+    // replaces the real error with a generic "An error occurred." string
+    // before serializing — useful for hiding stack traces from end users,
+    // useless for debugging. Log here and pass through a short message
+    // to the client so the failure is visible in the UI too.
+    onError: (error) => {
+      logError(error, {
+        functionName: 'ai-chat',
+        statusCode: 500,
+        userId: logContext.userId,
+        conversationId: logContext.conversationId,
+        additionalContext: {
+          ...logContext,
+          operation: 'ui_message_stream',
+        },
+      });
+      const message = error instanceof Error ? error.message : String(error);
+      return `Model call failed (${resolvedProvider}/${actualModelId}): ${message}`;
+    },
     execute: async ({ writer }) => {
       // Title (first user turn only) runs in parallel with the model
       // stream — fire-and-forget; the assistant doesn't wait on it.
       if (isFirstUserTurn) {
         void emitConversationTitle({
           writer,
-          openrouter,
+          anthropic: providers.anthropic,
           supabaseClient,
           conversation,
           firstMessage: branchMessages[0],
@@ -620,7 +931,7 @@ export async function handleAiChatRequest(req: Request) {
           generateMessageId: () => crypto.randomUUID(),
           onFinish: async ({ responseMessage, isContinuation }) => {
             const usage = await result.totalUsage;
-            const billingTokens = billingTokensFromUsage(usage);
+            const billingTokens = billingTokensFromUsage(actualModelId, usage);
             const metadata = {
               ...(responseMessage.metadata ?? {}),
               model: rawBody.model,
@@ -628,24 +939,18 @@ export async function handleAiChatRequest(req: Request) {
             };
 
             try {
-              const consumed = await billing.consume(user.email!, {
+              // Drains the user's remaining balance to zero if the
+              // request cost more than they had. The billing service
+              // accepts the partial deduction, writes an audit row as
+              // `<operation>_partial`, and the pre-flight gate above
+              // will block the next request. Not an error path —
+              // intentional terminal state.
+              await billing.consume(user.email!, {
                 tokens: billingTokens,
                 operation:
                   conversation.type === 'creative' ? 'chat' : 'parametric',
                 referenceId: responseMessage.id,
               });
-              if (!consumed.ok) {
-                logError(new Error('insufficient_tokens'), {
-                  functionName: 'ai-chat',
-                  statusCode: 402,
-                  userId: user.id,
-                  conversationId: conversation.id,
-                  additionalContext: {
-                    tokensRequired: consumed.tokensRequired,
-                    tokensAvailable: consumed.tokensAvailable,
-                  },
-                });
-              }
             } catch (error) {
               logError(error, {
                 functionName: 'ai-chat',
@@ -730,7 +1035,7 @@ export async function handleAiChatRequest(req: Request) {
               // tradeoff for getting pills delivered.
               await emitConversationSuggestions({
                 writer,
-                openrouter,
+                anthropic: providers.anthropic,
                 supabaseClient,
                 conversation,
                 branch: [
@@ -762,19 +1067,19 @@ export async function handleAiChatRequest(req: Request) {
  */
 async function emitConversationTitle({
   writer,
-  openrouter,
+  anthropic,
   supabaseClient,
   conversation,
   firstMessage,
 }: {
   writer: UIMessageStreamWriter<AppUIMessage>;
-  openrouter: ReturnType<typeof createOpenRouter>;
+  anthropic: AnthropicProvider;
   supabaseClient: SupabaseAnon;
   conversation: ConversationAccess;
   firstMessage: AppUIMessage;
 }) {
   try {
-    const title = await generateConversationTitle({ openrouter, firstMessage });
+    const title = await generateConversationTitle({ anthropic, firstMessage });
     await supabaseClient
       .from('conversations')
       .update({ title })
@@ -804,20 +1109,20 @@ async function emitConversationTitle({
  */
 async function emitConversationSuggestions({
   writer,
-  openrouter,
+  anthropic,
   supabaseClient,
   conversation,
   branch,
 }: {
   writer: UIMessageStreamWriter<AppUIMessage>;
-  openrouter: ReturnType<typeof createOpenRouter>;
+  anthropic: AnthropicProvider;
   supabaseClient: SupabaseAnon;
   conversation: ConversationAccess;
   branch: AppUIMessage[];
 }) {
   try {
     const suggestions = await generateConversationSuggestions({
-      openrouter,
+      anthropic,
       branch,
       conversationType: conversation.type,
     });
