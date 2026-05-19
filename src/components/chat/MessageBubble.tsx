@@ -22,8 +22,8 @@ import {
 import { cn } from '@/lib/utils';
 import { usePreview } from '@/hooks/usePreview';
 import { useMeshData } from '@/hooks/useMeshData';
-import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
+import { previewScadColoredViaToolWorker } from '@/worker/toolWorker';
 import type { ChatMessage } from '@/lib/aiMessages';
 import type { ParametricArtifact } from '@shared/types';
 import type { TreeNode } from '@shared/Tree';
@@ -942,17 +942,22 @@ function ParametricImagePreview({
 }) {
   // Same get-or-generate path VisualCard uses: download cached PNG at
   // `images/{userId}/{convId}/preview-{toolCallId}`, otherwise compile
-  // the SCAD via `previewScadColored` and render either the colored OFF
-  // (preferred) or the plain STL. The tool execution uploads this preview
-  // before `addToolOutput`, so on a healthy flow the download branch wins.
+  // the SCAD via the singleton tool worker and render either the colored
+  // OFF (preferred) or the plain STL. The tool execution uploads this
+  // preview before `addToolOutput`, so on a healthy flow the download
+  // branch wins.
+  //
+  // Worker is the module-singleton so it doesn't die when MessageBubble
+  // remounts on conversation switch — otherwise the regenerate path
+  // rejects with "Worker terminated" mid-flight and the bubble stays
+  // empty forever.
   const { conversation } = useConversation();
-  const { previewScadColored } = useOpenSCAD();
-  const { data: thumbnailUrl } = usePreview({
+  const { data: thumbnailUrl, isPending } = usePreview({
     id: toolCallId,
     conversationId: conversation.id,
     userId: conversation.user_id,
     generateBlob: async () => {
-      const { stl, off } = await previewScadColored(code);
+      const { stl, off } = await previewScadColoredViaToolWorker(code);
       if (off) {
         const colored = await generateColoredPreview(off);
         if (colored) return dataUrlToBlob(colored);
@@ -960,17 +965,26 @@ function ParametricImagePreview({
       return dataUrlToBlob(await generatePreview(stl, 'stl'));
     },
   });
-  if (!thumbnailUrl) return null;
-  return (
-    <div className="relative aspect-square w-full bg-adam-neutral-950">
-      <img
-        src={thumbnailUrl}
-        alt=""
-        className="h-full w-full object-cover"
-        draggable={false}
-      />
-    </div>
-  );
+  if (thumbnailUrl) {
+    return (
+      <div className="relative aspect-square w-full bg-adam-neutral-950">
+        <img
+          src={thumbnailUrl}
+          alt=""
+          className="h-full w-full object-cover"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+  if (isPending) {
+    return (
+      <div className="relative flex aspect-square w-full items-center justify-center bg-adam-neutral-950">
+        <Loader2 className="h-6 w-6 animate-spin text-adam-neutral-500" />
+      </div>
+    );
+  }
+  return null;
 }
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {

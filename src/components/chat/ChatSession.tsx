@@ -4,8 +4,8 @@ import TextAreaChat from '@/components/TextAreaChat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCachedAiChat } from '@/hooks/useCachedAiChat';
-import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { useToast } from '@/hooks/use-toast';
+import { previewScadColoredViaToolWorker } from '@/worker/toolWorker';
 import { apiUrl } from '@/services/api';
 import { messageRowToChatMessage, type ChatMessage } from '@/lib/aiMessages';
 import { supabase } from '@/lib/supabase';
@@ -106,7 +106,6 @@ export function ChatSession({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { previewScadColored } = useOpenSCAD();
 
   // ───────────────────────────────────────────────────────────────────────
   // Transport — strips client state out of the wire body. Server reads the
@@ -291,7 +290,7 @@ export function ChatSession({
         // prefer the colored OFF render so the cached thumbnail matches what
         // the rest of the app shows. Fall back to the gray STL render if OFF
         // is unavailable or empty.
-        const { stl, off } = await previewScadColored(input.code);
+        const { stl, off } = await previewScadColoredViaToolWorker(input.code);
         try {
           if (user?.id) {
             let previewDataUrl: string | null = null;
@@ -350,7 +349,7 @@ export function ChatSession({
         );
       }
     },
-    [conversation.id, previewScadColored, onToolOutput, user?.id],
+    [conversation.id, onToolOutput, user?.id],
   );
 
   // ───────────────────────────────────────────────────────────────────────
