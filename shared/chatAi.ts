@@ -24,7 +24,6 @@ export const createMeshOutputSchema = z.object({
 export const parametricCompileOutputSchema = z.object({
   status: z.literal('success'),
   message: z.string(),
-  previewPath: z.string().optional(),
 });
 
 export const chatTools = {

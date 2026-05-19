@@ -33,7 +33,7 @@ import { GoodEarth } from '../icons/ui/GoodEarth';
 import { supabase } from '@/lib/supabase';
 import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { usePreview } from '@/hooks/usePreview';
-import { generatePreview } from '@/utils/meshUtils';
+import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
 import { useQuery } from '@tanstack/react-query';
 import { getBuildParametricModelOutput } from '@shared/parametricParts';
 import type { AppUIMessage } from '@shared/chatAi';
@@ -62,7 +62,7 @@ export function VisualCard({
 }: VisualCardProps) {
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const { exportScad } = useOpenSCAD();
+  const { previewScadColored } = useOpenSCAD();
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -110,7 +110,15 @@ export function VisualCard({
         if (error || !meshBlob) throw error ?? new Error('Mesh blob missing');
         return dataUrlToBlob(await generatePreview(meshBlob, preview.fileType));
       }
-      const stl = await exportScad(preview.code, 'stl');
+      // Use the PREVIEW path (not EXPORT) so we get the OFF companion file
+      // with per-face color() data alongside the STL — matches what the live
+      // editor renders. Fall back to the gray-ish STL render only when OFF
+      // is unavailable or empty.
+      const { stl, off } = await previewScadColored(preview.code);
+      if (off) {
+        const colored = await generateColoredPreview(off);
+        if (colored) return dataUrlToBlob(colored);
+      }
       return dataUrlToBlob(await generatePreview(stl, 'stl'));
     },
   });

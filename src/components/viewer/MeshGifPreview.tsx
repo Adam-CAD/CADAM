@@ -406,6 +406,16 @@ export function MeshGifPreview({
       0.04,
     ).texture;
 
+    // `RoomEnvironment` alone lights Tripo GLBs (full PBR maps) but leaves a
+    // plain `MeshStandardMaterial` — the OpenSCAD path — rendering black. Add
+    // an ambient + key directional pair so both surfaces show up. The render
+    // loop already preserves `DirectionalLight` children when it swaps the
+    // model in, so these survive each render() pass.
+    renderScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    keyLight.position.set(5, 5, 5);
+    renderScene.add(keyLight);
+
     return renderScene;
   }, [renderer]);
 
@@ -417,14 +427,11 @@ export function MeshGifPreview({
 
       const scene = gltf.scene;
 
-      // Remove previous scene from render scene
-      renderScene.children.forEach((child) => {
-        if (
-          child !==
-          renderScene.children.find((c) => c.type === 'DirectionalLight')
-        ) {
-          renderScene.remove(child);
-        }
+      // Strip the previous model out before adding the new one. Lights set
+      // up in `renderScene` (ambient + key directional) stay across frames
+      // — only `Object3D` children that aren't lights get removed.
+      [...renderScene.children].forEach((child) => {
+        if (!(child instanceof THREE.Light)) renderScene.remove(child);
       });
 
       renderScene.add(scene);

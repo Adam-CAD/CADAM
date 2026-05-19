@@ -10,6 +10,7 @@ import {
 import { ShareContent } from '@/components/ui/ShareContent';
 import { OpenSCADPreview } from '@/components/viewer/OpenSCADViewer';
 import { MeshPreview } from '@/components/viewer/MeshPreview';
+import Loader from '@/components/viewer/Loader';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConversationContext } from '@/contexts/ConversationContext';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
@@ -27,7 +28,6 @@ import {
   persistUserMessage,
   useChangeRatingMutation,
   useMessagesQuery,
-  useUpscaleMutation,
 } from '@/services/messageService';
 import type { DxfExporter } from '@/utils/downloadUtils';
 import type { AppUIMessage } from '@shared/chatAi';
@@ -192,6 +192,10 @@ function ConversationEditor() {
   const [parameters, setParameters] = useState<Parameter[]>([]);
   const [currentOutput, setCurrentOutput] = useState<Blob | undefined>();
   const [dxfExporter, setDxfExporter] = useState<DxfExporter | null>(null);
+  // Streaming flag surfaced from <ChatSession>. While true, the preview
+  // pane swaps to the bouncing loader instead of mounting OpenSCAD —
+  // matches the legacy ParametricPreviewSection behavior.
+  const [isChatStreaming, setIsChatStreaming] = useState(false);
   const baseCodeRef = useRef<string | null>(null);
 
   // `dxfExporter` is itself a function, so we MUST use the lazy-set form
@@ -415,17 +419,6 @@ function ConversationEditor() {
     [changeRatingMutation],
   );
 
-  const { mutate: upscaleMesh } = useUpscaleMutation({
-    conversation,
-    updateConversationAsync,
-  });
-  const handleUpscale = useCallback(
-    (meshId: string, parentMessageId: string | null) => {
-      upscaleMesh({ meshId, parentMessageId });
-    },
-    [upscaleMesh],
-  );
-
   // ── Preview-pane callbacks (called by ChatSession when a new artifact /
   // mesh lands, or by the user clicking the Eye icon on a bubble). ──────
   const handleViewArtifact = useCallback(
@@ -575,15 +568,17 @@ function ConversationEditor() {
             branchForLeaf={branchForLeaf}
             onToolOutput={handleToolOutput}
             onChangeRating={handleChangeRating}
-            onUpscale={handleUpscale}
             onViewArtifact={handleViewArtifact}
             onViewMesh={handleViewMesh}
+            onLoadingChange={setIsChatStreaming}
           />
         </>
       }
       previewSlot={
         <div className="flex h-full w-full items-center justify-center bg-adam-neutral-700">
-          {activePreview?.type === 'artifact' ? (
+          {isChatStreaming ? (
+            <Loader message="Generating model" />
+          ) : activePreview?.type === 'artifact' ? (
             <OpenSCADPreview
               scadCode={activePreview.artifact.code}
               color="#00A6FF"

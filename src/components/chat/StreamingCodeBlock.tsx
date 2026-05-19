@@ -1,13 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface StreamingCodeBlockProps {
   code: string;
   isStreaming: boolean;
   filename?: string;
 }
-
-// Keep it compact — stays inside the chat bubble without swallowing the view.
-const MAX_HEIGHT = 180;
 
 // Typewriter reveal: ~300 chars/sec feels live without being frantic.
 const REVEAL_CHARS_PER_TICK = 8;
@@ -18,12 +16,14 @@ export function StreamingCodeBlock({
   isStreaming,
   filename = 'model.scad',
 }: StreamingCodeBlockProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
+  // Ref points at the ScrollArea Root. We reach into the Radix Viewport
+  // (the actual scroll container) by its data attribute and pin its
+  // scrollTop to the bottom while new code is still arriving. Once both
+  // streaming and the typewriter reveal have caught up we stop forcing it
+  // so the user can scroll back to re-read earlier lines.
+  const scrollRootRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(0);
 
-  // Catch up to the incoming stream at a readable pace. Scale with backlog
-  // so very long responses finish in ~1.5s rather than tens of seconds.
   useEffect(() => {
     if (visibleCount >= code.length) return;
     const backlog = code.length - visibleCount;
@@ -41,21 +41,17 @@ export function StreamingCodeBlock({
     [code, visibleCount],
   );
 
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [visibleCode]);
-
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceFromBottom < 16;
-  };
-
   const revealing = visibleCount < code.length;
   const showCaret = isStreaming || revealing;
+
+  useEffect(() => {
+    if (!showCaret) return;
+    const viewport = scrollRootRef.current?.querySelector<HTMLElement>(
+      '[data-radix-scroll-area-viewport]',
+    );
+    if (!viewport) return;
+    viewport.scrollTop = viewport.scrollHeight;
+  }, [visibleCode, showCaret]);
 
   return (
     <div className="w-full overflow-hidden rounded-lg border border-white/[0.06] bg-adam-neutral-950/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -76,13 +72,16 @@ export function StreamingCodeBlock({
       </div>
 
       <div className="relative">
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          className="overflow-auto px-3 py-2.5 font-mono text-[11.5px] leading-[1.55] text-adam-text-primary/95"
-          style={{ maxHeight: MAX_HEIGHT }}
+        {/* Cap the Radix Viewport (not the Root) so the box only takes up
+            space when the code is actually that long — short snippets stay
+            compact. The arbitrary-variant selector targets the Viewport's
+            `data-*` attribute directly; `max-h-*` on the Root alone wouldn't
+            work because the Viewport carries `h-full`. */}
+        <ScrollArea
+          ref={scrollRootRef}
+          className="w-full font-mono text-[11.5px] leading-[1.55] text-adam-text-primary/95 [&_[data-radix-scroll-area-viewport]]:max-h-[180px]"
         >
-          <pre className="m-0 whitespace-pre-wrap break-words">
+          <pre className="m-0 whitespace-pre-wrap break-words px-3 py-2.5">
             <code>{visibleCode}</code>
             {showCaret && (
               <span
@@ -91,7 +90,7 @@ export function StreamingCodeBlock({
               />
             )}
           </pre>
-        </div>
+        </ScrollArea>
 
         <div
           aria-hidden

@@ -26,7 +26,6 @@ export const POLYGON_COUNTS = {
 export const MATERIAL_DEFAULTS = {
   BRIGHTNESS: 50 as number,
   BRIGHTNESS_TEXTURELESS: 100 as number,
-  BRIGHTNESS_UPSCALED: 50 as number, // Upscaled models use standard brightness
   ROUGHNESS: 100 as number,
   NORMAL_INTENSITY: 0 as number,
 };
@@ -128,7 +127,5 @@ export const getMaxPolygonCount = (
 
 // Legacy exports for backward compatibility
 export const DEFAULT_BRIGHTNESS = MATERIAL_DEFAULTS.BRIGHTNESS;
-export const DEFAULT_BRIGHTNESS_UPSCALED =
-  MATERIAL_DEFAULTS.BRIGHTNESS_UPSCALED;
 export const DEFAULT_ROUGHNESS = MATERIAL_DEFAULTS.ROUGHNESS;
 export const DEFAULT_NORMAL_INTENSITY = MATERIAL_DEFAULTS.NORMAL_INTENSITY;

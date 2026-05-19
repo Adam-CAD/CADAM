@@ -8,7 +8,7 @@ import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { apiUrl } from '@/services/api';
 import { messageRowToChatMessage, type ChatMessage } from '@/lib/aiMessages';
 import { supabase } from '@/lib/supabase';
-import { generatePreview } from '@/utils/meshUtils';
+import { generateColoredPreview, generatePreview } from '@/utils/meshUtils';
 import type {
   AppUIMessage,
   ConversationSuggestionsUpdate,
@@ -63,9 +63,12 @@ interface ChatSessionProps {
     nextParts: AppUIMessage['parts'],
   ) => Promise<void>;
   onChangeRating: (messageId: string, rating: number) => void;
-  onUpscale: (meshId: string, parentMessageId: string | null) => void;
   onViewArtifact: (artifact: ParametricArtifact, messageId: string) => void;
   onViewMesh: (meshId: string, messageId: string) => void;
+  /** Fired whenever the SDK's submitted/streaming flag flips. Lets the
+   *  parent show the bouncing loader in the preview pane while the model
+   *  is still producing the next artifact. */
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
 /**
@@ -95,13 +98,13 @@ export function ChatSession({
   branchForLeaf,
   onToolOutput,
   onChangeRating,
-  onUpscale,
   onViewArtifact,
   onViewMesh,
+  onLoadingChange,
 }: ChatSessionProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { exportScad } = useOpenSCAD();
+  const { previewScadColored } = useOpenSCAD();
 
   // ───────────────────────────────────────────────────────────────────────
   // Transport — strips client state out of the wire body. Server reads the
@@ -188,15 +191,30 @@ export function ChatSession({
       }
 
       try {
-        const stl = await exportScad(input.code, 'stl');
-        let previewPath: string | undefined;
+        // Render + upload the preview as part of the tool's execution,
+        // BEFORE `addToolOutput` triggers the auto-continuation. The
+        // server reads it back by toolCallId (see `previewPathForToolCall`
+        // in `aiChat.ts`) and the MessageBubble's `<ParametricImagePreview>`
+        // pulls from the same canonical path via `usePreview`. No path is
+        // returned in the tool output — both consumers derive it.
+        // Mirror VisualCard / ParametricImagePreview's get-or-generate path:
+        // prefer the colored OFF render so the cached thumbnail matches what
+        // the rest of the app shows. Fall back to the gray STL render if OFF
+        // is unavailable or empty.
+        const { stl, off } = await previewScadColored(input.code);
         try {
           if (user?.id) {
-            const previewDataUrl = await generatePreview(stl, 'stl');
+            let previewDataUrl: string | null = null;
+            if (off) {
+              previewDataUrl = await generateColoredPreview(off);
+            }
+            if (!previewDataUrl) {
+              previewDataUrl = await generatePreview(stl, 'stl');
+            }
             const previewBlob = await fetch(previewDataUrl).then((response) =>
               response.blob(),
             );
-            previewPath = `${user.id}/${conversation.id}/preview-${toolCall.toolCallId}`;
+            const previewPath = `${user.id}/${conversation.id}/preview-${toolCall.toolCallId}`;
             await supabase.storage
               .from('images')
               .upload(previewPath, previewBlob, {
@@ -212,7 +230,6 @@ export function ChatSession({
           status: 'success' as const,
           message:
             'Compilation successful. The 3D model is now displayed to the user.',
-          previewPath,
         };
 
         // Build the assistant's next `parts` array — same transformation
@@ -267,7 +284,7 @@ export function ChatSession({
         });
       }
     },
-    [conversation.id, exportScad, onToolOutput, user?.id],
+    [conversation.id, previewScadColored, onToolOutput, user?.id],
   );
 
   // ───────────────────────────────────────────────────────────────────────
@@ -358,6 +375,10 @@ export function ChatSession({
   }, [chat, messages]);
 
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   // ───────────────────────────────────────────────────────────────────────
   // Sibling tree for branch nav.
@@ -528,7 +549,7 @@ export function ChatSession({
   return (
     <>
       <ScrollArea className="min-h-0 flex-1 p-4" ref={scrollRef}>
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="mx-auto flex max-w-3xl flex-col gap-8">
           {branchNodes.map((node, index) => {
             const isLastMessage = index === branchNodes.length - 1;
             return (
@@ -557,11 +578,6 @@ export function ChatSession({
                 onRestore={
                   node.role === 'assistant' && !isLastMessage
                     ? () => void handleRestore(node)
-                    : undefined
-                }
-                onUpscale={
-                  node.role === 'assistant'
-                    ? (meshId) => onUpscale(meshId, node.parent_message_id)
                     : undefined
                 }
               />

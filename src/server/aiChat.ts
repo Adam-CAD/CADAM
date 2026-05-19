@@ -410,10 +410,15 @@ function parametricTools({
         toolCallId: string;
         output: AppTools['build_parametric_model']['output'];
       }) {
+        // The client uploads a render of the compiled SCAD to a path
+        // derived from toolCallId BEFORE sending the tool result (see
+        // ChatSession's `onToolCall`). If for any reason the upload
+        // didn't land, `downloadAsBase64` returns null and we fall back
+        // to text-only — never block the loop on a missing thumbnail.
         const base64 = await downloadAsBase64(
           supabaseClient,
           'images',
-          output.previewPath ?? previewPathForToolCall(toolCallId),
+          previewPathForToolCall(toolCallId),
         );
 
         if (base64) {

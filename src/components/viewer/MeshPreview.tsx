@@ -8,14 +8,7 @@ import {
 } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { Download, Frown, HeartCrack, ChevronDown } from 'lucide-react';
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useRef,
-} from 'react';
+import { Suspense, useCallback, useEffect, useState, useRef } from 'react';
 import * as THREE from 'three';
 import { GLTF, GLTFLoader, GLTFParser } from 'three-stdlib';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
@@ -37,7 +30,6 @@ import { WireframeIcon } from '@/components/icons/ui/WireframeIcon';
 // Default values for material controls
 import {
   DEFAULT_BRIGHTNESS,
-  DEFAULT_BRIGHTNESS_UPSCALED,
   DEFAULT_ROUGHNESS,
   DEFAULT_NORMAL_INTENSITY,
   getModelDefaultBrightness,
@@ -64,7 +56,6 @@ function ModelWithControls({
   normalIntensity,
   showTexture,
   wireframe,
-  isUpscaled = false,
 }: {
   gltf: GLTF;
   brightness: number;
@@ -72,7 +63,6 @@ function ModelWithControls({
   normalIntensity: number;
   showTexture: boolean;
   wireframe: boolean;
-  isUpscaled?: boolean;
 }) {
   // Reference to the scene to update materials
   const modelRef = useRef<THREE.Group>(null);
@@ -184,7 +174,7 @@ function ModelWithControls({
                 original.map !== null && original.map !== undefined;
               const hasVertexColors = original.vertexColors === true;
 
-              // In textureless mode for models with baked base colors (like upscaled models),
+              // In textureless mode for models with baked base colors,
               // use neutral gray as the base instead of original color
               const useGrayBase =
                 !showTexture && !hasTextureMap && !hasVertexColors;
@@ -212,10 +202,7 @@ function ModelWithControls({
             // Apply to emissive property if it exists (affects brightness)
             if ('emissive' in mat && original.emissive) {
               const emissiveMat = mat as THREE.MeshStandardMaterial;
-              // Use brightness for emissive intensity
-              // Upscaled models with textures need much stronger emissive to appear correctly lit
-              const baseIntensity = Math.max(0, (actualBrightness - 1) * 0.2);
-              const intensity = isUpscaled ? baseIntensity * 3 : baseIntensity;
+              const intensity = Math.max(0, (actualBrightness - 1) * 0.2);
               emissiveMat.emissive.setRGB(intensity, intensity, intensity);
             }
           }
@@ -285,7 +272,6 @@ function ModelWithControls({
     showTexture,
     wireframe,
     originalMaterials,
-    isUpscaled,
   ]);
 
   // When component mounts, store original material properties including PBR maps
@@ -478,28 +464,13 @@ export function MeshPreview({ meshId }: { meshId: string }) {
     id: meshId,
   });
 
-  // Detect upscaled models (need special lighting treatment)
-  const isUpscaled = useMemo(
-    () =>
-      !!(
-        meshData?.prompt &&
-        typeof meshData.prompt === 'object' &&
-        'upscaledFrom' in meshData.prompt &&
-        meshData.prompt.upscaledFrom
-      ),
-    [meshData?.prompt],
-  );
-
   // Reset material states when meshId changes
   useEffect(() => {
     // Reset to defaults when switching between messages
     setViewMode('textured');
-    // Set brightness based on model configuration
-    // Upscaled models need higher brightness to show color correctly
     const promptModel = meshData?.prompt.model;
-    const modelBrightness = isUpscaled
-      ? DEFAULT_BRIGHTNESS_UPSCALED
-      : promptModel && isCreativeModel(promptModel)
+    const modelBrightness =
+      promptModel && isCreativeModel(promptModel)
         ? getModelDefaultBrightness(promptModel)
         : DEFAULT_BRIGHTNESS;
     setBrightness(modelBrightness);
@@ -515,7 +486,7 @@ export function MeshPreview({ meshId }: { meshId: string }) {
       metallic: false,
       ao: false,
     });
-  }, [meshId, isUpscaled, meshData?.prompt.model]);
+  }, [meshId, meshData?.prompt.model]);
 
   useEffect(() => {
     const loadMesh = async (meshBlob: Blob) => {
@@ -836,7 +807,6 @@ export function MeshPreview({ meshId }: { meshId: string }) {
                   normalIntensity={normalIntensity}
                   showTexture={showTexture}
                   wireframe={wireframe}
-                  isUpscaled={isUpscaled}
                 />
               )}
             </Stage>
@@ -898,7 +868,6 @@ export function MeshPreview({ meshId }: { meshId: string }) {
           normalIntensity={normalIntensity}
           polygonCount={polygonCount}
           modelQuality={meshData?.prompt.model}
-          isUpscaled={isUpscaled}
           onBrightnessChange={setBrightness}
           onRoughnessChange={setRoughness}
           onNormalIntensityChange={setNormalIntensity}

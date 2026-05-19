@@ -1,6 +1,5 @@
 import { useConversation } from '@/contexts/ConversationContext';
 import { supabase } from '@/lib/supabase';
-import { apiUrl } from '@/services/api';
 import type { AppUIMessage } from '@shared/chatAi';
 import type { Conversation, Message } from '@shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -174,57 +173,6 @@ export function useRestoreMessageMutation({
       queryClient.invalidateQueries({
         queryKey: ['messages', conversation.id],
       });
-    },
-  });
-}
-
-/**
- * Submit an upscale job for an existing mesh. The server creates a fresh
- * ultra-quality mesh entry and streams progress through the standard
- * mesh-status polling path; the caller is expected to navigate to the
- * parent user message so the new mesh shows up in the right slot.
- */
-export function useUpscaleMutation({
-  conversation,
-  updateConversationAsync,
-}: {
-  conversation: Conversation;
-  updateConversationAsync?: (conversation: Conversation) => Promise<unknown>;
-}) {
-  return useMutation({
-    mutationKey: ['upscale', conversation.id],
-    mutationFn: async ({
-      meshId,
-      parentMessageId,
-    }: {
-      meshId: string;
-      parentMessageId: string | null;
-    }) => {
-      if (parentMessageId && updateConversationAsync) {
-        await updateConversationAsync({
-          ...conversation,
-          current_message_leaf_id: parentMessageId,
-        });
-      }
-      const token = (await supabase.auth.getSession()).data.session
-        ?.access_token;
-      const response = await fetch(apiUrl('mesh'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          action: 'upscale',
-          meshId,
-          conversationId: conversation.id,
-          parentMessageId,
-        }),
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Upscale failed: ${text}`);
-      }
     },
   });
 }

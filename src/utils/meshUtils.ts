@@ -4,6 +4,7 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Mesh } from '@shared/types';
+import { buildColoredGroupFromOff } from './coloredOffMesh';
 
 export interface BoundingBox {
   x: number;
@@ -157,6 +158,75 @@ export function isValidSTL(file: File): boolean {
   return validMimeTypes.includes(file.type) || file.type === '';
 }
 
+// Render any prebuilt THREE.Scene to a 1000×1000 PNG data URL using the same
+// camera framing (top-right-front isometric), HDR environment, and lighting
+// that both `generatePreview` and `generateColoredPreview` rely on.
+function renderSceneToDataUrl(scene: THREE.Scene): string {
+  const box = new THREE.Box3().setFromObject(scene);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+
+  // Use the bounding-box diagonal both as the ortho half-extent (with light
+  // padding) and as the camera's stand-off distance from `center`. Ortho has
+  // no foreshortening, so distance only needs to keep the model inside the
+  // near/far planes.
+  const diagonal = Math.sqrt(
+    size.x * size.x + size.y * size.y + size.z * size.z,
+  );
+  const halfExtent = (diagonal / 2) * 1.1;
+
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setSize(1000, 1000);
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  // Orthographic gives the clean technical-drawing look you want for thumbnails
+  // — parallel edges stay parallel, scale comparison reads correctly across
+  // different artifacts. Aspect is 1:1 since we render to a 1000×1000 PNG.
+  const camera = new THREE.OrthographicCamera(
+    -halfExtent,
+    halfExtent,
+    halfExtent,
+    -halfExtent,
+    0.1,
+    diagonal * 10,
+  );
+  // Top-right-front isometric framing — matches the live viewer's gizmo TFR
+  // corner instead of staring straight down +Z, which on a Z-up OpenSCAD
+  // STL/OFF produced a flat top-down view.
+  const isoOffset = new THREE.Vector3(1, 1, 1)
+    .normalize()
+    .multiplyScalar(diagonal * 2);
+  camera.position.copy(center).add(isoOffset);
+  camera.lookAt(center);
+
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  const renderScene = new THREE.Scene();
+  renderScene.background = new THREE.Color(0x3b3b3b);
+  renderScene.environment = pmremGenerator.fromScene(
+    new RoomEnvironment(),
+    0.04,
+  ).texture;
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(1, 1, 1);
+  renderScene.add(directionalLight);
+
+  renderScene.add(scene);
+
+  renderer.render(renderScene, camera);
+  const image = renderer.domElement.toDataURL('image/png');
+
+  pmremGenerator.dispose();
+  renderer.dispose();
+  return image;
+}
+
 export const generatePreview = async (
   mesh: Blob,
   fileType: Mesh['fileType'] = 'glb',
@@ -170,15 +240,18 @@ export const generatePreview = async (
     const loader = new STLLoader();
     const geometry = loader.parse(arrayBuffer);
 
-    // Center the geometry
+    // OpenSCAD emits Z-up STLs. Bake the same -π/2 X rotation the live viewer
+    // applies so the camera framing below sees a Y-up model and the brand
+    // color reads as the author would on screen.
+    geometry.rotateX(-Math.PI / 2);
     geometry.center();
     geometry.computeVertexNormals();
 
-    // Create a mesh with the STL geometry
     const material = new THREE.MeshStandardMaterial({
-      color: 0x888888,
+      color: 0x00a6ff,
       metalness: 0.6,
       roughness: 0.3,
+      envMapIntensity: 0.3,
     });
     const mesh = new THREE.Mesh(geometry, material);
 
@@ -205,59 +278,40 @@ export const generatePreview = async (
     scene.add(gltf.scene);
   }
 
-  const box = new THREE.Box3().setFromObject(scene);
-  const center = new THREE.Vector3();
-  const size = new THREE.Vector3();
-  box.getCenter(center);
-  box.getSize(size);
+  return renderSceneToDataUrl(scene);
+};
 
-  // Calculate the diagonal of the bounding box
-  const diagonal = Math.sqrt(
-    size.x * size.x + size.y * size.y + size.z * size.z,
-  );
+// Render an OpenSCAD OFF file (which carries per-face color() data) to a PNG
+// data URL using the same camera/lighting as `generatePreview`. Faces without
+// an explicit color fall back to `fallbackColor` (a packed 0xRRGGBB number).
+// Returns null if the OFF parses to zero usable faces so the caller can fall
+// back to the STL render path.
+export const generateColoredPreview = async (
+  off: Blob,
+  fallbackColor: number = 0x00a6ff,
+): Promise<string | null> => {
+  const text = await off.text();
+  const group = buildColoredGroupFromOff(text, fallbackColor);
+  if (!group) return null;
 
-  // Calculate the minimum distance needed to fit the object
-  // We use a larger factor (1.5) to ensure the object is comfortably visible
-  const fov = 75 * (Math.PI / 180); // Using default FOV of 75
-  const distance = (diagonal / 2 / Math.tan(fov / 2)) * 1.5;
+  // OpenSCAD coordinates are Z-up; match the live viewer's parent-group
+  // rotation so the iso camera frames the model the same way.
+  const rotated = new THREE.Group();
+  rotated.rotation.x = -Math.PI / 2;
 
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    preserveDrawingBuffer: true,
-  });
-  renderer.setSize(1000, 1000);
-  renderer.toneMapping = THREE.NoToneMapping;
-  renderer.setPixelRatio(window.devicePixelRatio);
+  // Center the colored group at the origin (its meshes sit at raw OpenSCAD
+  // coordinates) so the iso framing math centers correctly after rotation.
+  const box = new THREE.Box3().setFromObject(group);
+  if (!box.isEmpty()) {
+    const center = box.getCenter(new THREE.Vector3());
+    group.position.sub(center);
+  }
+  rotated.add(group);
 
-  const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-  // const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
-  camera.position.set(center.x, center.y, center.z + distance);
-  camera.lookAt(center);
+  const scene = new THREE.Scene();
+  scene.add(rotated);
 
-  const pmremGenerator = new THREE.PMREMGenerator(renderer);
-
-  const renderScene = new THREE.Scene();
-
-  renderScene.background = new THREE.Color(0x3b3b3b);
-  renderScene.environment = pmremGenerator.fromScene(
-    new RoomEnvironment(),
-    0.04,
-  ).texture;
-
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(1, 1, 1);
-  renderScene.add(directionalLight);
-
-  renderScene.add(scene);
-
-  renderer.render(renderScene, camera);
-
-  const image = renderer.domElement.toDataURL('image/png');
-
-  pmremGenerator.dispose();
-  renderer.dispose();
-
-  return image;
+  return renderSceneToDataUrl(scene);
 };
 
 export const applyMaterialAdjustments = (

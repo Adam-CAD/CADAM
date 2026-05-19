@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_BRIGHTNESS,
-  DEFAULT_BRIGHTNESS_UPSCALED,
   DEFAULT_ROUGHNESS,
   DEFAULT_NORMAL_INTENSITY,
   getModelDefaultBrightness,
@@ -30,7 +29,6 @@ interface LightingControlsProps {
   normalIntensity: number;
   polygonCount?: number;
   modelQuality?: Model;
-  isUpscaled?: boolean;
   onBrightnessChange: (value: number) => void;
   onRoughnessChange: (value: number) => void;
   onNormalIntensityChange: (value: number) => void;
@@ -42,7 +40,6 @@ export function LightingControls({
   normalIntensity,
   polygonCount,
   modelQuality,
-  isUpscaled,
   onBrightnessChange,
   onRoughnessChange,
   onNormalIntensityChange,
@@ -57,12 +54,9 @@ export function LightingControls({
   const showNormalIntensityControl = creativeModel
     ? shouldShowNormalIntensity(creativeModel)
     : false;
-  // Upscaled models need higher brightness to show color correctly
-  const defaultBrightness = isUpscaled
-    ? DEFAULT_BRIGHTNESS_UPSCALED
-    : creativeModel
-      ? getModelDefaultBrightness(creativeModel)
-      : DEFAULT_BRIGHTNESS;
+  const defaultBrightness = creativeModel
+    ? getModelDefaultBrightness(creativeModel)
+    : DEFAULT_BRIGHTNESS;
 
   // Check if values have changed from defaults
   const brightnessChanged = brightness !== defaultBrightness;

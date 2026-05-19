@@ -1,6 +1,7 @@
 import { MeshImagePreview } from '@/components/viewer/MeshImagePreview';
 import { StreamingCodeBlock } from '@/components/chat/StreamingCodeBlock';
 import { ChatReasoning } from '@/components/chat/ChatReasoning';
+import { UserAvatar } from '@/components/chat/UserAvatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +11,7 @@ import {
 import { CREATIVE_MODELS, PARAMETRIC_MODELS } from '@/lib/utils';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -18,6 +20,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { usePreview } from '@/hooks/usePreview';
+import { useOpenSCAD } from '@/hooks/useOpenSCAD';
+import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
 import type { ChatMessage } from '@/lib/aiMessages';
 import type { ParametricArtifact } from '@shared/types';
 import type { TreeNode } from '@shared/Tree';
@@ -31,12 +36,10 @@ import {
   ChevronRight,
   ChevronUp,
   Copy,
-  Eye,
   History,
   Loader2,
   Pencil,
   RefreshCw,
-  Sparkles,
   ThumbsDown,
   ThumbsUp,
   X,
@@ -44,8 +47,8 @@ import {
 import { useMemo, useRef, useState } from 'react';
 import { Streamdown } from 'streamdown';
 import type { Model } from '@shared/types';
+import type { ModelConfig } from '@/types/misc';
 import { useConversation } from '@/contexts/ConversationContext';
-import { useMeshData } from '@/hooks/useMeshData';
 
 type MessageBubbleProps = {
   message: TreeNode<ChatMessage>;
@@ -59,7 +62,6 @@ type MessageBubbleProps = {
   onChangeRating?: (rating: number) => void;
   onRetry?: (model: Model) => void;
   onRestore?: () => void;
-  onUpscale?: (meshId: string) => void;
 };
 
 export function MessageBubble(props: MessageBubbleProps) {
@@ -169,14 +171,17 @@ function UserBubble({
     isEditing;
 
   return (
-    <div className="flex justify-end">
+    <div className="flex justify-start">
+      <div className="mr-2 mt-1">
+        <UserAvatar className="h-9 w-9 border border-adam-neutral-700 bg-adam-neutral-950 p-0" />
+      </div>
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className="relative flex flex-col items-end gap-1"
+        className="relative flex flex-col gap-1"
       >
         {hasAttachments ? (
-          <div className="flex flex-wrap justify-end gap-1">
+          <div className="flex flex-wrap gap-1">
             {imageParts.map((part, index) => (
               <img
                 key={`img-${index}`}
@@ -343,30 +348,12 @@ function AssistantBubble({
   onChangeRating,
   onRetry,
   onRestore,
-  onUpscale,
 }: MessageBubbleProps) {
   const { conversation } = useConversation();
   const modelOptions =
     conversation.type === 'creative' ? CREATIVE_MODELS : PARAMETRIC_MODELS;
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
 
-  // Detect a finished mesh on this message so we can show the upscale button.
-  const meshIdFromParts = useMemo(() => {
-    for (const part of message.parts) {
-      if (
-        part.type === 'tool-create_mesh' &&
-        part.state === 'output-available'
-      ) {
-        return part.output.id;
-      }
-    }
-    return null;
-  }, [message.parts]);
-  const { data: meshDataQuery } = useMeshData({ id: meshIdFromParts ?? '' });
-  const canUpscale =
-    !!meshIdFromParts &&
-    meshDataQuery.data?.status === 'success' &&
-    meshDataQuery.data?.prompt?.model !== 'ultra';
   const text = useMemo(
     () =>
       message.parts
@@ -396,7 +383,7 @@ function AssistantBubble({
   };
 
   return (
-    <div className="flex justify-start">
+    <div className="flex min-w-0 justify-start">
       <div className="mr-2 mt-1">
         <Avatar className="h-9 w-9 border border-adam-neutral-700 bg-adam-neutral-950">
           <div style={{ padding: '0.6rem 0.5rem 0.5rem 0.55rem' }}>
@@ -407,7 +394,7 @@ function AssistantBubble({
           </div>
         </Avatar>
       </div>
-      <div className="flex w-[80%] flex-col gap-2">
+      <div className="flex w-[80%] min-w-0 flex-col gap-2">
         {message.parts.map((part, index) => {
           if (part.type === 'text') {
             if (!part.text) return null;
@@ -468,6 +455,13 @@ function AssistantBubble({
             }
 
             const isOpen = expandedTools.has(index);
+            // Once the tool's compile finishes (`output-available`), the
+            // canonical preview at `images/{user}/{conv}/preview-{toolCallId}`
+            // is either already uploaded (happy path) or about to be
+            // generated client-side by `usePreview` — either way the
+            // thumbnail keys off `toolCallId` and the artifact's `code`.
+            const showThumbnail =
+              part.state === 'output-available' && !!artifact;
             return (
               <ToolBlock
                 key={index}
@@ -482,24 +476,21 @@ function AssistantBubble({
                 loading={part.state === 'input-available'}
                 expanded={isOpen}
                 onToggle={() => toggleTool(index)}
-                action={
-                  artifact ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 rounded-md"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onViewArtifact?.(artifact);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>View CAD</TooltipContent>
-                    </Tooltip>
+                onPrimary={
+                  artifact ? () => onViewArtifact?.(artifact) : undefined
+                }
+                previewBody={
+                  showThumbnail && artifact ? (
+                    <button
+                      type="button"
+                      className="block w-full"
+                      onClick={() => onViewArtifact?.(artifact)}
+                    >
+                      <ParametricImagePreview
+                        toolCallId={part.toolCallId}
+                        code={artifact.code}
+                      />
+                    </button>
                   ) : null
                 }
               >
@@ -513,9 +504,11 @@ function AssistantBubble({
                   </div>
                 ) : null}
                 {artifact?.code ? (
-                  <pre className="max-h-80 overflow-auto p-3 text-xs text-adam-neutral-200">
-                    <code>{artifact.code}</code>
-                  </pre>
+                  <ScrollArea className="h-80 w-full">
+                    <pre className="m-0 whitespace-pre-wrap break-words p-3 text-xs text-adam-neutral-200">
+                      <code>{artifact.code}</code>
+                    </pre>
+                  </ScrollArea>
                 ) : null}
               </ToolBlock>
             );
@@ -542,47 +535,29 @@ function AssistantBubble({
                 }
                 expanded={expandedTools.has(index)}
                 onToggle={() => toggleTool(index)}
-                action={
+                onPrimary={meshId ? () => onViewMesh?.(meshId) : undefined}
+                previewBody={
                   meshId ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 rounded-md"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onViewMesh?.(meshId);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>View Mesh</TooltipContent>
-                    </Tooltip>
+                    <button
+                      type="button"
+                      className="block w-full p-2"
+                      onClick={() => onViewMesh?.(meshId)}
+                    >
+                      <MeshImagePreview meshId={meshId} />
+                    </button>
                   ) : null
                 }
-              >
-                {meshId ? (
-                  <button
-                    type="button"
-                    className="block w-full p-2"
-                    onClick={() => onViewMesh?.(meshId)}
-                  >
-                    <MeshImagePreview meshId={meshId} />
-                  </button>
-                ) : null}
-              </ToolBlock>
+              />
             );
           }
 
           return null;
         })}
 
-        {/* Suppress the rating/retry/copy/restore/upscale strip while the
-            latest assistant message is still streaming — those controls
-            don't make sense on a half-rendered response. Older messages
-            keep their controls even during a new stream. */}
+        {/* Suppress the rating/retry/copy/restore strip while the latest
+            assistant message is still streaming — those controls don't
+            make sense on a half-rendered response. Older messages keep
+            their controls even during a new stream. */}
         {!(isLoading && isLastMessage) && (
           <div className="flex flex-wrap items-center gap-1 gap-y-2">
             {onChangeRating && (
@@ -684,53 +659,17 @@ function AssistantBubble({
                   <TooltipContent>Retry</TooltipContent>
                 </Tooltip>
                 {modelOptions.length > 1 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        disabled={isLoading}
-                        className="h-6 w-6 rounded-lg rounded-l-none p-0"
-                        aria-label="Retry with another model"
-                      >
-                        <ChevronDown className="h-3 w-3 text-adam-neutral-100" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="bg-adam-neutral-800"
-                    >
-                      {modelOptions.map((option) => (
-                        <DropdownMenuItem
-                          key={option.id}
-                          className="text-adam-text-primary"
-                          onClick={() => onRetry(option.id)}
-                        >
-                          {option.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <RetryModelDropdown
+                    modelOptions={modelOptions}
+                    selectedModelId={
+                      (message.metadata?.model as Model | undefined) ??
+                      currentModel
+                    }
+                    onRetry={onRetry}
+                    disabled={isLoading}
+                  />
                 )}
               </div>
-            )}
-
-            {canUpscale && meshIdFromParts && onUpscale && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onUpscale(meshIdFromParts)}
-                    disabled={isLoading}
-                    className="h-6 gap-1 rounded-lg px-2 text-xs"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    <span>Upscale</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Upscale your 3D asset quality</TooltipContent>
-              </Tooltip>
             )}
 
             {onSelectLeaf && message.siblings.length > 1 && (
@@ -748,6 +687,69 @@ function AssistantBubble({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Retry-with-another-model dropdown. Trigger shows the model that
+ * produced THIS message (so the user can see what they're swapping
+ * away from) with a chevron that rotates when the menu opens. Matches
+ * the legacy `RetryModelSelector` shape.
+ */
+function RetryModelDropdown({
+  modelOptions,
+  selectedModelId,
+  onRetry,
+  disabled,
+}: {
+  modelOptions: ModelConfig[];
+  selectedModelId: Model | undefined;
+  onRetry: (model: Model) => void;
+  disabled: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedModel =
+    modelOptions.find((option) => option.id === selectedModelId) ??
+    modelOptions[0];
+  return (
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          disabled={disabled}
+          className={cn(
+            'h-6 w-fit gap-1 rounded-lg rounded-l-none px-2 text-xs text-adam-text-primary',
+            isOpen && 'bg-adam-neutral-800',
+          )}
+          aria-label="Retry with another model"
+        >
+          <span>{selectedModel.name}</span>
+          <ChevronDown
+            className={cn(
+              'h-3 w-3 transition-transform duration-100',
+              isOpen && 'rotate-180',
+            )}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-48 rounded-lg border border-adam-neutral-700 bg-adam-neutral-800 p-1"
+      >
+        {modelOptions.map((option) => (
+          <DropdownMenuItem
+            key={option.id}
+            className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-1.5 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
+            onClick={() => {
+              onRetry(option.id);
+              setIsOpen(false);
+            }}
+          >
+            {option.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -796,41 +798,123 @@ function ToolBlock({
   title,
   loading,
   expanded,
-  action,
+  onPrimary,
   onToggle,
+  previewBody,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   loading: boolean;
   expanded: boolean;
-  action?: React.ReactNode;
+  /** Whole-bar click — typically opens the artifact/mesh in the viewer pane. */
+  onPrimary?: () => void;
+  /** Toggles the expandable `children` body. The toggle affordance is the
+   *  hover-revealed chevron on the right; clicking it does NOT bubble to the
+   *  primary action. */
   onToggle: () => void;
+  /** Always-visible body slot (e.g. a thumbnail preview). Independent of
+   *  `expanded` — shown whenever it's provided. */
+  previewBody?: React.ReactNode;
+  /** Expandable body slot — only rendered when `expanded` is true. The
+   *  chevron is hidden entirely when this is omitted. */
   children?: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-900 text-sm text-adam-text-primary">
-      <div className="flex w-full items-center gap-1 px-3 py-2 hover:bg-adam-neutral-800">
+    <div className="group min-w-0 overflow-hidden rounded-lg border border-adam-neutral-700 bg-adam-neutral-900 text-sm text-adam-text-primary">
+      {previewBody ? <div>{previewBody}</div> : null}
+      <div
+        className={cn(
+          'flex w-full items-stretch hover:bg-adam-neutral-800',
+          previewBody && 'border-t border-adam-neutral-700',
+        )}
+      >
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          onClick={onToggle}
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
-          <span className="min-w-0 flex-1 truncate">{title}</span>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 shrink-0" />
-          ) : (
-            <ChevronDown className="h-4 w-4 shrink-0" />
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left',
+            !onPrimary && 'cursor-default',
           )}
+          onClick={onPrimary}
+          disabled={!onPrimary}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          ) : (
+            <span className="shrink-0">{icon}</span>
+          )}
+          <span className="min-w-0 flex-1 truncate">{title}</span>
         </button>
-        {action}
+        {children ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={expanded ? 'Hide code' : 'Show code'}
+            className={cn(
+              'flex w-9 shrink-0 items-center justify-center transition-opacity focus-visible:opacity-100',
+              expanded ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+            )}
+          >
+            {expanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+        ) : null}
       </div>
       {expanded && children ? (
-        <div className="border-t border-adam-neutral-700">{children}</div>
+        <div className="min-w-0 border-t border-adam-neutral-700">
+          {children}
+        </div>
       ) : null}
     </div>
   );
+}
+
+function ParametricImagePreview({
+  toolCallId,
+  code,
+}: {
+  toolCallId: string;
+  code: string;
+}) {
+  // Same get-or-generate path VisualCard uses: download cached PNG at
+  // `images/{userId}/{convId}/preview-{toolCallId}`, otherwise compile
+  // the SCAD via `previewScadColored` and render either the colored OFF
+  // (preferred) or the plain STL. The tool execution uploads this preview
+  // before `addToolOutput`, so on a healthy flow the download branch wins.
+  const { conversation } = useConversation();
+  const { previewScadColored } = useOpenSCAD();
+  const { data: thumbnailUrl } = usePreview({
+    id: toolCallId,
+    conversationId: conversation.id,
+    userId: conversation.user_id,
+    generateBlob: async () => {
+      const { stl, off } = await previewScadColored(code);
+      if (off) {
+        const colored = await generateColoredPreview(off);
+        if (colored) return dataUrlToBlob(colored);
+      }
+      return dataUrlToBlob(await generatePreview(stl, 'stl'));
+    },
+  });
+  if (!thumbnailUrl) return null;
+  return (
+    <div className="relative aspect-square w-full bg-adam-neutral-950">
+      <img
+        src={thumbnailUrl}
+        alt=""
+        className="h-full w-full object-cover"
+        draggable={false}
+      />
+    </div>
+  );
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl);
+  return response.blob();
 }
 
 function MeshContextChip({

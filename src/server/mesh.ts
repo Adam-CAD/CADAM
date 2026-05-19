@@ -1,7 +1,6 @@
 import { corsHeaders, isRecord } from './api';
 import { fal } from '@fal-ai/client';
 import { GoogleGenAI } from '@google/genai';
-import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import {
   generateImageWithFalFlux,
@@ -33,10 +32,6 @@ const DEBUG_LOGS =
 const debugLog = (...args: unknown[]) => {
   if (DEBUG_LOGS) console.log(...args);
 };
-
-function recordValue(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
-}
 
 function optionalErrorField(error: unknown, field: 'body' | 'status') {
   return isRecord(error) ? error[field] : undefined;
@@ -355,28 +350,9 @@ function getOpenAI() {
   return new OpenAI({ apiKey: requiredEnv('OPENAI_API_KEY') });
 }
 
-function getAnthropic() {
-  return new Anthropic({ apiKey: requiredEnv('ANTHROPIC_API_KEY') });
-}
-
 function getSupabaseClient() {
   return getServiceRoleSupabaseClient();
 }
-
-// Helper function to stream message data to the client
-function streamMessage(
-  controller: ReadableStreamDefaultController,
-  message: Record<string, unknown>,
-) {
-  controller.enqueue(new TextEncoder().encode(JSON.stringify(message) + '\n'));
-}
-
-// System prompt for generating fun upscale messages
-const upscaleSystemPrompt = `You are Adam, a fun, playful, nerdy assistant who creates 3D meshes. 
-You're about to upscale a mesh to production quality. 
-Generate a SHORT (1 sentence max), enthusiastic message about starting the upscale.
-Be quirky and excited! Use wordplay or puns if appropriate.
-Do NOT use quotes around your response.`;
 
 export async function handleMeshRequest(req: Request) {
   try {
@@ -518,9 +494,6 @@ export async function handleMeshRequest(req: Request) {
       meshTopology,
       polygonCount,
       preferredFormat,
-      action,
-      meshId: upscaleMeshId,
-      parentMessageId,
     }: {
       images?: string[];
       mesh?: string;
@@ -530,266 +503,9 @@ export async function handleMeshRequest(req: Request) {
       meshTopology?: 'quads' | 'polys';
       polygonCount?: number;
       preferredFormat?: 'glb' | 'fbx';
-      action?: 'upscale';
-      meshId?: string;
-      parentMessageId?: string;
     } = requestBody;
 
     debugLog('Model parameter extracted:', model);
-
-    // Handle upscale action with streaming response
-    if (action === 'upscale' && upscaleMeshId && conversationId) {
-      debugLog('=== UPSCALE ACTION ===');
-      debugLog('Upscaling mesh:', upscaleMeshId);
-
-      // Get the original mesh data to find the seed image
-      const { data: originalMesh, error: originalMeshError } =
-        await supabaseClient
-          .from('meshes')
-          .select('*')
-          .eq('id', upscaleMeshId)
-          .single();
-
-      if (originalMeshError || !originalMesh) {
-        return new Response(
-          JSON.stringify({ error: { message: 'Original mesh not found' } }),
-          {
-            status: 404,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        );
-      }
-
-      // Get the seed image from the mesh's images column
-      const seedImageId = originalMesh.images?.[0];
-      if (!seedImageId) {
-        return new Response(
-          JSON.stringify({
-            error: { message: 'No seed image found for this mesh' },
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        );
-      }
-
-      // Download the seed image from storage
-      const { data: imageBlob, error: downloadError } =
-        await supabaseClient.storage
-          .from('images')
-          .download(`${userData.user.id}/${conversationId}/${seedImageId}`);
-
-      if (downloadError || !imageBlob) {
-        return new Response(
-          JSON.stringify({
-            error: { message: 'Failed to download seed image' },
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        );
-      }
-
-      // Upload to FAL storage. Preserve the blob's actual MIME — seed
-      // images from gpt-image-2 are jpeg, seeds from Gemini/Flux are png.
-      // FAL serves the uploaded bytes with the Content-Type we give it,
-      // and Hunyuan3D's image decoder relies on extension + MIME matching
-      // the actual bytes; hardcoding png would fail on jpeg seeds.
-      const seedMime =
-        imageBlob.type && imageBlob.type.startsWith('image/')
-          ? imageBlob.type
-          : 'image/png';
-      const seedExt =
-        seedMime === 'image/jpeg'
-          ? 'jpg'
-          : seedMime === 'image/webp'
-            ? 'webp'
-            : 'png';
-      const imageFile = new File([imageBlob], `seed-image.${seedExt}`, {
-        type: seedMime,
-      });
-      const imageUrl = await fal.storage.upload(imageFile);
-      debugLog('Uploaded seed image to FAL:', imageUrl, { seedMime });
-
-      const originalPrompt = recordValue(originalMesh.prompt);
-
-      // Create new mesh entry for upscaled result
-      const { data: newMeshData, error: newMeshError } = await supabaseClient
-        .from('meshes')
-        .insert({
-          user_id: userData.user.id,
-          images: originalMesh.images,
-          conversation_id: conversationId,
-          file_type: 'glb',
-          prompt: {
-            ...originalPrompt,
-            upscaledFrom: upscaleMeshId,
-            model: 'ultra', // Mark as ultra since it's upscaled
-          },
-        })
-        .select()
-        .single();
-
-      if (newMeshError || !newMeshData) {
-        return new Response(
-          JSON.stringify({
-            error: { message: 'Failed to create upscaled mesh entry' },
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          },
-        );
-      }
-
-      const newMessageId = crypto.randomUUID();
-      const originalPromptText =
-        typeof originalPrompt.text === 'string'
-          ? originalPrompt.text
-          : undefined;
-
-      // Create the streaming response
-      const responseStream = new ReadableStream({
-        async start(controller) {
-          try {
-            let content = {
-              text: '',
-              mesh: { id: newMeshData.id, fileType: 'glb' as const },
-              model: 'ultra' as const,
-            };
-
-            const messageData = {
-              id: newMessageId,
-              conversation_id: conversationId,
-              role: 'assistant',
-              content,
-              parent_message_id: parentMessageId || null,
-              created_at: new Date().toISOString(),
-            };
-
-            // Send initial empty message to show loading state with ellipsis
-            streamMessage(controller, messageData);
-
-            // Stream the message generation using Claude
-            const stream = await getAnthropic().messages.create({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 100,
-              system: upscaleSystemPrompt,
-              messages: [
-                {
-                  role: 'user',
-                  content: originalPromptText
-                    ? `Generate a fun message about upscaling this: "${originalPromptText}"`
-                    : 'Generate a fun message about upscaling a mesh to production quality',
-                },
-              ],
-              stream: true,
-            });
-
-            // Stream each text delta to the client
-            for await (const chunk of stream) {
-              if (
-                chunk.type === 'content_block_delta' &&
-                chunk.delta.type === 'text_delta'
-              ) {
-                content = {
-                  ...content,
-                  text: (content.text || '') + chunk.delta.text,
-                };
-                streamMessage(controller, {
-                  ...messageData,
-                  content,
-                });
-              }
-            }
-
-            // Insert the final message into the database
-            const { error: messageError } = await supabaseClient
-              .from('messages')
-              .insert({
-                id: newMessageId,
-                conversation_id: conversationId,
-                role: 'assistant',
-                content,
-                parent_message_id: parentMessageId || null,
-              });
-
-            if (messageError) {
-              debugLog('Failed to create upscale message:', messageError);
-            }
-
-            // Update conversation's current leaf to the new message
-            await supabaseClient
-              .from('conversations')
-              .update({ current_message_leaf_id: newMessageId })
-              .eq('id', conversationId);
-
-            // Submit to Hunyuan3D V3 for upscaling (after message is created)
-            const hunyuanInput = {
-              input_image_url: imageUrl,
-              enable_pbr: true,
-              face_count: 500000,
-            };
-            try {
-              ensureFalConfig();
-              await fal.queue.submit('fal-ai/hunyuan-3d/v3.1/pro/image-to-3d', {
-                input: hunyuanInput,
-                webhookUrl: `${appBaseUrl}/cadam/api/fal-webhook?id=${newMeshData.id}`,
-              });
-              debugLog(
-                'Successfully submitted to Hunyuan3D v3.1 Pro for upscaling',
-              );
-            } catch (submitError) {
-              console.error('Hunyuan v3.1 Pro submit failed:', {
-                message:
-                  submitError instanceof Error
-                    ? submitError.message
-                    : String(submitError),
-                status: optionalErrorField(submitError, 'status'),
-                body: optionalErrorField(submitError, 'body'),
-                input: hunyuanInput,
-              });
-              throw submitError;
-            }
-
-            // Create a preview for the upscaled mesh (non-blocking)
-            createHunyuanPreview(
-              imageUrl,
-              'upscale preview',
-              userData.user.id,
-              conversationId,
-              newMeshData.id,
-              appBaseUrl,
-            ).catch((e) =>
-              debugLog('Preview creation failed (non-critical):', e),
-            );
-
-            // Stream final message state
-            streamMessage(controller, {
-              ...messageData,
-              content,
-            });
-
-            controller.close();
-          } catch (error) {
-            debugLog('Error in upscale stream:', error);
-            controller.error(error);
-          }
-        },
-      });
-
-      return new Response(responseStream, {
-        status: 200,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-        },
-      });
-    }
 
     if (!conversationId) {
       logError(new Error('Conversation ID is required'), {

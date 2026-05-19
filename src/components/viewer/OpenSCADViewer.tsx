@@ -2,17 +2,12 @@ import { useOpenSCAD } from '@/hooks/useOpenSCAD';
 import { useCallback, useEffect, useState, useContext, useRef } from 'react';
 import { ThreeScene } from '@/components/viewer/ThreeScene';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { BufferGeometry, Group } from 'three';
+import { CircleAlert, Loader2, Wrench } from 'lucide-react';
 import {
-  BufferGeometry,
-  Float32BufferAttribute,
-  Group,
-  Material,
-  Mesh,
-  MeshStandardMaterial,
-} from 'three';
-import { CircleAlert, Wrench } from 'lucide-react';
-import { AdamLoading } from '@/components/viewer/AdamLoading';
-import { parseColoredOff } from '@/utils/offParser';
+  buildColoredGroupFromOff,
+  disposeColoredGroup,
+} from '@/utils/coloredOffMesh';
 import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
@@ -31,17 +26,13 @@ function extractImportFilenames(code: string): string[] {
   return filenames;
 }
 
-// Walk a Three.js Group and release GPU resources for each mesh's geometry
-// and material. Called whenever a compile produces a new group so the old
-// one doesn't pile up VRAM across frequent recompiles.
-function disposeGroup(group: Group) {
-  group.traverse((obj) => {
-    if (!(obj instanceof Mesh)) return;
-    obj.geometry?.dispose();
-    const mat = obj.material;
-    if (Array.isArray(mat)) mat.forEach((m: Material) => m.dispose());
-    else mat?.dispose();
-  });
+// Brand-fallback `color` arrives as a CSS hex string (e.g. "#00A6FF") since
+// it's also handed to react-three-fiber's <meshStandardMaterial color>. The
+// OFF builder wants a packed 0xRRGGBB number, so coerce here.
+function parseHexColor(hex: string): number {
+  const trimmed = hex.startsWith('#') ? hex.slice(1) : hex;
+  const parsed = parseInt(trimmed, 16);
+  return Number.isFinite(parsed) ? parsed : 0x00a6ff;
 }
 
 interface OpenSCADPreviewProps {
@@ -198,7 +189,7 @@ export function OpenSCADPreview({
     // which branch fires (no-OFF, parse error, empty-after-filtering).
     const clearColoredGroup = () => {
       if (mountedGroupRef.current) {
-        disposeGroup(mountedGroupRef.current);
+        disposeColoredGroup(mountedGroupRef.current);
         mountedGroupRef.current = null;
       }
       setColoredGroup(null);
@@ -214,91 +205,20 @@ export function OpenSCADPreview({
       .then((text) => {
         if (cancelled) return;
 
-        const parsed = parseColoredOff(text);
-
-        // OpenSCAD paints any face without an explicit color() call with its
-        // built-in model yellow (#F9D72C ≈ 249,215,44). That's a noisy
-        // default for our preview — strip it so those faces fall through to
-        // the brand fallback color instead. Manifold also emits a secondary
-        // yellow-green (#9DCB51 ≈ 157,203,81) for CSG-cut faces; treat that
-        // the same. Explicit color() values pass through untouched.
-        for (const face of parsed.faces) {
-          if (!face.color) continue;
-          const r = Math.round(face.color[0] * 255);
-          const g = Math.round(face.color[1] * 255);
-          const b = Math.round(face.color[2] * 255);
-          const isOpenscadDefault = r === 249 && g === 215 && b === 44;
-          const isManifoldCutDefault = r === 157 && g === 203 && b === 81;
-          if (isOpenscadDefault || isManifoldCutDefault) face.color = null;
-        }
-
-        const buckets = new Map<string, typeof parsed.faces>();
-        for (const face of parsed.faces) {
-          const key = face.color ? face.color.join(',') : '__default';
-          const bucket = buckets.get(key);
-          if (bucket) bucket.push(face);
-          else buckets.set(key, [face]);
-        }
-
-        const group = new Group();
-        for (const [key, faces] of buckets) {
-          const positions = new Float32Array(faces.length * 9);
-          for (let f = 0; f < faces.length; f++) {
-            const [a, b, c] = faces[f].vertices;
-            const va = parsed.vertices[a];
-            const vb = parsed.vertices[b];
-            const vc = parsed.vertices[c];
-            const base = f * 9;
-            positions[base + 0] = va[0];
-            positions[base + 1] = va[1];
-            positions[base + 2] = va[2];
-            positions[base + 3] = vb[0];
-            positions[base + 4] = vb[1];
-            positions[base + 5] = vb[2];
-            positions[base + 6] = vc[0];
-            positions[base + 7] = vc[1];
-            positions[base + 8] = vc[2];
-          }
-          const geom = new BufferGeometry();
-          geom.setAttribute(
-            'position',
-            new Float32BufferAttribute(positions, 3),
-          );
-          geom.computeVertexNormals();
-
-          const firstFace = faces[0];
-          const faceColor = key === '__default' ? null : firstFace.color;
-          // Keep the picker's metallic look when falling back, but render
-          // SCAD-declared colors with a low-metalness matte finish so they
-          // read as the author intended instead of picking up cool sky-tint
-          // highlights from the HDR environment.
-          const mat = new MeshStandardMaterial({
-            color: faceColor
-              ? (Math.round(faceColor[0] * 255) << 16) |
-                (Math.round(faceColor[1] * 255) << 8) |
-                Math.round(faceColor[2] * 255)
-              : fallbackColorRef.current,
-            metalness: faceColor ? 0.05 : 0.6,
-            roughness: faceColor ? 0.7 : 0.3,
-            envMapIntensity: faceColor ? 0.15 : 0.3,
-            transparent: faceColor ? faceColor[3] < 1 : false,
-            opacity: faceColor ? faceColor[3] : 1,
-          });
-
-          group.add(new Mesh(geom, mat));
-        }
+        const fallback = parseHexColor(fallbackColorRef.current);
+        const group = buildColoredGroupFromOff(text, fallback);
 
         // If every face was rejected (malformed OFF, empty mesh, etc.) the
-        // group has zero children — leave coloredGroup null so the render
-        // gate falls back to the single-color STL path instead of drawing
-        // nothing.
-        if (group.children.length === 0) {
+        // helper returns null — leave coloredGroup null so the render gate
+        // falls back to the single-color STL path instead of drawing nothing.
+        if (!group) {
           if (!cancelled) clearColoredGroup();
           return;
         }
 
         // Release the previous group's GPU resources before swapping it in.
-        if (mountedGroupRef.current) disposeGroup(mountedGroupRef.current);
+        if (mountedGroupRef.current)
+          disposeColoredGroup(mountedGroupRef.current);
         mountedGroupRef.current = group;
         setColoredGroup(group);
       })
@@ -316,7 +236,7 @@ export function OpenSCADPreview({
   useEffect(() => {
     return () => {
       if (mountedGroupRef.current) {
-        disposeGroup(mountedGroupRef.current);
+        disposeColoredGroup(mountedGroupRef.current);
         mountedGroupRef.current = null;
       }
       if (mountedGeometryRef.current) {
@@ -350,11 +270,7 @@ export function OpenSCADPreview({
         )}
         {isCompiling && (
           <div className="absolute inset-0 flex items-center justify-center bg-adam-neutral-700/30 backdrop-blur-sm">
-            <AdamLoading
-              label="Compiling..."
-              size={56}
-              className="text-adam-text-primary/70"
-            />
+            <Loader2 className="h-8 w-8 animate-spin text-adam-text-primary/70" />
           </div>
         )}
       </div>
