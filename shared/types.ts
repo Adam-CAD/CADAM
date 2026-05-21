@@ -85,6 +85,8 @@ export type ConversationSettings = {
    * `src/server/aiChat.ts`.
    */
   suggestions?: string[];
+  productDesignerCandidateId?: string;
+  product_designer_candidate_id?: string;
 } | null;
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];

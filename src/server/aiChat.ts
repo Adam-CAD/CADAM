@@ -2,6 +2,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { chatTools, type AppUIMessage, type AppTools } from '@shared/chatAi';
+import { PRODUCT_DESIGNER_PROMPT_EXTENSION } from '@shared/cadamProductDesigner';
 import { getParametricText } from '@shared/parametricParts';
 import type { Conversation, Message, MeshFileType, Model } from '@shared/types';
 import {
@@ -709,7 +710,7 @@ function chatModel(conversation: ConversationAccess, model: Model) {
 function systemPrompt(conversation: ConversationAccess) {
   return conversation.type === 'creative'
     ? CREATIVE_AGENT_PROMPT
-    : PARAMETRIC_AGENT_PROMPT;
+    : `${PARAMETRIC_AGENT_PROMPT}\n\n${PRODUCT_DESIGNER_PROMPT_EXTENSION}`;
 }
 
 export async function handleAiChatRequest(req: Request) {

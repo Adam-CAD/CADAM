@@ -102,6 +102,8 @@ export type AppUIMessage = UIMessage<
   {
     model?: Model;
     billingTokens?: number;
+    productDesignerCandidateId?: string;
+    product_designer_candidate_id?: string;
   },
   AppDataTypes,
   AppTools
