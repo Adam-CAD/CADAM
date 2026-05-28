@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint . --ignore-pattern 'supabase/**'",
+    "test:design-tree": "node --test --experimental-strip-types shared/parseDesignTree.test.ts",
     "typecheck": "tsc -b --noEmit",
     "format": "prettier --write .",
     "preview": "vite preview",

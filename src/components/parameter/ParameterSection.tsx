@@ -53,7 +53,7 @@ interface ParameterSectionProps {
   designTreeNodes?: CadamDesignTreeNode[];
   designTreeWarnings?: CadamDesignTreeParseWarning[];
   selectedDesignTreeNodeId?: string | null;
-  onSelectDesignTreeNode?: (nodeId: string) => void;
+  onSelectDesignTreeNode?: (nodeId: string | null) => void;
 }
 
 type DownloadFormat = 'stl' | 'scad' | 'dxf';
@@ -72,6 +72,14 @@ export function ParameterSection({
   const { toast } = useToast();
   const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>('stl');
   const [isExporting, setIsExporting] = useState(false);
+  const selectedDesignTreeNode = useMemo(
+    () => designTreeNodes.find((node) => node.id === selectedDesignTreeNodeId),
+    [designTreeNodes, selectedDesignTreeNodeId],
+  );
+  const selectedParameterNames = useMemo(() => {
+    if (!selectedDesignTreeNode?.params?.length) return null;
+    return new Set(selectedDesignTreeNode.params);
+  }, [selectedDesignTreeNode]);
 
   // Split params into the main list (non-color, shown by default) and a
   // collapsible Colors group below it. Keeps the dimensions the user
@@ -85,6 +93,24 @@ export function ParameterSection({
     }
     return { mainParameters: main, colorParameters: color };
   }, [parameters]);
+  const visibleMainParameters = useMemo(
+    () =>
+      selectedParameterNames
+        ? mainParameters.filter((param) =>
+            selectedParameterNames.has(param.name),
+          )
+        : mainParameters,
+    [mainParameters, selectedParameterNames],
+  );
+  const visibleColorParameters = useMemo(
+    () =>
+      selectedParameterNames
+        ? colorParameters.filter((param) =>
+            selectedParameterNames.has(param.name),
+          )
+        : colorParameters,
+    [colorParameters, selectedParameterNames],
+  );
   const [colorsOpen, setColorsOpen] = useState(true);
   const [dimensionsOpen, setDimensionsOpen] = useState(true);
 
@@ -228,7 +254,22 @@ export function ParameterSection({
               onSelectNode={onSelectDesignTreeNode}
               warnings={designTreeWarnings}
             />
-            {mainParameters.length > 0 && (
+            {selectedParameterNames && selectedDesignTreeNode && (
+              <div className="flex items-center justify-between gap-3 rounded-md bg-adam-neutral-800/60 px-3 py-2">
+                <span className="min-w-0 truncate text-[11px] text-adam-text-secondary">
+                  Showing parameters for {selectedDesignTreeNode.name}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onSelectDesignTreeNode?.(null)}
+                  className="h-6 shrink-0 px-2 text-[11px] text-adam-text-primary hover:bg-adam-neutral-700"
+                >
+                  Show all
+                </Button>
+              </div>
+            )}
+            {visibleMainParameters.length > 0 && (
               <Collapsible
                 open={dimensionsOpen}
                 onOpenChange={setDimensionsOpen}
@@ -240,7 +281,7 @@ export function ParameterSection({
                   <span className="flex items-center gap-2">
                     Dimensions
                     <span className="text-[10px] text-adam-neutral-400">
-                      {mainParameters.length}
+                      {visibleMainParameters.length}
                     </span>
                   </span>
                   <ChevronDown
@@ -251,7 +292,7 @@ export function ParameterSection({
                 </CollapsibleTrigger>
                 <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
                   <div className="mt-3 flex flex-col gap-3">
-                    {mainParameters.map((param) => (
+                    {visibleMainParameters.map((param) => (
                       <ParameterInput
                         key={param.name}
                         param={param}
@@ -262,7 +303,7 @@ export function ParameterSection({
                 </CollapsibleContent>
               </Collapsible>
             )}
-            {colorParameters.length > 0 && (
+            {visibleColorParameters.length > 0 && (
               <Collapsible
                 open={colorsOpen}
                 onOpenChange={setColorsOpen}
@@ -275,7 +316,7 @@ export function ParameterSection({
                   <span className="flex items-center gap-2">
                     Colors
                     <span className="text-[10px] text-adam-neutral-400">
-                      {colorParameters.length}
+                      {visibleColorParameters.length}
                     </span>
                   </span>
                   <ChevronDown
@@ -286,7 +327,7 @@ export function ParameterSection({
                 </CollapsibleTrigger>
                 <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
                   <div className="mt-3 flex flex-col gap-3">
-                    {colorParameters.map((param) => (
+                    {visibleColorParameters.map((param) => (
                       <ParameterInput
                         key={param.name}
                         param={param}

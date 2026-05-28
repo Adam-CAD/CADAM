@@ -24,7 +24,7 @@ import { useMemo, useState } from 'react';
 interface DesignTreeViewerProps {
   nodes: CadamDesignTreeNode[];
   selectedNodeId?: string | null;
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (nodeId: string | null) => void;
   warnings: CadamDesignTreeParseWarning[];
 }
 
@@ -39,10 +39,6 @@ export function DesignTreeViewer({
   warnings,
 }: DesignTreeViewerProps) {
   const treeNodes = useMemo(() => buildTree(nodes), [nodes]);
-  const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId),
-    [nodes, selectedNodeId],
-  );
 
   return (
     <section className="flex flex-col gap-3 border-b border-adam-neutral-700 pb-4">
@@ -87,15 +83,6 @@ export function DesignTreeViewer({
           ))}
         </div>
       )}
-
-      {selectedNode?.params && selectedNode.params.length > 0 && (
-        <div className="rounded-md bg-adam-neutral-800/60 px-3 py-2 text-[11px] text-adam-text-secondary">
-          Linked params: {selectedNode.params.join(', ')}
-          <span className="mt-1 block text-adam-neutral-400">
-            Parameter focus is not wired up yet.
-          </span>
-        </div>
-      )}
     </section>
   );
 }
@@ -107,7 +94,7 @@ function DesignTreeRow({
 }: {
   node: TreeNode;
   selectedNodeId?: string | null;
-  onSelectNode?: (nodeId: string) => void;
+  onSelectNode?: (nodeId: string | null) => void;
 }) {
   const hasChildren = node.children.length > 0;
   const [open, setOpen] = useState(true);
@@ -118,7 +105,7 @@ function DesignTreeRow({
     <Button
       type="button"
       variant="ghost"
-      onClick={() => onSelectNode?.(node.id)}
+      onClick={() => onSelectNode?.(isSelected ? null : node.id)}
       className={cn(
         'h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-left text-xs text-adam-text-secondary hover:bg-adam-neutral-800 hover:text-adam-text-primary',
         isSelected && 'bg-adam-neutral-800 text-adam-text-primary',
