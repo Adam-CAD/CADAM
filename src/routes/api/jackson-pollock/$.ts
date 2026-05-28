@@ -16,6 +16,7 @@ const ALLOWED_PATHS = [
 
 function isAllowedPath(path: string): boolean {
   if (path.startsWith('/static/')) return true;
+  if (path.startsWith('/array/')) return true;
   return ALLOWED_PATHS.some(
     (allowed) => path === allowed || path === allowed + '/',
   );
@@ -44,7 +45,7 @@ async function proxyPostHog({ request }: { request: Request }) {
     return new Response('Not Found', { status: 404 });
   }
 
-  const hostname = path.startsWith('/static/')
+  const hostname = path.startsWith('/static/') || path.startsWith('/array/')
     ? POSTHOG_ASSET_HOST
     : POSTHOG_API_HOST;
   const nextUrl = new URL(`https://${hostname}${path}`);
