@@ -4,6 +4,23 @@ import { preflight } from '@/server/api';
 const POSTHOG_API_HOST = 'us.i.posthog.com';
 const POSTHOG_ASSET_HOST = 'us-assets.i.posthog.com';
 
+const ALLOWED_PATHS = [
+  '/decide',
+  '/e',
+  '/engage',
+  '/capture',
+  '/batch',
+  '/s',
+  '/i/v0/e',
+];
+
+function isAllowedPath(path: string): boolean {
+  if (path.startsWith('/static/')) return true;
+  return ALLOWED_PATHS.some(
+    (allowed) => path === allowed || path === allowed + '/',
+  );
+}
+
 export const Route = createFileRoute('/api/jackson-pollock/$')({
   server: {
     handlers: {
@@ -22,14 +39,16 @@ async function proxyPostHog({ request }: { request: Request }) {
     routeIndex === -1
       ? '/'
       : url.pathname.slice(routeIndex + routePath.length) || '/';
+
+  if (!isAllowedPath(path)) {
+    return new Response('Not Found', { status: 404 });
+  }
+
   const hostname = path.startsWith('/static/')
     ? POSTHOG_ASSET_HOST
     : POSTHOG_API_HOST;
-  const nextUrl = new URL(url);
-  nextUrl.protocol = 'https';
-  nextUrl.hostname = hostname;
-  nextUrl.port = '';
-  nextUrl.pathname = path;
+  const nextUrl = new URL(`https://${hostname}${path}`);
+  nextUrl.search = url.search;
 
   const headers = new Headers();
   for (const name of ['accept', 'content-type', 'user-agent']) {
