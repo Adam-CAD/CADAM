@@ -34,8 +34,10 @@ import {
 import type { DxfExporter } from '@/utils/downloadUtils';
 import type { AppUIMessage } from '@shared/chatAi';
 import { isParametricArtifact } from '@shared/parametricParts';
+import parseDesignTree from '@shared/parseDesignTree';
 import Tree from '@shared/Tree';
 import type {
+  CadamDesignTreeParseResult,
   Conversation,
   Message,
   Model,
@@ -193,6 +195,11 @@ function ConversationEditor() {
   );
   const [activePreview, setActivePreview] = useState<ActivePreview>(null);
   const [parameters, setParameters] = useState<Parameter[]>([]);
+  const [designTreeResult, setDesignTreeResult] =
+    useState<CadamDesignTreeParseResult>({ nodes: [], warnings: [] });
+  const [selectedDesignTreeNodeId, setSelectedDesignTreeNodeId] = useState<
+    string | null
+  >(null);
   const [currentOutput, setCurrentOutput] = useState<Blob | undefined>();
   const [dxfExporter, setDxfExporter] = useState<DxfExporter | null>(null);
   const [mobilePreviewVersion, setMobilePreviewVersion] = useState(0);
@@ -214,6 +221,16 @@ function ConversationEditor() {
     },
     [],
   );
+
+  const updateDesignTree = useCallback((code: string) => {
+    const result = parseDesignTree(code);
+    setDesignTreeResult(result);
+    setSelectedDesignTreeNodeId((currentId) =>
+      currentId && result.nodes.some((node) => node.id === currentId)
+        ? currentId
+        : null,
+    );
+  }, []);
 
   // ── Source of truth: DB messages → tree → branch ───────────────────────
   const { data: dbMessages = [], isFetched: areMessagesFetched } =
@@ -432,16 +449,19 @@ function ConversationEditor() {
       // always yields the same `<ParameterSection>`, no matter which
       // model wrote it.
       setParameters(parseParameters(artifact.code));
+      updateDesignTree(artifact.code);
       setCurrentOutput(undefined);
       setDxfExporter(() => null);
       setActivePreview({ type: 'artifact', messageId, artifact });
       setMobilePreviewVersion((version) => version + 1);
     },
-    [],
+    [updateDesignTree],
   );
   const handleViewMesh = useCallback((meshId: string, messageId: string) => {
     setCurrentOutput(undefined);
     setDxfExporter(() => null);
+    setDesignTreeResult({ nodes: [], warnings: [] });
+    setSelectedDesignTreeNodeId(null);
     setActivePreview({ type: 'mesh', messageId, meshId });
     setMobilePreviewVersion((version) => version + 1);
   }, []);
@@ -454,6 +474,7 @@ function ConversationEditor() {
         nextCode = updateParameter(nextCode, parameter);
       }
       setParameters(nextParameters);
+      updateDesignTree(nextCode);
       setActivePreview({
         ...activePreview,
         artifact: {
@@ -462,7 +483,7 @@ function ConversationEditor() {
         },
       });
     },
-    [activePreview],
+    [activePreview, updateDesignTree],
   );
 
   const updatePrivacy = useCallback(
@@ -483,7 +504,10 @@ function ConversationEditor() {
   const sharePreview = activePreview ?? persistedLatestPreview;
 
   const hasArtifact =
-    activePreview?.type === 'artifact' && parameters.length > 0;
+    activePreview?.type === 'artifact' &&
+    (parameters.length > 0 ||
+      designTreeResult.nodes.length > 0 ||
+      designTreeResult.warnings.length > 0);
 
   // `useCachedAiChat` captures `initialBranch` once at Chat construction;
   // if the messages query hasn't completed its first fetch yet the
@@ -650,6 +674,10 @@ function ConversationEditor() {
             onParameterChange={changeParameters}
             currentOutput={currentOutput}
             dxfExporter={dxfExporter}
+            designTreeNodes={designTreeResult.nodes}
+            designTreeWarnings={designTreeResult.warnings}
+            selectedDesignTreeNodeId={selectedDesignTreeNodeId}
+            onSelectDesignTreeNode={setSelectedDesignTreeNodeId}
             code={
               activePreview?.type === 'artifact'
                 ? activePreview.artifact.code
@@ -664,6 +692,10 @@ function ConversationEditor() {
           onParameterChange={changeParameters}
           currentOutput={currentOutput}
           dxfExporter={dxfExporter}
+          designTreeNodes={designTreeResult.nodes}
+          designTreeWarnings={designTreeResult.warnings}
+          selectedDesignTreeNodeId={selectedDesignTreeNodeId}
+          onSelectDesignTreeNode={setSelectedDesignTreeNodeId}
           code={
             activePreview?.type === 'artifact'
               ? activePreview.artifact.code

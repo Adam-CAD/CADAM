@@ -46,6 +46,30 @@
 | **Smart Updates**          | Efficient parameter changes without AI re-generation |
 | **Custom Fonts**           | Built-in Geist font support for text in models       |
 
+## Design Tree Annotations
+
+CADAM can show a lightweight design tree for OpenSCAD models that include
+structured `@cadam-node` line comments. This first pass is source-driven: it
+does not map nodes to mesh faces or viewport selection.
+
+Supported JSON fields are `id` (required string), `kind` (required: `part`,
+`operation`, `group`, or `parameter`), `name`, `parentId`, `params`, and
+`moduleName`. `name` defaults to `id`, and `params` should be a string array.
+
+```scad
+width = 40; // [10:80]
+height = 12; // [4:30]
+
+// @cadam-node {"id":"base","kind":"part","name":"Base","params":["width","height"],"moduleName":"base"}
+module base() {
+  cube([width, 20, height]);
+}
+
+base();
+```
+
+See issue #139 for the initial design tree viewer scope.
+
 ## 📸 Demo
 
 <!-- Add demo GIFs or screenshots here -->

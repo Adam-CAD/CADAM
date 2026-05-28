@@ -12,8 +12,10 @@ import { updateParameter } from '@/lib/utils';
 import parseParameters from '@shared/parseParameters';
 import type { AppUIMessage } from '@shared/chatAi';
 import { isParametricArtifact } from '@shared/parametricParts';
+import parseDesignTree from '@shared/parseDesignTree';
 import Tree from '@shared/Tree';
 import type {
+  CadamDesignTreeParseResult,
   Conversation,
   Message,
   Parameter,
@@ -138,9 +140,24 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
   // server-side persistence.
   const [activePreview, setActivePreview] = useState<ActivePreview>(null);
   const [parameters, setParameters] = useState<Parameter[]>([]);
+  const [designTreeResult, setDesignTreeResult] =
+    useState<CadamDesignTreeParseResult>({ nodes: [], warnings: [] });
+  const [selectedDesignTreeNodeId, setSelectedDesignTreeNodeId] = useState<
+    string | null
+  >(null);
   const [currentOutput, setCurrentOutput] = useState<Blob | undefined>();
   const [mobilePreviewVersion, setMobilePreviewVersion] = useState(0);
   const baseCodeRef = useRef<string | null>(null);
+
+  const updateDesignTree = useCallback((code: string) => {
+    const result = parseDesignTree(code);
+    setDesignTreeResult(result);
+    setSelectedDesignTreeNodeId((currentId) =>
+      currentId && result.nodes.some((node) => node.id === currentId)
+        ? currentId
+        : null,
+    );
+  }, []);
 
   // Auto-switch the preview pane to the latest artifact / mesh in the
   // current branch when it changes.
@@ -157,6 +174,7 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
     if (latest.type === 'artifact') {
       baseCodeRef.current = latest.artifact.code;
       setParameters(parseParameters(latest.artifact.code));
+      updateDesignTree(latest.artifact.code);
       setCurrentOutput(undefined);
       setActivePreview({
         type: 'artifact',
@@ -166,6 +184,8 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
       setMobilePreviewVersion((version) => version + 1);
     } else {
       setCurrentOutput(undefined);
+      setDesignTreeResult({ nodes: [], warnings: [] });
+      setSelectedDesignTreeNodeId(null);
       setActivePreview({
         type: 'mesh',
         messageId: latest.messageId,
@@ -173,20 +193,23 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
       });
       setMobilePreviewVersion((version) => version + 1);
     }
-  }, [branch]);
+  }, [branch, updateDesignTree]);
 
   const handleViewArtifact = useCallback(
     (artifact: ParametricArtifact, messageId: string) => {
       baseCodeRef.current = artifact.code;
       setParameters(parseParameters(artifact.code));
+      updateDesignTree(artifact.code);
       setCurrentOutput(undefined);
       setActivePreview({ type: 'artifact', messageId, artifact });
       setMobilePreviewVersion((version) => version + 1);
     },
-    [],
+    [updateDesignTree],
   );
   const handleViewMesh = useCallback((meshId: string, messageId: string) => {
     setCurrentOutput(undefined);
+    setDesignTreeResult({ nodes: [], warnings: [] });
+    setSelectedDesignTreeNodeId(null);
     setActivePreview({ type: 'mesh', messageId, meshId });
     setMobilePreviewVersion((version) => version + 1);
   }, []);
@@ -199,6 +222,7 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
         nextCode = updateParameter(nextCode, parameter);
       }
       setParameters(nextParameters);
+      updateDesignTree(nextCode);
       setActivePreview({
         ...activePreview,
         artifact: {
@@ -207,11 +231,14 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
         },
       });
     },
-    [activePreview],
+    [activePreview, updateDesignTree],
   );
 
   const hasArtifact =
-    activePreview?.type === 'artifact' && parameters.length > 0;
+    activePreview?.type === 'artifact' &&
+    (parameters.length > 0 ||
+      designTreeResult.nodes.length > 0 ||
+      designTreeResult.warnings.length > 0);
 
   return (
     <ConversationView
@@ -305,6 +332,10 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
             onParameterChange={changeParameters}
             currentOutput={currentOutput}
             dxfExporter={null}
+            designTreeNodes={designTreeResult.nodes}
+            designTreeWarnings={designTreeResult.warnings}
+            selectedDesignTreeNodeId={selectedDesignTreeNodeId}
+            onSelectDesignTreeNode={setSelectedDesignTreeNodeId}
             code={
               activePreview?.type === 'artifact'
                 ? activePreview.artifact.code
@@ -319,6 +350,10 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
           onParameterChange={changeParameters}
           currentOutput={currentOutput}
           dxfExporter={null}
+          designTreeNodes={designTreeResult.nodes}
+          designTreeWarnings={designTreeResult.warnings}
+          selectedDesignTreeNodeId={selectedDesignTreeNodeId}
+          onSelectDesignTreeNode={setSelectedDesignTreeNodeId}
           code={
             activePreview?.type === 'artifact'
               ? activePreview.artifact.code

@@ -1,8 +1,13 @@
 import { Download, ChevronUp, Loader2 } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { DesignTreeViewer } from '@/components/design-tree/DesignTreeViewer';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { Parameter } from '@shared/types';
+import type {
+  CadamDesignTreeNode,
+  CadamDesignTreeParseWarning,
+  Parameter,
+} from '@shared/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +30,10 @@ interface ParameterSheetContentProps {
   currentOutput?: Blob;
   dxfExporter?: DxfExporter | null;
   code?: string;
+  designTreeNodes?: CadamDesignTreeNode[];
+  designTreeWarnings?: CadamDesignTreeParseWarning[];
+  selectedDesignTreeNodeId?: string | null;
+  onSelectDesignTreeNode?: (nodeId: string) => void;
 }
 
 type DownloadFormat = 'stl' | 'scad' | 'dxf';
@@ -35,6 +44,10 @@ export function ParameterSheetContent({
   currentOutput,
   dxfExporter,
   code,
+  designTreeNodes = [],
+  designTreeWarnings = [],
+  selectedDesignTreeNodeId,
+  onSelectDesignTreeNode,
 }: ParameterSheetContentProps) {
   const { toast } = useToast();
   const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>('stl');
@@ -139,6 +152,12 @@ export function ParameterSheetContent({
     <div className="flex h-full min-h-0 w-full flex-col">
       <ScrollArea className="min-h-0 w-full flex-1 px-4">
         <div className="flex flex-col gap-6 pb-4 pt-2">
+          <DesignTreeViewer
+            nodes={designTreeNodes}
+            selectedNodeId={selectedDesignTreeNodeId}
+            onSelectNode={onSelectDesignTreeNode}
+            warnings={designTreeWarnings}
+          />
           {parameters.map((param) => (
             <ParameterInput
               key={param.name}
