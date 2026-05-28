@@ -70,6 +70,15 @@ describe('parseDesignTree', () => {
     assert.equal(result.warnings[0].code, 'missing-id');
   });
 
+  it('returns a warning for missing kind', () => {
+    const result = parseDesignTree('// @cadam-node {"id":"base"}');
+
+    assert.deepEqual(result.nodes, []);
+    assert.equal(result.warnings.length, 1);
+    assert.equal(result.warnings[0].code, 'missing-kind');
+    assert.equal(result.warnings[0].id, 'base');
+  });
+
   it('returns a warning for unknown kind', () => {
     const result = parseDesignTree(
       '// @cadam-node {"id":"base","kind":"sketch"}',
