@@ -22,12 +22,18 @@ type CadamNodePayload = {
   moduleName?: unknown;
 };
 
+type CadamNodeSource = {
+  line: number;
+  raw: string;
+};
+
 export default function parseDesignTree(
   source: string,
 ): CadamDesignTreeParseResult {
   const nodes: CadamDesignTreeNode[] = [];
   const warnings: CadamDesignTreeParseWarning[] = [];
   const seenIds = new Set<string>();
+  const nodeSources = new Map<string, CadamNodeSource>();
 
   let match: RegExpExecArray | null;
   while ((match = CADAM_NODE_COMMENT_REGEX.exec(source)) !== null) {
@@ -128,9 +134,71 @@ export default function parseDesignTree(
     if (moduleName) node.moduleName = moduleName;
 
     nodes.push(node);
+    nodeSources.set(id, { line, raw });
   }
 
+  validateParentLinks(nodes, warnings, nodeSources);
+
   return { nodes, warnings };
+}
+
+function validateParentLinks(
+  nodes: CadamDesignTreeNode[],
+  warnings: CadamDesignTreeParseWarning[],
+  nodeSources: Map<string, CadamNodeSource>,
+) {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  for (const node of nodes) {
+    if (!node.parentId || byId.has(node.parentId)) continue;
+    const source = nodeSources.get(node.id);
+    warnings.push({
+      code: 'missing-parent',
+      message: `@cadam-node parentId "${node.parentId}" does not match another node.`,
+      line: source?.line ?? 0,
+      raw: source?.raw ?? '',
+      id: node.id,
+      parentId: node.parentId,
+    });
+  }
+
+  const warnedCycles = new Set<string>();
+  for (const node of nodes) {
+    const path: string[] = [];
+    const pathIndex = new Map<string, number>();
+    let currentId: string | undefined = node.id;
+
+    while (currentId) {
+      const existingIndex = pathIndex.get(currentId);
+      if (existingIndex !== undefined) {
+        const cycleIds = path.slice(existingIndex);
+        const cycleKey = [...cycleIds].sort().join('\0');
+        if (!warnedCycles.has(cycleKey)) {
+          warnedCycles.add(cycleKey);
+          const warningNode = byId.get(cycleIds[0]);
+          const source = warningNode
+            ? nodeSources.get(warningNode.id)
+            : undefined;
+          warnings.push({
+            code: 'circular-parent',
+            message: `@cadam-node parentId chain contains a cycle: ${cycleIds.join(' -> ')}.`,
+            line: source?.line ?? 0,
+            raw: source?.raw ?? '',
+            id: warningNode?.id,
+            parentId: warningNode?.parentId,
+          });
+        }
+        break;
+      }
+
+      pathIndex.set(currentId, path.length);
+      path.push(currentId);
+
+      const current = byId.get(currentId);
+      if (!current?.parentId || !byId.has(current.parentId)) break;
+      currentId = current.parentId;
+    }
+  }
 }
 
 function isKnownNodeKind(kind: string): kind is CadamDesignTreeNodeKind {

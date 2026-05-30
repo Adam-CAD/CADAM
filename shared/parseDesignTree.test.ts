@@ -103,6 +103,34 @@ describe('parseDesignTree', () => {
     assert.equal(result.warnings[0].id, 'base');
   });
 
+  it('returns a warning for a dangling parentId', () => {
+    const result = parseDesignTree(
+      '// @cadam-node {"id":"child","kind":"part","parentId":"missing"}',
+    );
+
+    assert.deepEqual(result.nodes, [
+      { id: 'child', kind: 'part', name: 'child', parentId: 'missing' },
+    ]);
+    assert.equal(result.warnings.length, 1);
+    assert.equal(result.warnings[0].code, 'missing-parent');
+    assert.equal(result.warnings[0].id, 'child');
+    assert.equal(result.warnings[0].parentId, 'missing');
+  });
+
+  it('returns a warning for a circular parentId cycle', () => {
+    const result = parseDesignTree(`
+// @cadam-node {"id":"a","kind":"part","parentId":"b"}
+// @cadam-node {"id":"b","kind":"part","parentId":"a"}
+`);
+
+    assert.deepEqual(result.nodes, [
+      { id: 'a', kind: 'part', name: 'a', parentId: 'b' },
+      { id: 'b', kind: 'part', name: 'b', parentId: 'a' },
+    ]);
+    assert.equal(result.warnings.length, 1);
+    assert.equal(result.warnings[0].code, 'circular-parent');
+  });
+
   it('returns an empty result when there are no annotations', () => {
     const result = parseDesignTree(`
 width = 10;

@@ -89,12 +89,15 @@ export type CadamDesignTreeParseWarning = {
     | 'missing-kind'
     | 'duplicate-id'
     | 'unknown-kind'
-    | 'invalid-param-entry';
+    | 'invalid-param-entry'
+    | 'missing-parent'
+    | 'circular-parent';
   message: string;
   line: number;
   raw: string;
   id?: string;
   kind?: string;
+  parentId?: string;
 };
 
 export type CadamDesignTreeParseResult = {

@@ -166,7 +166,7 @@ function buildTree(nodes: CadamDesignTreeNode[]) {
 
   for (const node of byId.values()) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
-    if (parent) {
+    if (parent && !wouldCreateCycle(node, parent, byId)) {
       parent.children.push(node);
     } else {
       roots.push(node);
@@ -174,6 +174,24 @@ function buildTree(nodes: CadamDesignTreeNode[]) {
   }
 
   return roots;
+}
+
+function wouldCreateCycle(
+  node: TreeNode,
+  parent: TreeNode,
+  byId: Map<string, TreeNode>,
+) {
+  const seenIds = new Set<string>();
+  let current: TreeNode | undefined = parent;
+
+  while (current) {
+    if (current.id === node.id) return true;
+    if (!current.parentId || seenIds.has(current.id)) return false;
+    seenIds.add(current.id);
+    current = byId.get(current.parentId);
+  }
+
+  return false;
 }
 
 function iconForKind(kind: CadamDesignTreeNode['kind']) {
