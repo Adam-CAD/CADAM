@@ -80,6 +80,9 @@ export function ParameterSection({
     if (!selectedDesignTreeNode?.params?.length) return null;
     return new Set(selectedDesignTreeNode.params);
   }, [selectedDesignTreeNode]);
+  const activeSelectedParameterNames = onSelectDesignTreeNode
+    ? selectedParameterNames
+    : null;
 
   // Split params into the main list (non-color, shown by default) and a
   // collapsible Colors group below it. Keeps the dimensions the user
@@ -95,21 +98,21 @@ export function ParameterSection({
   }, [parameters]);
   const visibleMainParameters = useMemo(
     () =>
-      selectedParameterNames
+      activeSelectedParameterNames
         ? mainParameters.filter((param) =>
-            selectedParameterNames.has(param.name),
+            activeSelectedParameterNames.has(param.name),
           )
         : mainParameters,
-    [mainParameters, selectedParameterNames],
+    [mainParameters, activeSelectedParameterNames],
   );
   const visibleColorParameters = useMemo(
     () =>
-      selectedParameterNames
+      activeSelectedParameterNames
         ? colorParameters.filter((param) =>
-            selectedParameterNames.has(param.name),
+            activeSelectedParameterNames.has(param.name),
           )
         : colorParameters,
-    [colorParameters, selectedParameterNames],
+    [colorParameters, activeSelectedParameterNames],
   );
   const [colorsOpen, setColorsOpen] = useState(true);
   const [dimensionsOpen, setDimensionsOpen] = useState(true);
@@ -250,11 +253,13 @@ export function ParameterSection({
           <div className="flex flex-col gap-3">
             <DesignTreeViewer
               nodes={designTreeNodes}
-              selectedNodeId={selectedDesignTreeNodeId}
+              selectedNodeId={
+                onSelectDesignTreeNode ? selectedDesignTreeNodeId : null
+              }
               onSelectNode={onSelectDesignTreeNode}
               warnings={designTreeWarnings}
             />
-            {selectedParameterNames && selectedDesignTreeNode && (
+            {activeSelectedParameterNames && selectedDesignTreeNode && (
               <div className="flex items-center justify-between gap-3 rounded-md bg-adam-neutral-800/60 px-3 py-2">
                 <span className="min-w-0 truncate text-[11px] text-adam-text-secondary">
                   Showing parameters for {selectedDesignTreeNode.name}

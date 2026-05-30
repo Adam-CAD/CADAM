@@ -88,7 +88,8 @@ export type CadamDesignTreeParseWarning = {
     | 'missing-id'
     | 'missing-kind'
     | 'duplicate-id'
-    | 'unknown-kind';
+    | 'unknown-kind'
+    | 'invalid-param-entry';
   message: string;
   line: number;
   raw: string;

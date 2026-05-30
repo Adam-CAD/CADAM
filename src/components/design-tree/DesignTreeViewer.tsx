@@ -39,6 +39,7 @@ export function DesignTreeViewer({
   warnings,
 }: DesignTreeViewerProps) {
   const treeNodes = useMemo(() => buildTree(nodes), [nodes]);
+  if (nodes.length === 0 && warnings.length === 0) return null;
 
   return (
     <section className="flex flex-col gap-3 border-b border-adam-neutral-700 pb-4">
@@ -67,11 +68,7 @@ export function DesignTreeViewer({
         </div>
       )}
 
-      {treeNodes.length === 0 ? (
-        <div className="rounded-md border border-dashed border-adam-neutral-700 px-3 py-4 text-center text-xs text-adam-text-secondary">
-          No annotated design nodes found.
-        </div>
-      ) : (
+      {treeNodes.length > 0 && (
         <div className="flex flex-col gap-1">
           {treeNodes.map((node) => (
             <DesignTreeRow

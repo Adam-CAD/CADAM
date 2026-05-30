@@ -222,15 +222,22 @@ function ConversationEditor() {
     [],
   );
 
-  const updateDesignTree = useCallback((code: string) => {
-    const result = parseDesignTree(code);
-    setDesignTreeResult(result);
-    setSelectedDesignTreeNodeId((currentId) =>
-      currentId && result.nodes.some((node) => node.id === currentId)
-        ? currentId
-        : null,
-    );
-  }, []);
+  const updateDesignTree = useCallback(
+    (code: string, options: { preserveSelection?: boolean } = {}) => {
+      const result = parseDesignTree(code);
+      setDesignTreeResult(result);
+      if (options.preserveSelection === false) {
+        setSelectedDesignTreeNodeId(null);
+        return;
+      }
+      setSelectedDesignTreeNodeId((currentId) =>
+        currentId && result.nodes.some((node) => node.id === currentId)
+          ? currentId
+          : null,
+      );
+    },
+    [],
+  );
 
   // ── Source of truth: DB messages → tree → branch ───────────────────────
   const { data: dbMessages = [], isFetched: areMessagesFetched } =
@@ -449,7 +456,7 @@ function ConversationEditor() {
       // always yields the same `<ParameterSection>`, no matter which
       // model wrote it.
       setParameters(parseParameters(artifact.code));
-      updateDesignTree(artifact.code);
+      updateDesignTree(artifact.code, { preserveSelection: false });
       setCurrentOutput(undefined);
       setDxfExporter(() => null);
       setActivePreview({ type: 'artifact', messageId, artifact });

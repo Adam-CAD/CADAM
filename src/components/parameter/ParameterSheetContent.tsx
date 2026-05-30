@@ -63,12 +63,17 @@ export function ParameterSheetContent({
     if (!selectedDesignTreeNode?.params?.length) return null;
     return new Set(selectedDesignTreeNode.params);
   }, [selectedDesignTreeNode]);
+  const activeSelectedParameterNames = onSelectDesignTreeNode
+    ? selectedParameterNames
+    : null;
   const visibleParameters = useMemo(
     () =>
-      selectedParameterNames
-        ? parameters.filter((param) => selectedParameterNames.has(param.name))
+      activeSelectedParameterNames
+        ? parameters.filter((param) =>
+            activeSelectedParameterNames.has(param.name),
+          )
         : parameters,
-    [parameters, selectedParameterNames],
+    [parameters, activeSelectedParameterNames],
   );
 
   useEffect(() => {
@@ -169,11 +174,13 @@ export function ParameterSheetContent({
         <div className="flex flex-col gap-6 pb-4 pt-2">
           <DesignTreeViewer
             nodes={designTreeNodes}
-            selectedNodeId={selectedDesignTreeNodeId}
+            selectedNodeId={
+              onSelectDesignTreeNode ? selectedDesignTreeNodeId : null
+            }
             onSelectNode={onSelectDesignTreeNode}
             warnings={designTreeWarnings}
           />
-          {selectedParameterNames && selectedDesignTreeNode && (
+          {activeSelectedParameterNames && selectedDesignTreeNode && (
             <div className="flex items-center justify-between gap-3 rounded-md bg-adam-neutral-800/60 px-3 py-2">
               <span className="min-w-0 truncate text-[11px] text-adam-text-secondary">
                 Showing parameters for {selectedDesignTreeNode.name}

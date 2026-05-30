@@ -6,7 +6,7 @@ import type {
 } from './types.ts';
 
 const CADAM_NODE_COMMENT_REGEX = /^\s*\/\/\s*@cadam-node\s+(.+?)\s*$/gm;
-const KNOWN_NODE_KINDS = new Set<CadamDesignTreeNodeKind>([
+const KNOWN_NODE_KINDS = new Set<string>([
   'part',
   'operation',
   'group',
@@ -113,8 +113,17 @@ export default function parseDesignTree(
     };
     const parentId = stringOrUndefined(payload.parentId);
     if (parentId) node.parentId = parentId;
-    const params = stringArrayOrUndefined(payload.params);
-    if (params) node.params = params;
+    const params = stringArrayResult(payload.params);
+    if (params?.hasInvalidEntry) {
+      warnings.push({
+        code: 'invalid-param-entry',
+        message: '@cadam-node params must contain only strings.',
+        line,
+        raw,
+        id,
+      });
+    }
+    if (params && params.values.length > 0) node.params = params.values;
     const moduleName = stringOrUndefined(payload.moduleName);
     if (moduleName) node.moduleName = moduleName;
 
@@ -125,7 +134,7 @@ export default function parseDesignTree(
 }
 
 function isKnownNodeKind(kind: string): kind is CadamDesignTreeNodeKind {
-  return KNOWN_NODE_KINDS.has(kind as CadamDesignTreeNodeKind);
+  return KNOWN_NODE_KINDS.has(kind);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -138,12 +147,12 @@ function stringOrUndefined(value: unknown) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function stringArrayOrUndefined(value: unknown) {
+function stringArrayResult(value: unknown) {
   if (!Array.isArray(value)) return undefined;
-  const strings = value.filter(
+  const values = value.filter(
     (item): item is string => typeof item === 'string',
   );
-  return strings.length > 0 ? strings : undefined;
+  return { values, hasInvalidEntry: values.length !== value.length };
 }
 
 function lineNumberForIndex(source: string, index: number) {

@@ -90,6 +90,19 @@ describe('parseDesignTree', () => {
     assert.equal(result.warnings[0].kind, 'sketch');
   });
 
+  it('returns a warning for non-string params entries', () => {
+    const result = parseDesignTree(
+      '// @cadam-node {"id":"base","kind":"part","params":["width",42,"height"]}',
+    );
+
+    assert.deepEqual(result.nodes, [
+      { id: 'base', kind: 'part', name: 'base', params: ['width', 'height'] },
+    ]);
+    assert.equal(result.warnings.length, 1);
+    assert.equal(result.warnings[0].code, 'invalid-param-entry');
+    assert.equal(result.warnings[0].id, 'base');
+  });
+
   it('returns an empty result when there are no annotations', () => {
     const result = parseDesignTree(`
 width = 10;

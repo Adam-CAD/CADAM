@@ -149,15 +149,22 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
   const [mobilePreviewVersion, setMobilePreviewVersion] = useState(0);
   const baseCodeRef = useRef<string | null>(null);
 
-  const updateDesignTree = useCallback((code: string) => {
-    const result = parseDesignTree(code);
-    setDesignTreeResult(result);
-    setSelectedDesignTreeNodeId((currentId) =>
-      currentId && result.nodes.some((node) => node.id === currentId)
-        ? currentId
-        : null,
-    );
-  }, []);
+  const updateDesignTree = useCallback(
+    (code: string, options: { preserveSelection?: boolean } = {}) => {
+      const result = parseDesignTree(code);
+      setDesignTreeResult(result);
+      if (options.preserveSelection === false) {
+        setSelectedDesignTreeNodeId(null);
+        return;
+      }
+      setSelectedDesignTreeNodeId((currentId) =>
+        currentId && result.nodes.some((node) => node.id === currentId)
+          ? currentId
+          : null,
+      );
+    },
+    [],
+  );
 
   // Auto-switch the preview pane to the latest artifact / mesh in the
   // current branch when it changes.
@@ -174,7 +181,7 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
     if (latest.type === 'artifact') {
       baseCodeRef.current = latest.artifact.code;
       setParameters(parseParameters(latest.artifact.code));
-      updateDesignTree(latest.artifact.code);
+      updateDesignTree(latest.artifact.code, { preserveSelection: false });
       setCurrentOutput(undefined);
       setActivePreview({
         type: 'artifact',
@@ -199,7 +206,7 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
     (artifact: ParametricArtifact, messageId: string) => {
       baseCodeRef.current = artifact.code;
       setParameters(parseParameters(artifact.code));
-      updateDesignTree(artifact.code);
+      updateDesignTree(artifact.code, { preserveSelection: false });
       setCurrentOutput(undefined);
       setActivePreview({ type: 'artifact', messageId, artifact });
       setMobilePreviewVersion((version) => version + 1);
