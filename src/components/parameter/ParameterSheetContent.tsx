@@ -1,8 +1,13 @@
 import { Download, ChevronUp, Loader2 } from 'lucide-react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { DesignTreeViewer } from '@/components/design-tree/DesignTreeViewer';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { Parameter } from '@shared/types';
+import type {
+  CadamDesignTreeNode,
+  CadamDesignTreeParseWarning,
+  Parameter,
+} from '@shared/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +30,10 @@ interface ParameterSheetContentProps {
   currentOutput?: Blob;
   dxfExporter?: DxfExporter | null;
   code?: string;
+  designTreeNodes?: CadamDesignTreeNode[];
+  designTreeWarnings?: CadamDesignTreeParseWarning[];
+  selectedDesignTreeNodeId?: string | null;
+  onSelectDesignTreeNode?: (nodeId: string | null) => void;
 }
 
 type DownloadFormat = 'stl' | 'scad' | 'dxf';
@@ -35,6 +44,10 @@ export function ParameterSheetContent({
   currentOutput,
   dxfExporter,
   code,
+  designTreeNodes = [],
+  designTreeWarnings = [],
+  selectedDesignTreeNodeId,
+  onSelectDesignTreeNode,
 }: ParameterSheetContentProps) {
   const { toast } = useToast();
   const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>('stl');
@@ -42,6 +55,26 @@ export function ParameterSheetContent({
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingParametersRef = useRef<Parameter[] | null>(null);
   const latestParametersRef = useRef(parameters);
+  const selectedDesignTreeNode = useMemo(
+    () => designTreeNodes.find((node) => node.id === selectedDesignTreeNodeId),
+    [designTreeNodes, selectedDesignTreeNodeId],
+  );
+  const selectedParameterNames = useMemo(() => {
+    if (!selectedDesignTreeNode?.params?.length) return null;
+    return new Set(selectedDesignTreeNode.params);
+  }, [selectedDesignTreeNode]);
+  const activeSelectedParameterNames = onSelectDesignTreeNode
+    ? selectedParameterNames
+    : null;
+  const visibleParameters = useMemo(
+    () =>
+      activeSelectedParameterNames
+        ? parameters.filter((param) =>
+            activeSelectedParameterNames.has(param.name),
+          )
+        : parameters,
+    [parameters, activeSelectedParameterNames],
+  );
 
   useEffect(() => {
     latestParametersRef.current = parameters;
@@ -139,7 +172,30 @@ export function ParameterSheetContent({
     <div className="flex h-full min-h-0 w-full flex-col">
       <ScrollArea className="min-h-0 w-full flex-1 px-4">
         <div className="flex flex-col gap-6 pb-4 pt-2">
-          {parameters.map((param) => (
+          <DesignTreeViewer
+            nodes={designTreeNodes}
+            selectedNodeId={
+              onSelectDesignTreeNode ? selectedDesignTreeNodeId : null
+            }
+            onSelectNode={onSelectDesignTreeNode}
+            warnings={designTreeWarnings}
+          />
+          {activeSelectedParameterNames && selectedDesignTreeNode && (
+            <div className="flex items-center justify-between gap-3 rounded-md bg-adam-neutral-800/60 px-3 py-2">
+              <span className="min-w-0 truncate text-[11px] text-adam-text-secondary">
+                Showing parameters for {selectedDesignTreeNode.name}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onSelectDesignTreeNode?.(null)}
+                className="h-6 shrink-0 px-2 text-[11px] text-adam-text-primary hover:bg-adam-neutral-700"
+              >
+                Show all
+              </Button>
+            </div>
+          )}
+          {visibleParameters.map((param) => (
             <ParameterInput
               key={param.name}
               param={param}

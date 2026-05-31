@@ -67,6 +67,44 @@ export type Parameter = {
   maxLength?: number;
 };
 
+export type CadamDesignTreeNodeKind =
+  | 'part'
+  | 'operation'
+  | 'group'
+  | 'parameter';
+
+export type CadamDesignTreeNode = {
+  id: string;
+  kind: CadamDesignTreeNodeKind;
+  name: string;
+  parentId?: string;
+  params?: string[];
+  moduleName?: string;
+};
+
+export type CadamDesignTreeParseWarning = {
+  code:
+    | 'invalid-json'
+    | 'missing-id'
+    | 'missing-kind'
+    | 'duplicate-id'
+    | 'unknown-kind'
+    | 'invalid-param-entry'
+    | 'missing-parent'
+    | 'circular-parent';
+  message: string;
+  line: number;
+  raw: string;
+  id?: string;
+  kind?: string;
+  parentId?: string;
+};
+
+export type CadamDesignTreeParseResult = {
+  nodes: CadamDesignTreeNode[];
+  warnings: CadamDesignTreeParseWarning[];
+};
+
 export type Conversation = Omit<
   Database['public']['Tables']['conversations']['Row'],
   'settings'
