@@ -64,7 +64,7 @@ export function DesignTreeViewer({
         <div className="rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-[11px] text-amber-100/90">
           {warnings.length === 1
             ? warnings[0].message
-            : `${warnings.length} annotations could not be shown.`}
+            : `${warnings.length} design tree annotation warnings.`}
         </div>
       )}
 
