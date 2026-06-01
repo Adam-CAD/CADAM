@@ -25,6 +25,7 @@ import {
 } from '@/lib/utils';
 import { CreativeModel, MeshFileType, Model } from '@shared/types';
 import type { AppUIMessage } from '@shared/chatAi';
+import { imageFilePartUrl } from '@shared/imageRefs';
 import {
   shouldShowPolygonControls,
   getModelDefaultPolygonCount,
@@ -747,7 +748,11 @@ function TextAreaChat({
       parts.push({
         type: 'file',
         mediaType: 'image/png',
-        url: image.url,
+        // Reference the storage object, NOT the base64 preview. The bytes were
+        // already uploaded to `images/${user}/${conv}/${id}`; persisting the
+        // data URL here would balloon `messages.parts` with the whole image.
+        // Display + model-feeding resolve the bytes from storage by id.
+        url: imageFilePartUrl(conversation.user_id, conversation.id, image.id),
         filename: `${image.id}.png`,
       });
     }

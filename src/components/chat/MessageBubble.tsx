@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { usePreview } from '@/hooks/usePreview';
+import { useImageData } from '@/hooks/useImageData';
 import { useMeshData } from '@/hooks/useMeshData';
 import { generatePreview, generateColoredPreview } from '@/utils/meshUtils';
 import { previewScadColoredViaToolWorker } from '@/worker/toolWorker';
@@ -28,6 +29,7 @@ import type { ChatMessage } from '@/lib/aiMessages';
 import type { ParametricArtifact } from '@shared/types';
 import type { TreeNode } from '@shared/Tree';
 import { isParametricArtifact } from '@shared/parametricParts';
+import { imageIdFromFilename } from '@shared/imageRefs';
 import type React from 'react';
 import {
   Box,
@@ -70,6 +72,40 @@ export function MessageBubble(props: MessageBubbleProps) {
     <UserBubble {...props} />
   ) : (
     <AssistantBubble {...props} />
+  );
+}
+
+/**
+ * Renders a user-attached image by downloading it from the private `images`
+ * bucket (via {@link useImageData}) rather than trusting the part's `url`.
+ * The persisted `url` is only a storage reference — the bucket is private, so
+ * a direct `<img src>` against it would 404. The image id comes from the file
+ * part's `filename` (`${id}.png`).
+ */
+function UploadedImage({ id, alt }: { id: string; alt: string }) {
+  const {
+    data: { isError: isDataError },
+    url: { data, isError: isUrlError },
+  } = useImageData(id);
+
+  if (data?.url) {
+    return (
+      <img
+        src={data.url}
+        alt={alt}
+        className="h-20 w-20 rounded-lg object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-adam-neutral-900">
+      {isDataError || isUrlError ? (
+        <X className="h-5 w-5 text-adam-text-secondary" />
+      ) : (
+        <Loader2 className="h-5 w-5 animate-spin text-adam-text-secondary" />
+      )}
+    </div>
   );
 }
 
@@ -183,14 +219,29 @@ function UserBubble({
       >
         {hasAttachments ? (
           <div className="flex flex-wrap gap-1">
-            {imageParts.map((part, index) => (
-              <img
-                key={`img-${index}`}
-                src={part.url}
-                alt={part.filename ?? 'Uploaded image'}
-                className="h-20 w-20 rounded-lg object-cover"
-              />
-            ))}
+            {imageParts.map((part, index) => {
+              // Legacy/freshly-streamed parts may still carry an inline data
+              // URL — render those directly. Everything else is a storage
+              // reference resolved by image id (see UploadedImage).
+              const id = imageIdFromFilename(part.filename);
+              if (part.url?.startsWith('data:') || !id) {
+                return (
+                  <img
+                    key={`img-${index}`}
+                    src={part.url}
+                    alt={part.filename ?? 'Uploaded image'}
+                    className="h-20 w-20 rounded-lg object-cover"
+                  />
+                );
+              }
+              return (
+                <UploadedImage
+                  key={`img-${index}`}
+                  id={id}
+                  alt={part.filename ?? 'Uploaded image'}
+                />
+              );
+            })}
             {meshContextParts.map((part, index) => (
               <MeshContextChip
                 key={`mesh-${index}`}

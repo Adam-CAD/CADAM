@@ -3,6 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { chatTools, type AppUIMessage, type AppTools } from '@shared/chatAi';
 import { getParametricText } from '@shared/parametricParts';
+import { imageIdFromFilename, imageStoragePath } from '@shared/imageRefs';
 import { normalizeConversationSuggestions } from '@shared/suggestions';
 import type { Conversation, Message, MeshFileType, Model } from '@shared/types';
 import {
@@ -672,7 +673,7 @@ async function downloadAsBase64(
   supabaseClient: SupabaseAnon,
   bucket: string,
   path: string,
-) {
+): Promise<{ base64: string; mediaType: string } | null> {
   const { data, error } = await supabaseClient.storage
     .from(bucket)
     .download(path);
@@ -684,7 +685,9 @@ async function downloadAsBase64(
   for (let index = 0; index < bytes.length; index += chunkSize) {
     binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
   }
-  return btoa(binary);
+  // Report the stored object's real content type so callers don't mislabel
+  // e.g. a JPEG upload as PNG — some providers reject a mime/bytes mismatch.
+  return { base64: btoa(binary), mediaType: data.type || 'image/png' };
 }
 
 function parametricTools({
@@ -709,21 +712,21 @@ function parametricTools({
         // ChatSession's `onToolCall`). If for any reason the upload
         // didn't land, `downloadAsBase64` returns null and we fall back
         // to text-only — never block the loop on a missing thumbnail.
-        const base64 = await downloadAsBase64(
+        const downloaded = await downloadAsBase64(
           supabaseClient,
           'images',
           previewPathForToolCall(toolCallId),
         );
 
-        if (base64) {
+        if (downloaded) {
           return {
             type: 'content' as const,
             value: [
               { type: 'text' as const, text: output.message },
               {
                 type: 'image-data' as const,
-                data: base64,
-                mediaType: 'image/png' as const,
+                data: downloaded.base64,
+                mediaType: downloaded.mediaType,
               },
             ],
           };
@@ -882,8 +885,50 @@ export async function handleAiChatRequest(req: Request) {
   // the very first user turn.
   const isFirstUserTurn = branchMessages.length === 1 && leafRole === 'user';
 
+  // Rehydrate image file parts before handing them to the model. The
+  // persisted `url` is a storage reference (or, for the oldest backfilled
+  // rows, a dead `/public/` path), neither of which the provider can fetch —
+  // `convertToModelMessages` passes `part.url` straight through as the file
+  // payload. So we download the bytes from the private `images` bucket and
+  // inline them as a base64 data URL. Parts that already carry a `data:` URL
+  // (legacy rows that inlined base64) pass through untouched; anything we
+  // can't resolve is dropped so a missing image never poisons the request
+  // with an unfetchable URL.
+  const hydratedMessages = await Promise.all(
+    branchMessages.map(async (message) => ({
+      ...message,
+      parts: (
+        await Promise.all(
+          message.parts.map(async (part) => {
+            if (
+              part.type !== 'file' ||
+              typeof part.mediaType !== 'string' ||
+              !part.mediaType.startsWith('image/') ||
+              part.url.startsWith('data:')
+            ) {
+              return part;
+            }
+            const imageId = imageIdFromFilename(part.filename);
+            if (!imageId) return null;
+            const downloaded = await downloadAsBase64(
+              supabaseClient,
+              'images',
+              imageStoragePath(conversation.user_id, conversation.id, imageId),
+            );
+            if (!downloaded) return null;
+            return {
+              ...part,
+              mediaType: downloaded.mediaType,
+              url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
+            };
+          }),
+        )
+      ).filter((part): part is NonNullable<typeof part> => part != null),
+    })),
+  );
+
   const modelMessages = await convertToModelMessages<AppUIMessage>(
-    branchMessages,
+    hydratedMessages,
     {
       tools,
       convertDataPart: (part) => {
