@@ -112,6 +112,17 @@ export type AppUIMessage = UIMessage<
   {
     model?: Model;
     billingTokens?: number;
+    // The model's original OpenSCAD for this message's artifact, captured
+    // lazily on the FIRST parameter edit (see `persistParameterEdit`).
+    // Parameter edits rewrite the live `tool-build_parametric_model` input
+    // code in place, which would otherwise move the derived `defaultValue`
+    // to the edited value on every reload. Stashing the original here —
+    // message metadata is UI-only and NOT sent to the model by
+    // `convertToModelMessages` — lets the client re-derive stable defaults
+    // (Reset / slider home / auto range) with no second code copy in the
+    // model's context, no migration, and no storage cost on the (common)
+    // never-edited artifacts.
+    originalCode?: string;
   },
   AppDataTypes,
   AppTools

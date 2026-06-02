@@ -47,10 +47,24 @@ export function ParameterSheetContent({
     latestParametersRef.current = parameters;
   }, [parameters]);
 
+  // Always flush through the latest callback — the unmount flush below runs
+  // with `[]` deps, so without this ref it would call a stale closure.
+  const onParameterChangeRef = useRef(onParameterChange);
+  useEffect(() => {
+    onParameterChangeRef.current = onParameterChange;
+  }, [onParameterChange]);
+
+  // On unmount, flush any pending debounced edit instead of dropping it. The
+  // editor remounts on `key={conversation.id}`, so an edit made within the
+  // 200ms window just before navigating away would otherwise be lost.
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (pendingParametersRef.current) {
+        onParameterChangeRef.current(pendingParametersRef.current);
+        pendingParametersRef.current = null;
       }
     };
   }, []);

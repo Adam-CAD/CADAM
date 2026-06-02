@@ -33,7 +33,10 @@ import {
 } from '@/services/messageService';
 import type { DxfExporter } from '@/utils/downloadUtils';
 import type { AppUIMessage } from '@shared/chatAi';
-import { isParametricArtifact } from '@shared/parametricParts';
+import {
+  isParametricArtifact,
+  replaceBuildParametricModelOutput,
+} from '@shared/parametricParts';
 import Tree from '@shared/Tree';
 import type {
   Conversation,
@@ -428,16 +431,23 @@ function ConversationEditor() {
   const handleViewArtifact = useCallback(
     (artifact: ParametricArtifact, messageId: string) => {
       baseCodeRef.current = artifact.code;
-      // Parameters are derived from the OpenSCAD source — same code
-      // always yields the same `<ParameterSection>`, no matter which
-      // model wrote it.
-      setParameters(parseParameters(artifact.code));
+      // Parameters are derived from the OpenSCAD source — same code always
+      // yields the same `<ParameterSection>`, no matter which model wrote
+      // it. The current values come from the (possibly edited) artifact
+      // code; the `defaultValue` (Reset target / slider home / auto range)
+      // comes from `metadata.originalCode` — the model's first-authored
+      // source — so an in-place parameter edit doesn't redefine the default
+      // on the next reload. Read from the cache to keep this callback stable.
+      const originalCode = queryClient
+        .getQueryData<Message[]>(['messages', conversation.id])
+        ?.find((row) => row.id === messageId)?.metadata?.originalCode;
+      setParameters(mergeParameterDefaults(artifact.code, originalCode));
       setCurrentOutput(undefined);
       setDxfExporter(() => null);
       setActivePreview({ type: 'artifact', messageId, artifact });
       setMobilePreviewVersion((version) => version + 1);
     },
-    [],
+    [conversation.id, queryClient],
   );
   const handleViewMesh = useCallback((meshId: string, messageId: string) => {
     setCurrentOutput(undefined);
@@ -445,6 +455,61 @@ function ConversationEditor() {
     setActivePreview({ type: 'mesh', messageId, meshId });
     setMobilePreviewVersion((version) => version + 1);
   }, []);
+
+  // Persist an in-place parameter edit back onto the assistant message's
+  // `tool-build_parametric_model` part so it survives the `key={conversation.id}`
+  // remount and a fresh `useMessagesQuery` fetch. Parameters are derived from
+  // the artifact code, so writing the updated code is all that's needed — no
+  // schema change. Mirrors `handleToolOutput`: DB write first, then cache, so a
+  // post-stream `['messages']` invalidation refetches the already-edited row
+  // instead of reverting. Reads `dbMessages` live (not a captured snapshot) so
+  // `replaceBuildParametricModelOutput` indexes into the current parts array.
+  const persistParameterEdit = useCallback(
+    async (messageId: string, artifact: ParametricArtifact) => {
+      const row = dbMessages.find((message) => message.id === messageId);
+      if (!row) return;
+      const nextParts = replaceBuildParametricModelOutput(row.parts, artifact);
+      // Lazily capture the model's original source the first time a
+      // parameter is edited. Before this feature edits never persisted, so a
+      // message lacking `originalCode` still holds the model's original in
+      // its stored code — which is exactly `baseCodeRef.current` (the code as
+      // loaded, pre-edit). Once stashed, later edits skip this. Anchors the
+      // derived `defaultValue` (Reset / slider home / range) without a
+      // migration or a duplicate copy on never-edited artifacts.
+      const needsOriginal =
+        !!baseCodeRef.current && !row.metadata?.originalCode;
+      const nextMetadata = needsOriginal
+        ? { ...row.metadata, originalCode: baseCodeRef.current ?? undefined }
+        : undefined;
+      try {
+        await persistAssistantParts({
+          conversationId: conversation.id,
+          messageId,
+          parts: nextParts,
+          metadata: nextMetadata,
+        });
+      } catch (error) {
+        // A failed write must never break the live preview — the edit stays
+        // in local state and the next change retries the persist.
+        console.warn('Failed to persist parameter edit:', error);
+        return;
+      }
+      queryClient.setQueryData(
+        ['messages', conversation.id],
+        (old: Message[] | undefined): Message[] =>
+          (old ?? []).map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  parts: nextParts,
+                  ...(nextMetadata ? { metadata: nextMetadata } : {}),
+                }
+              : message,
+          ),
+      );
+    },
+    [conversation.id, dbMessages, queryClient],
+  );
 
   const changeParameters = useCallback(
     (nextParameters: Parameter[]) => {
@@ -454,15 +519,23 @@ function ConversationEditor() {
         nextCode = updateParameter(nextCode, parameter);
       }
       setParameters(nextParameters);
+      const updatedArtifact: ParametricArtifact = {
+        ...activePreview.artifact,
+        code: nextCode,
+      };
       setActivePreview({
         ...activePreview,
-        artifact: {
-          ...activePreview.artifact,
-          code: nextCode,
-        },
+        artifact: updatedArtifact,
       });
+      // Skip the DB write while a stream is landing on this branch —
+      // `handleToolOutput` owns the row's parts during a stream and would
+      // clobber (or be clobbered by) a concurrent parameter write. The live
+      // preview above still updates regardless.
+      if (!isChatStreaming) {
+        void persistParameterEdit(activePreview.messageId, updatedArtifact);
+      }
     },
-    [activePreview],
+    [activePreview, isChatStreaming, persistParameterEdit],
   );
 
   const updatePrivacy = useCallback(
@@ -672,6 +745,37 @@ function ConversationEditor() {
         />
       }
     />
+  );
+}
+
+/**
+ * Derive the parameter list from the live artifact code, but anchor each
+ * parameter's `defaultValue` to the model's original source when we have it.
+ *
+ * Without this, a parameter edit (which rewrites `name = value;` in the live
+ * code) would also become the parsed `defaultValue` on the next reload —
+ * making "Reset all parameters" a no-op and letting auto-computed slider
+ * ranges drift. `originalCode` is the model's first-authored OpenSCAD, stored
+ * in message metadata; values still track the edited code, defaults track the
+ * original. Falls back to the live code (legacy behavior) for older messages
+ * that predate the stash.
+ */
+function mergeParameterDefaults(
+  code: string,
+  originalCode: string | undefined,
+): Parameter[] {
+  const parameters = parseParameters(code);
+  if (!originalCode || originalCode === code) return parameters;
+  const defaults = new Map(
+    parseParameters(originalCode).map((param) => [
+      param.name,
+      param.defaultValue,
+    ]),
+  );
+  return parameters.map((param) =>
+    defaults.has(param.name)
+      ? { ...param, defaultValue: defaults.get(param.name)! }
+      : param,
   );
 }
 

@@ -50,14 +50,25 @@ export async function persistAssistantParts({
   conversationId,
   messageId,
   parts,
+  metadata,
 }: {
   conversationId: string;
   messageId: string;
   parts: AppUIMessage['parts'];
+  // When provided, written atomically alongside `parts` in the same row
+  // update. Used by parameter edits to lazily stash `metadata.originalCode`
+  // on the first edit. Omitted by callers that only touch parts (tool
+  // output), leaving the existing metadata untouched.
+  metadata?: AppUIMessage['metadata'];
 }) {
   const { error } = await supabase
     .from('messages')
-    .update({ parts: JSON.parse(JSON.stringify(parts)) })
+    .update({
+      parts: JSON.parse(JSON.stringify(parts)),
+      ...(metadata !== undefined
+        ? { metadata: JSON.parse(JSON.stringify(metadata)) }
+        : {}),
+    })
     .eq('id', messageId)
     .eq('conversation_id', conversationId);
   if (error) throw error;
