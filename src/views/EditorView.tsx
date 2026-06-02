@@ -456,6 +456,14 @@ function ConversationEditor() {
     setMobilePreviewVersion((version) => version + 1);
   }, []);
 
+  // Serialize parameter writes (see `drainParameterWrites`): the newest
+  // queued snapshot, plus a flag so at most one persist is ever in flight.
+  const pendingWriteRef = useRef<{
+    messageId: string;
+    artifact: ParametricArtifact;
+  } | null>(null);
+  const writeInFlightRef = useRef(false);
+
   // Persist an in-place parameter edit back onto the assistant message's
   // `tool-build_parametric_model` part so it survives the `key={conversation.id}`
   // remount and a fresh `useMessagesQuery` fetch. Parameters are derived from
@@ -511,6 +519,25 @@ function ConversationEditor() {
     [conversation.id, dbMessages, queryClient],
   );
 
+  // Flush queued parameter writes one at a time. Each `changeParameters`
+  // rebuilds the full code from `baseCodeRef`, so coalescing to the latest
+  // queued snapshot never drops an edit — but two overlapping writes could
+  // commit out of order and leave stale code in the row, so we never let them
+  // run concurrently.
+  const drainParameterWrites = useCallback(async () => {
+    if (writeInFlightRef.current) return;
+    writeInFlightRef.current = true;
+    try {
+      while (pendingWriteRef.current) {
+        const next = pendingWriteRef.current;
+        pendingWriteRef.current = null;
+        await persistParameterEdit(next.messageId, next.artifact);
+      }
+    } finally {
+      writeInFlightRef.current = false;
+    }
+  }, [persistParameterEdit]);
+
   const changeParameters = useCallback(
     (nextParameters: Parameter[]) => {
       if (!baseCodeRef.current || activePreview?.type !== 'artifact') return;
@@ -532,10 +559,14 @@ function ConversationEditor() {
       // clobber (or be clobbered by) a concurrent parameter write. The live
       // preview above still updates regardless.
       if (!isChatStreaming) {
-        void persistParameterEdit(activePreview.messageId, updatedArtifact);
+        pendingWriteRef.current = {
+          messageId: activePreview.messageId,
+          artifact: updatedArtifact,
+        };
+        void drainParameterWrites();
       }
     },
-    [activePreview, isChatStreaming, persistParameterEdit],
+    [activePreview, isChatStreaming, drainParameterWrites],
   );
 
   const updatePrivacy = useCallback(
