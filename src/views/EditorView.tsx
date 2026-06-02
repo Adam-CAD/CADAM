@@ -456,12 +456,13 @@ function ConversationEditor() {
     setMobilePreviewVersion((version) => version + 1);
   }, []);
 
-  // Serialize parameter writes (see `drainParameterWrites`): the newest
-  // queued snapshot, plus a flag so at most one persist is ever in flight.
-  const pendingWriteRef = useRef<{
-    messageId: string;
-    artifact: ParametricArtifact;
-  } | null>(null);
+  // Serialize parameter writes (see `drainParameterWrites`): one queued
+  // snapshot per message id, plus a flag so at most one persist is ever in
+  // flight. Keying by message means switching artifacts mid-write can't drop
+  // the other artifact's pending edit.
+  const pendingWritesRef = useRef<
+    Map<string, { artifact: ParametricArtifact; originalCode: string | null }>
+  >(new Map());
   const writeInFlightRef = useRef(false);
 
   // Persist an in-place parameter edit back onto the assistant message's
@@ -473,22 +474,27 @@ function ConversationEditor() {
   // instead of reverting. Reads `dbMessages` live (not a captured snapshot) so
   // `replaceBuildParametricModelOutput` indexes into the current parts array.
   const persistParameterEdit = useCallback(
-    async (messageId: string, artifact: ParametricArtifact) => {
+    async (
+      messageId: string,
+      artifact: ParametricArtifact,
+      originalCode: string | null,
+    ) => {
       const row = dbMessages.find((message) => message.id === messageId);
       if (!row) return;
       const nextParts = replaceBuildParametricModelOutput(row.parts, artifact);
-      // Lazily capture the model's original source the first time a
-      // parameter is edited. Before this feature edits never persisted, so a
-      // message lacking `originalCode` still holds the model's original in
-      // its stored code — which is exactly `baseCodeRef.current` (the code as
-      // loaded, pre-edit). Once stashed, later edits skip this. Anchors the
-      // derived `defaultValue` (Reset / slider home / range) without a
-      // migration or a duplicate copy on never-edited artifacts.
-      const needsOriginal =
-        !!baseCodeRef.current && !row.metadata?.originalCode;
-      const nextMetadata = needsOriginal
-        ? { ...row.metadata, originalCode: baseCodeRef.current ?? undefined }
-        : undefined;
+      // Lazily capture the model's original source the first time a parameter
+      // is edited. Before this feature edits never persisted, so a message
+      // lacking `originalCode` still holds the model's original in its stored
+      // code — the pre-edit code, captured at enqueue time in
+      // `changeParameters`. Pinning it there (rather than reading `baseCodeRef`
+      // here) keeps an in-flight write from grabbing a *different* artifact's
+      // code after the user switches previews mid-drain. Anchors the derived
+      // `defaultValue` (Reset / slider home / range) with no migration or
+      // duplicate copy on never-edited artifacts.
+      const nextMetadata =
+        originalCode && !row.metadata?.originalCode
+          ? { ...row.metadata, originalCode }
+          : undefined;
       try {
         await persistAssistantParts({
           conversationId: conversation.id,
@@ -521,17 +527,23 @@ function ConversationEditor() {
 
   // Flush queued parameter writes one at a time. Each `changeParameters`
   // rebuilds the full code from `baseCodeRef`, so coalescing to the latest
-  // queued snapshot never drops an edit — but two overlapping writes could
-  // commit out of order and leave stale code in the row, so we never let them
-  // run concurrently.
+  // queued snapshot per message never drops an edit — but two overlapping
+  // writes could commit out of order and leave stale code in the row, so we
+  // never let them run concurrently.
   const drainParameterWrites = useCallback(async () => {
     if (writeInFlightRef.current) return;
     writeInFlightRef.current = true;
     try {
-      while (pendingWriteRef.current) {
-        const next = pendingWriteRef.current;
-        pendingWriteRef.current = null;
-        await persistParameterEdit(next.messageId, next.artifact);
+      while (pendingWritesRef.current.size > 0) {
+        const entry = pendingWritesRef.current.entries().next().value;
+        if (!entry) break;
+        const [messageId, write] = entry;
+        pendingWritesRef.current.delete(messageId);
+        await persistParameterEdit(
+          messageId,
+          write.artifact,
+          write.originalCode,
+        );
       }
     } finally {
       writeInFlightRef.current = false;
@@ -559,10 +571,13 @@ function ConversationEditor() {
       // clobber (or be clobbered by) a concurrent parameter write. The live
       // preview above still updates regardless.
       if (!isChatStreaming) {
-        pendingWriteRef.current = {
-          messageId: activePreview.messageId,
+        // Pin the original code at enqueue time — `baseCodeRef` is mutated by
+        // `handleViewArtifact` on preview switch, and an in-flight drain must
+        // not read a later artifact's code for this message's `originalCode`.
+        pendingWritesRef.current.set(activePreview.messageId, {
           artifact: updatedArtifact,
-        };
+          originalCode: baseCodeRef.current,
+        });
         void drainParameterWrites();
       }
     },
