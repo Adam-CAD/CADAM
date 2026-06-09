@@ -22,6 +22,7 @@ import {
   messageRowToChatMessage,
   type ChatMessage,
 } from '@/lib/aiMessages';
+import applyParameterSpecs from '@shared/applyParameterSpecs';
 import parseParameters from '@shared/parseParameters';
 import { supabase } from '@/lib/supabase';
 import { updateParameter } from '@/lib/utils';
@@ -431,17 +432,25 @@ function ConversationEditor() {
   const handleViewArtifact = useCallback(
     (artifact: ParametricArtifact, messageId: string) => {
       baseCodeRef.current = artifact.code;
-      // Parameters are derived from the OpenSCAD source — same code always
-      // yields the same `<ParameterSection>`, no matter which model wrote
-      // it. The current values come from the (possibly edited) artifact
-      // code; the `defaultValue` (Reset target / slider home / auto range)
-      // comes from `metadata.originalCode` — the model's first-authored
-      // source — so an in-place parameter edit doesn't redefine the default
-      // on the next reload. Read from the cache to keep this callback stable.
+      // Parameter existence and current values are derived from the OpenSCAD
+      // source — same code always yields the same `<ParameterSection>`, no
+      // matter which model wrote it. The model-authored `artifact.parameters`
+      // schema then overlays presentation metadata (ranges, units, labels,
+      // groups, enum options); entries that don't match a real variable are
+      // dropped, so the parse validates the schema. The `defaultValue`
+      // (Reset target / slider home / auto range) comes from
+      // `metadata.originalCode` — the model's first-authored source — so an
+      // in-place parameter edit doesn't redefine the default on the next
+      // reload. Read from the cache to keep this callback stable.
       const originalCode = queryClient
         .getQueryData<Message[]>(['messages', conversation.id])
         ?.find((row) => row.id === messageId)?.metadata?.originalCode;
-      setParameters(mergeParameterDefaults(artifact.code, originalCode));
+      setParameters(
+        applyParameterSpecs(
+          mergeParameterDefaults(artifact.code, originalCode),
+          artifact.parameters,
+        ),
+      );
       setCurrentOutput(undefined);
       setDxfExporter(() => null);
       setActivePreview({ type: 'artifact', messageId, artifact });

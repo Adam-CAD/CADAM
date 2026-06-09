@@ -9,6 +9,7 @@ import { ConversationContext } from '@/contexts/ConversationContext';
 import { messageRowToChatMessage } from '@/lib/aiMessages';
 import { supabase } from '@/lib/supabase';
 import { updateParameter } from '@/lib/utils';
+import applyParameterSpecs from '@shared/applyParameterSpecs';
 import parseParameters from '@shared/parseParameters';
 import type { AppUIMessage } from '@shared/chatAi';
 import { isParametricArtifact } from '@shared/parametricParts';
@@ -156,7 +157,12 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
     lastAutoAppliedPreviewKeyRef.current = key;
     if (latest.type === 'artifact') {
       baseCodeRef.current = latest.artifact.code;
-      setParameters(parseParameters(latest.artifact.code));
+      setParameters(
+        applyParameterSpecs(
+          parseParameters(latest.artifact.code),
+          latest.artifact.parameters,
+        ),
+      );
       setCurrentOutput(undefined);
       setActivePreview({
         type: 'artifact',
@@ -178,7 +184,12 @@ function ConversationShare({ conversation, messages }: ConversationShareProps) {
   const handleViewArtifact = useCallback(
     (artifact: ParametricArtifact, messageId: string) => {
       baseCodeRef.current = artifact.code;
-      setParameters(parseParameters(artifact.code));
+      setParameters(
+        applyParameterSpecs(
+          parseParameters(artifact.code),
+          artifact.parameters,
+        ),
+      );
       setCurrentOutput(undefined);
       setActivePreview({ type: 'artifact', messageId, artifact });
       setMobilePreviewVersion((version) => version + 1);

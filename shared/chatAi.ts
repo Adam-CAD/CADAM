@@ -16,10 +16,99 @@ export const createMeshOutputSchema = z.object({
   fileType: z.enum(['glb', 'stl', 'obj', 'fbx']),
 });
 
+/**
+ * A malformed `parameters` entry must never fail tool-input validation:
+ * an invalid input turns the whole build_parametric_model call into a
+ * `dynamic-tool` part the client never compiles, silently killing the
+ * build turn. So every field degrades instead of erroring:
+ *  - numeric fields accept `"50"` (models routinely quote numbers) and
+ *    drop to undefined on anything else (`null`, `""`, `1e309`, objects),
+ *  - string fields drop to undefined on non-strings,
+ *  - a spec entry with a broken `name` collapses to null, which the
+ *    merge layer (`applyParameterSpecs`) skips.
+ * `.catch`/`.preprocess` don't change the JSON schema advertised to
+ * providers — they only relax what we accept back.
+ */
+const lenientNumber = z.preprocess(
+  (value) =>
+    typeof value === 'string' && value.trim() !== '' ? Number(value) : value,
+  z.number().finite().optional(),
+);
+
+export const parameterSpecSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .describe(
+      'Exact name of the top-of-file OpenSCAD variable this entry describes.',
+    ),
+  label: z
+    .string()
+    .optional()
+    .catch(undefined)
+    .describe(
+      'Display name shown in the parameter panel. Defaults to a title-cased variable name.',
+    ),
+  type: z.enum(['number', 'string', 'boolean']).optional().catch(undefined),
+  description: z
+    .string()
+    .optional()
+    .catch(undefined)
+    .describe('One short sentence on what the parameter controls.'),
+  group: z
+    .string()
+    .optional()
+    .catch(undefined)
+    .describe('Section heading grouping related parameters.'),
+  min: lenientNumber
+    .catch(undefined)
+    .describe('Slider minimum for number parameters.'),
+  max: lenientNumber
+    .catch(undefined)
+    .describe('Slider maximum for number parameters.'),
+  step: lenientNumber
+    .catch(undefined)
+    .describe('Slider step for number parameters.'),
+  unit: z
+    .string()
+    .optional()
+    .catch(undefined)
+    .describe('Physical unit such as "mm" or "deg". Omit for unitless values.'),
+  options: z
+    .array(
+      z.object({
+        // Accept numbers too (models routinely emit `value: 80` for
+        // numeric enums) and normalize to string — the merge layer
+        // re-types against the parsed parameter.
+        value: z
+          .union([z.string(), z.number()])
+          .transform((value) => String(value))
+          .describe(
+            'Option value exactly as it appears in the OpenSCAD source.',
+          ),
+        label: z.string().optional().catch(undefined),
+      }),
+    )
+    .optional()
+    .catch(undefined)
+    .describe('Allowed values for enum-style parameters.'),
+});
+
 export const parametricArtifactSchema = z.object({
   title: z.string().min(1),
   version: z.string().default('v1'),
   code: z.string().min(20),
+  // Nullish (not just optional) so a model that emits an explicit `null`
+  // doesn't fail tool-input validation and stall the agent loop, and
+  // `.catch(null)` so a structurally broken array degrades to the
+  // comment-derived fallback instead of killing the build call.
+  parameters: z
+    .array(parameterSpecSchema)
+    .nullish()
+    .catch(null)
+    .describe(
+      'Typed schema for every user-editable variable declared at the top of `code`. This is the source of truth for the parameter panel: ranges, units, enum options, grouping, descriptions. Every entry must reference a variable that exists in the code.',
+    ),
 });
 
 export const parametricCompileOutputSchema = z.object({
@@ -42,7 +131,7 @@ export const answerUserSchema = z.object({
 export const chatTools = {
   build_parametric_model: tool({
     description:
-      'Create or update the complete OpenSCAD CAD artifact. After the browser compiles it, inspect the returned multi-view preview sheet and call this tool again if the model needs another revision.',
+      'Create or update the complete OpenSCAD CAD artifact, including the typed parameter schema that drives the parameter panel. After the browser compiles it, inspect the returned multi-view preview sheet and call this tool again if the model needs another revision.',
     inputSchema: parametricArtifactSchema,
     outputSchema: parametricCompileOutputSchema,
   }),

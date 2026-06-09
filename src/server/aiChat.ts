@@ -99,6 +99,9 @@ The build_parametric_model tool input is the artifact shown to the user:
 - title: short object name
 - version: "v1"
 - code: complete raw OpenSCAD code, no markdown, no code fences
+- parameters: the typed schema for every user-editable variable in the code —
+  this drives the parameter panel (sliders, ranges, units, groups) the user
+  sees next to the live preview
 
 After you call build_parametric_model, the browser compiles the OpenSCAD and
 returns a multi-view preview sheet covering isometric, front, back, left,
@@ -168,18 +171,26 @@ BOSL2 library guidance:
 Parameters:
 - Declare every editable parameter as a top-of-file variable.
 - Use full descriptive snake_case names (e.g. \`wheel_radius\`, \`seat_offset\`) —
-  never abbreviate to single letters or short tokens (\`w_r\`, \`p_s\`). Names
-  render directly in the parameter panel, so they must read well to the user.
-- Annotate each variable with a trailing OpenSCAD Customizer comment so the
-  UI can render the right widget:
-    width = 50;        // [10:1:200]    ← min:step:max for sliders
-    height = 25;       // [5:50]        ← min:max
-    style = "round";   // [round, square, hex]   ← enum options
-    enabled = true;    //                ← booleans render as switches
-    label = "Cup";     // 24             ← maxLength for free-form strings
-- Optionally put a "// Description of the parameter" comment on the line
-  ABOVE the variable so the UI can show a description.
-- Group related parameters with /* [Group Name] */ section markers.
+  never abbreviate to single letters or short tokens (\`w_r\`, \`p_s\`).
+- Describe every editable variable in the tool's \`parameters\` array. It is
+  the source of truth for the parameter panel — one entry per variable:
+    { "name": "cup_height", "label": "Cup Height", "type": "number",
+      "min": 50, "max": 200, "step": 5, "unit": "mm",
+      "group": "Body", "description": "Outer height of the mug" }
+- For numbers, always provide min/max/step spanning a sensible design range
+  around the default, and a unit ("mm", "deg") when the value is physical.
+- For enum-style strings, list options with values exactly as they appear in
+  the code:
+    "options": [{ "value": "round", "label": "Round" }, { "value": "hex" }]
+- min/max must bracket the variable's default value in the code.
+- Every entry's \`name\` must match a top-of-file variable verbatim — entries
+  that don't are ignored. One entry on a vector variable
+  (e.g. \`size = [30, 20, 10];\`) covers all of its components.
+- Also annotate each variable with a trailing OpenSCAD Customizer comment
+  (\`width = 50; // [10:1:200]\`) and group markers (\`/* [Group Name] */\`)
+  so downloaded .scad files stay editable in the OpenSCAD desktop
+  Customizer. The \`parameters\` array is what the app's UI uses; keep the
+  two consistent.
 
 Color:
 - When the model has distinct parts, wrap each in a color() call with a
@@ -237,6 +248,17 @@ module torus(r1, r2) {
     translate([r1, 0, 0])
     circle(r=r2);
 }
+
+and its \`parameters\` should look like:
+
+[
+  { "name": "cup_height", "type": "number", "min": 50, "max": 200, "step": 5, "unit": "mm", "group": "Body", "description": "Outer height of the mug" },
+  { "name": "cup_radius", "type": "number", "min": 20, "max": 80, "step": 1, "unit": "mm", "group": "Body" },
+  { "name": "handle_radius", "type": "number", "min": 15, "max": 60, "step": 1, "unit": "mm", "group": "Handle" },
+  { "name": "handle_thickness", "type": "number", "min": 4, "max": 20, "step": 1, "unit": "mm", "group": "Handle" },
+  { "name": "wall_thickness", "type": "number", "min": 2, "max": 6, "step": 0.5, "unit": "mm", "group": "Body", "description": "Must stay printable" },
+  { "name": "mug_color", "type": "string", "label": "Mug Color", "group": "Appearance" }
+]
 
 # What never to say
 

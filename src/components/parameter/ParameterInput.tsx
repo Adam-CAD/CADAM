@@ -10,6 +10,13 @@ import {
 import { ParameterSlider } from '@/components/parameter/ParameterSlider';
 import { Label } from '@/components/ui/label';
 import { ColorPicker } from '@/components/parameter/ColorPicker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export function ParameterInput({
   param,
@@ -38,6 +45,65 @@ export function ParameterInput({
     setParamState({ ...paramState, value });
     handleCommit(paramState, value);
   };
+
+  // Enum-style parameters (model-authored `options` in the parameter spec,
+  // or Customizer `// [a, b, c]` comments) render as a select — free-text
+  // input here lets the user type values the OpenSCAD code can't handle.
+  const scalarOptions =
+    (!paramState.type ||
+      paramState.type === 'number' ||
+      paramState.type === 'string') &&
+    Array.isArray(paramState.options) &&
+    paramState.options.length > 0
+      ? paramState.options
+      : null;
+  if (scalarOptions) {
+    const currentValue = String(paramState.value);
+    const hasCurrent = scalarOptions.some(
+      (option) => String(option.value) === currentValue,
+    );
+    return (
+      <div className="grid w-full grid-cols-[80px_1fr] items-center gap-3">
+        <Label
+          className="overflow-hidden text-ellipsis text-xs font-normal text-adam-neutral-300"
+          htmlFor={paramState.name}
+        >
+          {paramState.displayName}
+        </Label>
+        <Select
+          value={currentValue}
+          onValueChange={(next) => {
+            const option = scalarOptions.find(
+              (candidate) => String(candidate.value) === next,
+            );
+            handleValueCommit(option ? option.value : next);
+          }}
+        >
+          <SelectTrigger
+            id={paramState.name}
+            className="h-6 w-full min-w-0 rounded-md border-none bg-adam-neutral-800 px-2 text-left text-xs text-adam-text-primary transition-colors focus:outline-none focus:ring-0 [@media(hover:hover)]:hover:bg-adam-neutral-700"
+          >
+            <SelectValue placeholder={currentValue} />
+          </SelectTrigger>
+          <SelectContent className="border-none bg-adam-neutral-800 text-xs text-adam-text-primary">
+            {/* The code's current value wins even when the spec's option
+                list doesn't include it — code is ground truth. */}
+            {!hasCurrent && (
+              <SelectItem value={currentValue}>{currentValue}</SelectItem>
+            )}
+            {scalarOptions.map((option) => (
+              <SelectItem
+                key={String(option.value)}
+                value={String(option.value)}
+              >
+                {option.label || String(option.value)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  }
 
   if (!paramState.type || paramState.type === 'number') {
     return (
@@ -71,7 +137,8 @@ export function ParameterInput({
               }}
             />
             <span className="ml-1 w-6 text-left text-xs text-adam-neutral-300">
-              {isMeasurementParameter(paramState) ? 'mm' : ''}
+              {paramState.unit ??
+                (isMeasurementParameter(paramState) ? 'mm' : '')}
             </span>
           </div>
         </div>
@@ -265,7 +332,8 @@ export function ParameterInput({
                       }}
                     />
                     <span className="w-6 text-left text-xs text-adam-neutral-300">
-                      {isMeasurementParameter(paramState) ? 'mm' : ''}
+                      {paramState.unit ??
+                        (isMeasurementParameter(paramState) ? 'mm' : '')}
                     </span>
                   </div>
                 </div>

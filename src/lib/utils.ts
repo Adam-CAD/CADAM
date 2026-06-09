@@ -1,7 +1,9 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Parameter } from '@shared/types';
-import { ModelConfig } from '../types/misc.ts';
+// Type-only imports so `node --test` can run this file without resolving
+// the `@shared` path alias (node strips type imports but can't map aliases).
+import type { Parameter } from '@shared/types';
+import type { ModelConfig } from '../types/misc.ts';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -105,6 +107,21 @@ export function validateRedirectUrlServer(
 }
 
 export function updateParameter(code: string, param: Parameter): string {
+  // `size[1]`-style names come from `parseParameters` flattening a vector
+  // declaration into per-component sliders. The source still reads
+  // `size = [30, 20, 10];`, so rewrite the i-th element of the vector
+  // literal — the scalar regex below would find no `size[1] = ...;`
+  // assignment and silently no-op the edit.
+  const vectorComponent = /^(.+)\[(\d+)\]$/.exec(param.name);
+  if (vectorComponent && (!param.type || param.type === 'number')) {
+    return updateVectorComponent(
+      code,
+      vectorComponent[1],
+      Number(vectorComponent[2]),
+      param.value,
+    );
+  }
+
   const escapedName = escapeRegExp(param.name);
   const regex = new RegExp(
     `^\\s*(${escapedName}\\s*=\\s*)[^;]+;([\\t\\f\\cK ]*\\/\\/[^\n]*)?`,
@@ -145,6 +162,31 @@ export function updateParameter(code: string, param: Parameter): string {
     default:
       return code;
   }
+}
+
+function updateVectorComponent(
+  code: string,
+  name: string,
+  index: number,
+  value: Parameter['value'],
+): string {
+  // Single-line vectors only — `parseParameters` skips multi-line values,
+  // so a flattened `name[i]` parameter always came from a one-line literal.
+  const regex = new RegExp(
+    `^(\\s*${escapeRegExp(name)}\\s*=\\s*\\[)([^\\]\\n]*)(\\][^\\n]*)$`,
+    'm',
+  );
+  return code.replace(
+    regex,
+    (match, head: string, body: string, tail: string) => {
+      const items = body.split(',');
+      if (index < 0 || index >= items.length) return match;
+      const leading = /^\s*/.exec(items[index])?.[0] ?? '';
+      const trailing = /\s*$/.exec(items[index].trimStart())?.[0] ?? '';
+      items[index] = `${leading}${value}${trailing}`;
+      return `${head}${items.join(',')}${tail}`;
+    },
+  );
 }
 
 export function getDiffString(param: Parameter) {
