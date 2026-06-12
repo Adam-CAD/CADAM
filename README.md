@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./public/Github-Banner-Dark.png">
     <source media="(prefers-color-scheme: light)" srcset="./public/Github-Banner-Light.png">
-    <img src="./public/Github-Banner-Light.png" alt="CADAM Banner" width="100%"/>
+    <img src="./public/Github-Banner-Light.png" alt="CadAI Banner" width="100%"/>
   </picture>
 </div>
 
@@ -10,8 +10,8 @@
 
 <div align="center">
 
-[![Stars](https://img.shields.io/github/stars/Adam-CAD/cadam?style=social&logo=github)](https://github.com/Adam-CAD/cadam/stargazers)
-[![Forks](https://img.shields.io/github/forks/Adam-CAD/CADAM?style=flat)](https://github.com/Adam-CAD/CADAM/network)
+[![Stars](https://img.shields.io/github/stars/Adam-CAD/CadAi?style=social&logo=github)](https://github.com/Adam-CAD/CadAi/stargazers)
+[![Forks](https://img.shields.io/github/forks/Adam-CAD/CadAi?style=flat)](https://github.com/Adam-CAD/CadAi/network)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat)](https://www.gnu.org/licenses/gpl-3.0)
 [![Node.js](https://img.shields.io/badge/Node.js-20.19%2B%20%7C%2022.12%2B-green.svg?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19.1-61DAFB.svg?style=flat&logo=react&logoColor=black)](https://reactjs.org/)
@@ -50,25 +50,25 @@
 
 <!-- Add demo GIFs or screenshots here -->
 <!-- Example format:
-![CADAM Demo](./demo/demo.gif)
+![AiCad Demo](./demo/demo.gif)
 
 ### Example: Creating a parametric gear
 ![Gear Example](./demo/gear-example.png)
 -->
 
-> 🎬 **Try it live:** https://adam.new/cadam
+> 🎬 **Try it live:** https://adam.new/CadAi
 
 ## 📺 Screenshots
 
-<img src="./public/screenshot-2.jpeg" alt="CADAM Screenshot 2" />
+<img src="./public/screenshot-2.jpeg" alt="CadAi Screenshot 2" />
 
 <details>
   <summary>More screenshots</summary>
 
   <br/>
-  <img src="./public/screenshot-1.jpeg" alt="CADAM Screenshot 1" />
+  <img src="./public/screenshot-1.jpeg" alt="CadAi Screenshot 1" />
   <br/>
-  <img src="./public/screenshot-3.jpeg" alt="CADAM Screenshot 3" />
+  <img src="./public/screenshot-3.jpeg" alt="CadAi Screenshot 3" />
 
 </details>
 
@@ -76,8 +76,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/Adam-CAD/CADAM.git
-cd CADAM
+git clone https://github.com/Adam-CAD/CadAi.git
+cd CadAi
 
 # Install dependencies
 npm install
@@ -121,13 +121,13 @@ npm run dev
   BILLING_SERVICE_KEY="<Test Billing Service Key>"
   ENVIRONMENT="local"
   ADAM_URL="<Adam URL or dev URL>" # Checkout and portal redirect target
-  WEBHOOK_BASE_URL="<Public TanStack App URL>" # Your app URL for /cadam/api callbacks
+  WEBHOOK_BASE_URL="<Public TanStack App URL>" # Your app URL for /CadAi/api callbacks
   NGROK_URL="<NGROK URL>" # Optional local Supabase Storage tunnel for provider-readable signed URLs
   ```
 
 ## 🌐 Setting Up ngrok for Local Development
 
-CADAM uses public URLs for provider callbacks and local signed storage URLs:
+CadAi uses public URLs for provider callbacks and local signed storage URLs:
 
 1. Install ngrok if you haven't already:
 
@@ -180,7 +180,7 @@ npm run dev
 
 ## 🤝 Contributing
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also [open an issue](https://github.com/Adam-CAD/CADAM/issues).
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also [open an issue](https://github.com/Adam-CAD/CadAi/issues).
 
 See the [CONTRIBUTING.md](CONTRIBUTING.md) for instructions and [code of conduct](CODE_OF_CONDUCT.md).
 
@@ -211,11 +211,11 @@ Components and attributions:
 
 <div align="center">
 
-<a href="https://www.repostars.dev/?repos=Adam-CAD%2FCADAM&theme=forest">
-  <img src="https://www.repostars.dev/api/embed?repo=Adam-CAD/CADAM&theme=forest" alt="CADAM Star History" width="700"/>
+<a href="https://www.repostars.dev/?repos=Adam-CAD%2FCadAi&theme=forest">
+  <img src="https://www.repostars.dev/api/embed?repo=Adam-CAD/CadAi&theme=forest" alt="CadAi Star History" width="700"/>
 </a>
 
-<sub>Live chart by <a href="https://www.repostars.dev/?repos=Adam-CAD%2FCADAM&theme=forest">RepoStars</a> — click for the interactive version.</sub>
+<sub>Live chart by <a href="https://www.repostars.dev/?repos=Adam-CAD%2FCadAi&theme=forest">RepoStars</a> — click for the interactive version.</sub>
 
 </div>
 
@@ -223,9 +223,9 @@ Components and attributions:
 
 <div align="center">
   
-**⭐ If you find CADAM useful, please consider giving it a star!**
+**⭐ If you find CadAi useful, please consider giving it a star!**
 
-[![Stars](https://img.shields.io/github/stars/Adam-CAD/cadam?style=social&logo=github)](https://github.com/Adam-CAD/cadam/stargazers)
+[![Stars](https://img.shields.io/github/stars/Adam-CAD/CadAi?style=social&logo=github)](https://github.com/Adam-CAD/CadAi/stargazers)
 
 Made with 💙 for the 3D printing and CAD community
 
