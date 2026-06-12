@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { Menu, Plus, LogOut, Crown, Settings, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,7 +32,14 @@ import { DiscordIcon, GitHubIcon } from './icons/CompanyIcons';
 import { cn } from '@/lib/utils';
 import { Conversation, ConversationSettings } from '@shared/types';
 import { UserAvatar } from '@/components/chat/UserAvatar';
+import { SidebarConversationItem } from '@/components/sidebar/SidebarConversationItem';
+import { RenameDialogDrawer } from '@/components/history/RenameDialogDrawer';
+import {
+  useDeleteConversation,
+  useRenameConversation,
+} from '@/services/conversationService';
 import { useProfile } from '@/services/profileService';
+import { useToast } from '@/hooks/use-toast';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
@@ -46,6 +53,28 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
   const { user, signOut } = useAuth();
   const isMobile = useIsMobile();
   const { data: profile } = useProfile();
+  const { toast } = useToast();
+  const activeEditorId = useRouterState({
+    select: (state) => state.location.pathname.match(/^\/editor\/([^/]+)/)?.[1],
+  });
+  const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
+
+  const deleteConversation = useDeleteConversation({
+    onDeleted: (conversationId) => {
+      if (activeEditorId === conversationId) {
+        navigate({ to: '/' });
+      }
+    },
+  });
+
+  const renameConversation = useRenameConversation({
+    onRenamed: () => {
+      setRenameOpen(false);
+      setRenameTarget(null);
+    },
+  });
 
   // Get 10 most recent conversations
   const { data: recentConversations } = useQuery<Conversation[]>({
@@ -80,6 +109,40 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
       setIsSidebarOpen(false); // setIsSidebarOpen is actually setOpen from Sheet component
     }
     navigate({ to: path });
+  };
+
+  const closeMobileSidebar = () => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  const handleRenameRequest = (
+    conversationId: string,
+    currentTitle: string,
+  ) => {
+    const conversation = recentConversations?.find(
+      (item) => item.id === conversationId,
+    );
+    if (!conversation) return;
+    setRenameTarget(conversation);
+    setRenameTitle(currentTitle || conversation.title);
+    setRenameOpen(true);
+  };
+
+  const handleRenameSave = () => {
+    if (!renameTarget) return;
+    if (!renameTitle.trim()) {
+      toast({
+        title: 'Title cannot be empty',
+        variant: 'default',
+      });
+      return;
+    }
+    renameConversation.mutate({
+      conversationId: renameTarget.id,
+      newTitle: renameTitle.trim(),
+    });
   };
 
   const renderUserSectionTrigger = () => {
@@ -228,35 +291,34 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
                   </Button>
                 </ConditionalWrapper>
                 {isSidebarOpen && submenu && (
-                  <ul className="ml-7 flex list-none flex-col gap-1 border-l border-adam-neutral-500 px-2">
-                    {submenu.map(
-                      (
-                        conversation: Omit<
-                          Conversation,
-                          'message_count' | 'last_message_at'
-                        >,
-                      ) => {
-                        return (
-                          <Link
-                            to="/editor/$id"
-                            params={{ id: conversation.id }}
+                  <div className="ml-7 border-l border-adam-neutral-500 px-2">
+                    {submenu.length === 0 ? (
+                      <p className="px-1 py-1.5 text-xs text-adam-neutral-500">
+                        No creations yet
+                      </p>
+                    ) : (
+                      <ul className="flex list-none flex-col gap-0.5">
+                        {submenu.map((conversation) => (
+                          <SidebarConversationItem
                             key={conversation.id}
-                            onClick={() => {
-                              if (isMobile) {
-                                setIsSidebarOpen(false);
-                              }
-                            }}
-                          >
-                            <li key={conversation.id}>
-                              <span className="line-clamp-1 text-ellipsis text-nowrap rounded-md p-1 text-xs font-medium text-adam-neutral-400 transition-colors duration-200 ease-in-out [@media(hover:hover)]:hover:bg-adam-neutral-950 [@media(hover:hover)]:hover:text-adam-neutral-10">
-                                {conversation.title}
-                              </span>
-                            </li>
-                          </Link>
-                        );
-                      },
+                            conversation={conversation}
+                            onDelete={(id) => deleteConversation.mutate(id)}
+                            onRename={handleRenameRequest}
+                            onNavigate={closeMobileSidebar}
+                          />
+                        ))}
+                      </ul>
                     )}
-                  </ul>
+                    {submenu.length > 0 && (
+                      <Link
+                        to="/history"
+                        onClick={closeMobileSidebar}
+                        className="mt-1 block px-1 py-1 text-xs font-medium text-adam-blue transition-colors [@media(hover:hover)]:hover:text-adam-blue/80"
+                      >
+                        View all creations
+                      </Link>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -399,6 +461,16 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
           </div>
         </div>
       </div>
+      <RenameDialogDrawer
+        open={renameOpen}
+        onOpenChange={(open) => {
+          setRenameOpen(open);
+          if (!open) setRenameTarget(null);
+        }}
+        newTitle={renameTitle}
+        onNewTitleChange={setRenameTitle}
+        onRename={handleRenameSave}
+      />
     </div>
   );
 }

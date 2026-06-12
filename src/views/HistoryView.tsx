@@ -20,6 +20,10 @@ import { HistoryConversation } from '../types/misc.ts';
 import { ConversationCard } from '@/components/history/ConversationCard';
 import { VisualCard } from '@/components/history/VisualCard';
 import { RenameDialogDrawer } from '@/components/history/RenameDialogDrawer';
+import {
+  useDeleteConversation,
+  useRenameConversation,
+} from '@/services/conversationService';
 import { cn } from '@/lib/utils';
 
 const VIEW_TRANSITION_PROPS = {
@@ -48,6 +52,14 @@ export function HistoryView() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const shouldReduceMotion = useReducedMotion();
+
+  const deleteConversation = useDeleteConversation();
+  const renameConversation = useRenameConversation({
+    onRenamed: () => {
+      setEditingConversation(null);
+      setOpen(false);
+    },
+  });
 
   const handleOpenChange = (open: boolean) => {
     setOpen(open);
@@ -106,108 +118,6 @@ export function HistoryView() {
       });
     }
   }, [conversationQuery.isError, toast]);
-
-  const deleteConversation = useMutation({
-    mutationFn: async (conversationId: string) => {
-      const { error } = await supabase
-        .from('conversations')
-        .delete()
-        .eq('id', conversationId);
-
-      if (error) throw error;
-
-      supabase.storage
-        .from('images')
-        .list(`${user?.id}/${conversationId}`)
-        .then(({ data: list }) => {
-          if (list) {
-            const filesToRemove = list.map(
-              (file) => `${user?.id}/${conversationId}/${file.name}`,
-            );
-            supabase.storage.from('images').remove(filesToRemove);
-          }
-        });
-    },
-    onMutate: async (conversationId) => {
-      await queryClient.cancelQueries({ queryKey: ['conversations'] });
-      const previousConversations = queryClient.getQueryData(['conversations']);
-      queryClient.setQueryData(
-        ['conversations'],
-        (old: HistoryConversation[]) =>
-          old.filter((conv) => conv.id !== conversationId),
-      );
-      return { previousConversations };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      toast({
-        title: 'Success',
-        description: 'Conversation deleted successfully',
-      });
-    },
-    onError: (error: unknown, _conversationId: string, context) => {
-      console.error('Error deleting conversation:', error);
-      queryClient.setQueryData(
-        ['conversations'],
-        context?.previousConversations,
-      );
-      toast({
-        title: 'Error',
-        description: 'Failed to delete conversation',
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const renameConversation = useMutation({
-    mutationFn: async ({
-      conversationId,
-      newTitle,
-    }: {
-      conversationId: string;
-      newTitle: string;
-    }) => {
-      const { error } = await supabase
-        .from('conversations')
-        .update({ title: newTitle })
-        .eq('id', conversationId);
-
-      if (error) throw error;
-    },
-    onMutate: async ({ conversationId, newTitle }) => {
-      await queryClient.cancelQueries({ queryKey: ['conversations'] });
-      const previousConversations = queryClient.getQueryData(['conversations']);
-      queryClient.setQueryData(
-        ['conversations'],
-        (old: HistoryConversation[]) =>
-          old.map((conv) =>
-            conv.id === conversationId ? { ...conv, title: newTitle } : conv,
-          ),
-      );
-      return { previousConversations };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      toast({
-        title: 'Success',
-        description: 'Conversation renamed successfully',
-      });
-      setEditingConversation(null);
-      setOpen(false);
-    },
-    onError: (error: unknown, _variables, context) => {
-      console.error('Error renaming conversation:', error);
-      queryClient.setQueryData(
-        ['conversations'],
-        context?.previousConversations,
-      );
-      toast({
-        title: 'Error',
-        description: 'Failed to rename conversation',
-        variant: 'destructive',
-      });
-    },
-  });
 
   const togglePrivacy = useMutation({
     mutationFn: async ({
