@@ -2,7 +2,13 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { chatTools, type AppUIMessage, type AppTools } from '@shared/chatAi';
-import { cleanAssistantText, getParametricText } from '@shared/parametricParts';
+import {
+  cleanAssistantText,
+  extractScadFromAssistantParts,
+  getParametricText,
+  hasParametricBuildAttempt,
+  MISSING_BUILD_NOTICE,
+} from '@shared/parametricParts';
 import { imageIdFromFilename, imageStoragePath } from '@shared/imageRefs';
 import { normalizeConversationSuggestions } from '@shared/suggestions';
 import type { Conversation, Message, MeshFileType, Model } from '@shared/types';
@@ -88,6 +94,8 @@ const FALLBACK_MODEL_PRICE = { input: 15, output: 75 };
 const USD_PER_BILLING_TOKEN = 0.01;
 
 const PARAMETRIC_AGENT_PROMPT = `You are Adam, an agentic AI CAD editor that creates and modifies OpenSCAD models. The user can see a live preview of the model on the right while you work.
+
+CRITICAL: For any CAD modeling request you MUST call build_parametric_model with complete, valid OpenSCAD code before ending the turn. Never finish a CAD request with only prose, partial notes, or markdown code fences — the preview only renders code delivered through build_parametric_model.
 
 Use build_parametric_model whenever the user asks for a CAD model, an edit to a CAD model, or a fix for OpenSCAD code. The tool input is the model shown to the user, so do not paste OpenSCAD into normal reply text. Use answer_user for final user-facing text and for normal non-CAD replies.
 
@@ -557,11 +565,39 @@ function finalizeStreamingParts(
 
 function dropTextFromParametricBuildMessage(
   parts: AppUIMessage['parts'],
+): AppUIMessage['parts'];
+function dropTextFromParametricBuildMessage(
+  parts: AppUIMessage['parts'],
+  options: { leafRole: 'user' | 'assistant' },
+): AppUIMessage['parts'];
+function dropTextFromParametricBuildMessage(
+  parts: AppUIMessage['parts'],
+  options?: { leafRole: 'user' | 'assistant' },
 ): AppUIMessage['parts'] {
   const hasBuild = parts.some(
     (part) => part.type === 'tool-build_parametric_model',
   );
-  if (!hasBuild) return parts;
+  if (!hasBuild) {
+    if (
+      options?.leafRole === 'user' &&
+      !hasParametricBuildAttempt(parts) &&
+      !extractScadFromAssistantParts(parts)
+    ) {
+      const hasNotice = parts.some(
+        (part) =>
+          part.type === 'text' &&
+          'text' in part &&
+          part.text.includes(MISSING_BUILD_NOTICE),
+      );
+      if (!hasNotice) {
+        return [
+          ...parts,
+          { type: 'text', text: MISSING_BUILD_NOTICE, state: 'done' },
+        ] as AppUIMessage['parts'];
+      }
+    }
+    return parts;
+  }
 
   return parts.filter((part) => part.type !== 'text') as AppUIMessage['parts'];
 }
@@ -1181,15 +1217,15 @@ export async function handleAiChatRequest(req: Request) {
     thinking: thinkingEnabled,
   };
 
+  const isFreshParametricTurn =
+    conversation.type === 'parametric' && leafRole === 'user';
   // Parametric step 0 normally pins `build_parametric_model` via a forced
   // tool_choice. Models that reject forced tool use (Claude 5 — Fable/Mythos)
   // fall back to auto tool choice, where the model *might* answer with text
   // instead of building. Track that fallback so we can detect — and log — a
   // turn that finished without ever calling the build tool.
   const usingAutoToolChoiceFallback =
-    conversation.type === 'parametric' &&
-    leafRole === 'user' &&
-    !supportsForcedToolChoice(actualModelId);
+    isFreshParametricTurn && !supportsForcedToolChoice(actualModelId);
 
   const result = streamText({
     model: chatLanguageModel,
@@ -1207,16 +1243,22 @@ export async function handleAiChatRequest(req: Request) {
         // that accept a forced tool_choice get it pinned; models that reject
         // forced tool use (Claude 5 — Fable/Mythos) fall back to auto and rely
         // on the system prompt to call build_parametric_model.
+        // Claude 5 (Fable/Mythos) rejects forced tool_choice. The AI SDK only
+        // maps auto | required | tool | none to Anthropic — there is no `any`
+        // type, and both `required` and `{ type: 'any' }` have caused API
+        // errors on Claude 5. Restrict activeTools to the build tool and steer
+        // via PARAMETRIC_AGENT_PROMPT; client-side guards handle missing builds.
+        if (supportsForcedToolChoice(actualModelId)) {
+          return {
+            activeTools: ['build_parametric_model' as never],
+            toolChoice: {
+              type: 'tool' as const,
+              toolName: 'build_parametric_model' as never,
+            },
+          };
+        }
         return {
           activeTools: ['build_parametric_model' as never],
-          ...(supportsForcedToolChoice(actualModelId)
-            ? {
-                toolChoice: {
-                  type: 'tool' as const,
-                  toolName: 'build_parametric_model' as never,
-                },
-              }
-            : {}),
         };
       }
       return {};
@@ -1257,12 +1299,10 @@ export async function handleAiChatRequest(req: Request) {
         },
       });
     },
-    // Observability for the auto-tool-choice fallback (Claude 5 / Fable /
-    // Mythos): without a forced tool_choice the model can finish a parametric
-    // turn as plain text, leaving the user with no built model and no error.
-    // Surface that degraded outcome so it's measurable instead of silent.
+    // Without a build tool call the user sees an empty preview. Log every
+    // fresh parametric turn that finishes this way so it's measurable.
     onFinish: ({ steps }) => {
-      if (!usingAutoToolChoiceFallback) return;
+      if (!isFreshParametricTurn) return;
       const calledBuildTool = steps.some((step) =>
         step.toolCalls?.some(
           (call) => call.toolName === 'build_parametric_model',
@@ -1271,7 +1311,9 @@ export async function handleAiChatRequest(req: Request) {
       if (!calledBuildTool) {
         logError(
           new Error(
-            'Parametric turn finished without calling build_parametric_model under auto tool-choice fallback',
+            usingAutoToolChoiceFallback
+              ? 'Parametric turn finished without calling build_parametric_model under auto tool-choice fallback'
+              : 'Parametric turn finished without calling build_parametric_model',
           ),
           {
             functionName: 'ai-chat',
@@ -1280,7 +1322,9 @@ export async function handleAiChatRequest(req: Request) {
             conversationId: logContext.conversationId,
             additionalContext: {
               ...logContext,
-              operation: 'forced_tool_choice_fallback',
+              operation: usingAutoToolChoiceFallback
+                ? 'forced_tool_choice_fallback'
+                : 'missing_parametric_build',
               modelId: actualModelId,
             },
           },
@@ -1370,6 +1414,7 @@ export async function handleAiChatRequest(req: Request) {
               conversation.type === 'parametric'
                 ? dropTextFromParametricBuildMessage(
                     finalizeStreamingParts(responseMessage.parts),
+                    { leafRole },
                   )
                 : finalizeStreamingParts(responseMessage.parts);
 

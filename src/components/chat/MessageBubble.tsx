@@ -31,6 +31,7 @@ import type { TreeNode } from '@shared/Tree';
 import {
   cleanAssistantText,
   isParametricArtifact,
+  shouldReportMissingParametricBuild,
 } from '@shared/parametricParts';
 import { imageIdFromFilename } from '@shared/imageRefs';
 import type React from 'react';
@@ -469,6 +470,11 @@ function AssistantBubble({
     () => message.parts.some((part) => !!answerUserMessageText(part)?.trim()),
     [message.parts],
   );
+  const missingBuild =
+    conversation.type === 'parametric' &&
+    !isLoading &&
+    isLastMessage &&
+    shouldReportMissingParametricBuild(message.parts);
   const branchIndex = message.siblings.findIndex((b) => b.id === message.id);
   const leafNodes = useMemo(
     () =>
@@ -653,6 +659,27 @@ function AssistantBubble({
 
           return null;
         })}
+
+        {missingBuild ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            <p>
+              No 3D model was generated for this request. Retry this message or
+              switch models using the controls below.
+            </p>
+            {onRetry && currentModel ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 w-fit border-red-500/40 bg-transparent text-red-100 hover:bg-red-500/20"
+                onClick={() => onRetry(currentModel)}
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Suppress the rating/retry/copy/restore strip while the latest
             assistant message is still streaming — those controls don't

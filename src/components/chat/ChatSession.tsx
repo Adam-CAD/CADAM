@@ -27,7 +27,13 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
 } from 'ai';
 import Tree from '@shared/Tree';
-import { isParametricArtifact } from '@shared/parametricParts';
+import { shouldAutoContinueParametricBuild } from '@shared/parametricAgentLoop';
+import {
+  extractScadFromAssistantParts,
+  hasSuccessfulParametricBuild,
+  isParametricArtifact,
+  shouldReportMissingParametricBuild,
+} from '@shared/parametricParts';
 import type {
   Conversation,
   Message,
@@ -76,47 +82,6 @@ interface ChatSessionProps {
    *  parent show the bouncing loader in the preview pane while the model
    *  is still producing the next artifact. */
   onLoadingChange?: (isLoading: boolean) => void;
-}
-
-type ToolMessagePart = Extract<
-  AppUIMessage['parts'][number],
-  { state: string }
->;
-
-function isToolMessagePart(
-  part: AppUIMessage['parts'][number],
-): part is ToolMessagePart {
-  return part.type.startsWith('tool-') && 'state' in part;
-}
-
-function lastAssistantMessageIsCompleteWithParametricBuild({
-  messages,
-}: {
-  messages: AppUIMessage[];
-}) {
-  const message = messages[messages.length - 1];
-  if (!message || message.role !== 'assistant') return false;
-  if (message.parts.some((part) => part.type === 'tool-answer_user')) {
-    return false;
-  }
-
-  const lastStepStartIndex = message.parts.reduce(
-    (lastIndex, part, index) =>
-      part.type === 'step-start' ? index : lastIndex,
-    -1,
-  );
-  const toolParts = message.parts
-    .slice(lastStepStartIndex + 1)
-    .filter(isToolMessagePart);
-
-  return (
-    toolParts.some((part) => part.type === 'tool-build_parametric_model') &&
-    !toolParts.some((part) => part.type === 'tool-answer_user') &&
-    toolParts.every(
-      (part) =>
-        part.state === 'output-available' || part.state === 'output-error',
-    )
-  );
 }
 
 function answerUserInput(input: unknown): { message: string } | null {
@@ -283,6 +248,43 @@ export function ChatSession({
         findAssistant(messagesRef.current);
 
       if (toolCall.toolName === 'answer_user') {
+        if (
+          conversation.type === 'parametric' &&
+          assistant &&
+          !hasSuccessfulParametricBuild(assistant.parts)
+        ) {
+          const errorText =
+            'You must call build_parametric_model with complete OpenSCAD code before answer_user.';
+          const errorPart = {
+            type: 'tool-answer_user',
+            toolCallId: toolCall.toolCallId,
+            state: 'output-error',
+            input: toolCall.input,
+            errorText,
+          } as AppUIMessage['parts'][number];
+          const nextParts = assistant.parts.map((existing) =>
+            existing.type === 'tool-answer_user' &&
+            existing.toolCallId === toolCall.toolCallId
+              ? errorPart
+              : existing,
+          ) as AppUIMessage['parts'];
+          try {
+            await onToolOutput(assistant.id, nextParts);
+          } catch (persistError) {
+            console.warn(
+              'Failed to persist premature answer_user error to DB:',
+              persistError,
+            );
+          }
+          chat.addToolOutput({
+            state: 'output-error',
+            tool: 'answer_user',
+            toolCallId: toolCall.toolCallId,
+            errorText,
+          });
+          return;
+        }
+
         const output = answerUserInput(toolCall.input);
         if (!output) {
           const errorText = 'answer_user input was missing a message.';
@@ -568,7 +570,14 @@ export function ChatSession({
         );
       }
     },
-    [conversation.id, onToolOutput, onViewArtifact, toast, user?.id],
+    [
+      conversation.id,
+      conversation.type,
+      onToolOutput,
+      onViewArtifact,
+      toast,
+      user?.id,
+    ],
   );
 
   // ───────────────────────────────────────────────────────────────────────
@@ -586,7 +595,7 @@ export function ChatSession({
     sendAutomaticallyWhen: (ctx) => {
       if (persistFailedRef.current) return false;
       return conversation.type === 'parametric'
-        ? lastAssistantMessageIsCompleteWithParametricBuild(ctx)
+        ? shouldAutoContinueParametricBuild(ctx.messages)
         : lastAssistantMessageIsCompleteWithToolCalls(ctx);
     },
     // Out-of-band conversation-level signals (title + suggestions) arrive
@@ -641,6 +650,50 @@ export function ChatSession({
             old ? { ...old, current_message_leaf_id: message.id } : old,
         );
       }
+
+      if (
+        conversation.type === 'parametric' &&
+        message?.role === 'assistant' &&
+        shouldReportMissingParametricBuild(message.parts)
+      ) {
+        const recoveredCode = extractScadFromAssistantParts(message.parts);
+        if (recoveredCode) {
+          void (async () => {
+            try {
+              await previewScadColoredViaToolWorker(recoveredCode);
+              onViewArtifact(
+                {
+                  title: 'Recovered model',
+                  version: 'v1',
+                  code: recoveredCode,
+                },
+                message.id,
+              );
+              toast({
+                title: 'Model code recovered',
+                description:
+                  'OpenSCAD was found in the reply text and loaded into the preview.',
+              });
+            } catch (error) {
+              console.warn('Recovered OpenSCAD failed to compile:', error);
+              toast({
+                title: 'Found code but it did not compile',
+                description:
+                  'OpenSCAD was in the reply but could not be rendered. Try retrying the prompt.',
+                variant: 'destructive',
+              });
+            }
+          })();
+        } else {
+          toast({
+            title: 'No model was generated',
+            description:
+              'Adam replied without OpenSCAD code. Try again or retry with a different model.',
+            variant: 'destructive',
+          });
+        }
+      }
+
       queryClient.invalidateQueries({
         queryKey: ['messages', conversation.id],
       });

@@ -36,6 +36,7 @@ import type { AppUIMessage } from '@shared/chatAi';
 import {
   isParametricArtifact,
   replaceBuildParametricModelOutput,
+  shouldReportMissingParametricBuild,
 } from '@shared/parametricParts';
 import Tree from '@shared/Tree';
 import type {
@@ -603,6 +604,19 @@ function ConversationEditor() {
 
   const hasArtifact =
     activePreview?.type === 'artifact' && parameters.length > 0;
+  const lastAssistantMessage = useMemo(
+    () =>
+      [...initialBranch]
+        .reverse()
+        .find((message) => message.role === 'assistant'),
+    [initialBranch],
+  );
+  const lastTurnMissingBuild =
+    conversation.type === 'parametric' &&
+    !isChatStreaming &&
+    !activePreview &&
+    !!lastAssistantMessage &&
+    shouldReportMissingParametricBuild(lastAssistantMessage.parts);
 
   // `useCachedAiChat` captures `initialBranch` once at Chat construction;
   // if the messages query hasn't completed its first fetch yet the
@@ -734,8 +748,10 @@ function ConversationEditor() {
           ) : activePreview?.type === 'mesh' ? (
             <MeshPreview meshId={activePreview.meshId} />
           ) : (
-            <div className="text-sm text-adam-text-secondary">
-              Send a message to start creating
+            <div className="px-6 text-center text-sm text-adam-text-secondary">
+              {lastTurnMissingBuild
+                ? 'No model was generated. Retry in chat or try a different model.'
+                : 'Send a message to start creating'}
             </div>
           )}
         </div>
@@ -756,8 +772,10 @@ function ConversationEditor() {
           ) : activePreview?.type === 'mesh' ? (
             <MeshPreview meshId={activePreview.meshId} />
           ) : (
-            <div className="text-sm text-adam-text-secondary">
-              Send a message to start creating
+            <div className="px-6 text-center text-sm text-adam-text-secondary">
+              {lastTurnMissingBuild
+                ? 'No model was generated. Retry in chat or try a different model.'
+                : 'Send a message to start creating'}
             </div>
           )}
         </div>

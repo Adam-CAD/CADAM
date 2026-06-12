@@ -63,6 +63,46 @@ export function getParametricText(parts: unknown): string {
     .join('');
 }
 
+function answerUserPartText(
+  part: AppUIMessage['parts'][number],
+): string | undefined {
+  if (part.type !== 'tool-answer_user') return undefined;
+  const fromOutput =
+    part.state === 'output-available' &&
+    'output' in part &&
+    typeof part.output === 'object' &&
+    part.output !== null &&
+    'message' in part.output &&
+    typeof part.output.message === 'string'
+      ? part.output.message
+      : undefined;
+  const fromInput =
+    'input' in part &&
+    typeof part.input === 'object' &&
+    part.input !== null &&
+    'message' in part.input &&
+    typeof part.input.message === 'string'
+      ? part.input.message
+      : undefined;
+  const message = fromOutput ?? fromInput;
+  return message ? cleanAssistantText(message) : undefined;
+}
+
+/** Text that may contain salvageable OpenSCAD outside the build tool. */
+export function getAssistantSalvageText(parts: unknown): string {
+  const chunks: string[] = [];
+  for (const part of asParametricParts(parts)) {
+    if (part.type === 'text') {
+      const text = cleanAssistantText(part.text).trim();
+      if (text) chunks.push(text);
+      continue;
+    }
+    const answerText = answerUserPartText(part);
+    if (answerText?.trim()) chunks.push(answerText.trim());
+  }
+  return chunks.join('\n\n');
+}
+
 export function cleanAssistantText(text: string): string {
   text = text.replace(/!\[[^\]]*]\([^)]+\)/g, '');
 
@@ -181,6 +221,111 @@ export function isParametricArtifact(
   // and `parts` is optional. Parameters are derived client-side from
   // `code` via `parseParameters` so we don't check for them here either.
   return (
-    typeof artifact.title === 'string' && typeof artifact.code === 'string'
+    typeof artifact.title === 'string' &&
+    artifact.title.trim().length > 0 &&
+    typeof artifact.code === 'string' &&
+    artifact.code.trim().length >= 20
   );
 }
+
+export function hasParametricBuildAttempt(parts: unknown): boolean {
+  return asParametricParts(parts).some(
+    (part) => part.type === 'tool-build_parametric_model',
+  );
+}
+
+export function hasSuccessfulParametricBuild(parts: unknown): boolean {
+  return asParametricParts(parts).some(
+    (part) =>
+      part.type === 'tool-build_parametric_model' &&
+      part.state === 'output-available' &&
+      isParametricArtifact(part.input),
+  );
+}
+
+export function hasPendingClientToolCall(parts: unknown): boolean {
+  return asParametricParts(parts).some(
+    (part) =>
+      part.type.startsWith('tool-') &&
+      'state' in part &&
+      part.state === 'input-available',
+  );
+}
+
+export function parametricTurnMissingBuild(parts: unknown): boolean {
+  const parametricParts = asParametricParts(parts);
+  if (parametricParts.length === 0) return false;
+  if (hasSuccessfulParametricBuild(parametricParts)) return false;
+  if (hasPendingBuildParametricModel(parametricParts)) return false;
+  return !hasParametricBuildAttempt(parametricParts);
+}
+
+export function hasViewableParametricArtifact(parts: unknown): boolean {
+  return asParametricParts(parts).some(
+    (part) =>
+      part.type === 'tool-build_parametric_model' &&
+      part.state !== 'input-streaming' &&
+      'input' in part &&
+      isParametricArtifact(part.input),
+  );
+}
+
+export function canSalvageParametricBuildFromText(parts: unknown): boolean {
+  return !!extractScadFromText(getAssistantSalvageText(parts));
+}
+
+/** True when a parametric turn ended with no model and no in-flight tool work. */
+export function shouldReportMissingParametricBuild(parts: unknown): boolean {
+  if (
+    hasPendingClientToolCall(parts) ||
+    hasPendingBuildParametricModel(parts)
+  ) {
+    return false;
+  }
+  if (
+    hasSuccessfulParametricBuild(parts) ||
+    hasViewableParametricArtifact(parts)
+  ) {
+    return false;
+  }
+  if (canSalvageParametricBuildFromText(parts)) {
+    return false;
+  }
+  return parametricTurnMissingBuild(parts) || hasParametricBuildAttempt(parts);
+}
+
+const OPENSCAD_HINT =
+  /\b(module|cube|cylinder|sphere|difference|union|intersection|linear_extrude|rotate_extrude|import|color|hull|minkowski)\s*\(/i;
+
+function looksLikeOpenSCAD(code: string): boolean {
+  return OPENSCAD_HINT.test(code);
+}
+
+/**
+ * Recover OpenSCAD the model pasted into markdown despite the tool-only rule.
+ * Used as a salvage path when `build_parametric_model` was never called.
+ */
+export function extractScadFromText(text: string): string | undefined {
+  const fencePatterns = [
+    /```(?:openscad|scad|open-scad)?\s*\n([\s\S]*?)```/gi,
+    /```\s*\n([\s\S]*?)```/gi,
+  ];
+  for (const fencePattern of fencePatterns) {
+    for (const match of text.matchAll(fencePattern)) {
+      const code = match[1]?.trim();
+      if (code && code.length >= 20 && looksLikeOpenSCAD(code)) {
+        return code;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function extractScadFromAssistantParts(
+  parts: unknown,
+): string | undefined {
+  return extractScadFromText(getAssistantSalvageText(parts));
+}
+
+export const MISSING_BUILD_NOTICE =
+  "I wasn't able to generate a 3D model for this request. Please try again or rephrase your prompt.";
