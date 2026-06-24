@@ -33,7 +33,7 @@ describe('parseLocalModelsJson', () => {
           id: 'qwen2.5-coder-7b',
           name: 'Qwen',
           description: 'Local coder',
-          apiKey: 'test-key',
+          apiKey: 'TEST_ENV_KEY_NAME',
           supportsTools: true,
         },
         { id: '', name: 'Bad', description: 'x' },
@@ -43,7 +43,30 @@ describe('parseLocalModelsJson', () => {
           id: 'qwen2.5-coder-7b',
           name: 'Qwen',
           description: 'Local coder',
-          apiKey: 'test-key',
+          apiKey: 'TEST_ENV_KEY_NAME',
+          supportsTools: true,
+        },
+      ],
+    );
+  });
+
+  it('accepts entries without apiKey', () => {
+    assert.deepEqual(
+      parseLocalModelsJson([
+        {
+          id: 'qwen3-vl-30b',
+          name: 'Qwen3 VL 30B',
+          description: 'Local VLM',
+          baseUrl: 'http://localhost:8004/v1',
+          supportsTools: true,
+        },
+      ]),
+      [
+        {
+          id: 'qwen3-vl-30b',
+          name: 'Qwen3 VL 30B',
+          description: 'Local VLM',
+          baseUrl: 'http://localhost:8004/v1',
           supportsTools: true,
         },
       ],
@@ -126,6 +149,41 @@ describe('getLocalModels', () => {
           id: 'valid-url',
           name: 'Valid',
           description: 'Valid baseUrl',
+          baseUrl: 'http://localhost:1234',
+        },
+      ],
+    );
+  });
+
+  it('keeps models with and without apiKey when baseUrl exists', () => {
+    assert.deepEqual(
+      getLocalModels([
+        {
+          id: 'with-api-key',
+          name: 'With API key',
+          description: 'Remote OpenAI-compatible',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'EXAMPLE_API_KEY',
+        },
+        {
+          id: 'without-api-key',
+          name: 'Without API key',
+          description: 'Local server with no auth',
+          baseUrl: 'http://localhost:1234',
+        },
+      ]),
+      [
+        {
+          id: 'with-api-key',
+          name: 'With API key',
+          description: 'Remote OpenAI-compatible',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'EXAMPLE_API_KEY',
+        },
+        {
+          id: 'without-api-key',
+          name: 'Without API key',
+          description: 'Local server with no auth',
           baseUrl: 'http://localhost:1234',
         },
       ],

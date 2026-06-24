@@ -47,6 +47,7 @@ import {
   getLocalChatState,
   isActiveLocalModel,
   isMissingLocalBaseUrl,
+  localApiKeyForModel,
   providerFor,
   type ChatProvider,
 } from './localChatConfig';
@@ -378,8 +379,7 @@ function createChatProviders(): ChatProviders {
       return openrouter;
     },
     local: (baseUrl: string, apiKey?: string) => {
-      const resolvedApiKey =
-        apiKey?.trim() || env('OPENROUTER_API_KEY').trim() || 'local';
+      const resolvedApiKey = apiKey?.trim() || 'local';
       const providerKey = `${baseUrl}::${resolvedApiKey}`;
       let provider = localByTarget.get(providerKey);
       if (!provider) {
@@ -420,7 +420,9 @@ function buildChatModel(
       throw new Error(`No baseUrl configured for local model ${modelId}`);
     const baseUrl = normalizeOpenRouterBaseUrl(rawBaseUrl) ?? rawBaseUrl;
     return {
-      model: providers.local(baseUrl, modelConfig?.apiKey).chat(modelId),
+      model: providers
+        .local(baseUrl, localApiKeyForModel(modelConfig))
+        .chat(modelId),
     };
   }
 
@@ -1122,7 +1124,9 @@ function getAuxLanguageModel(providers: ChatProviders): LanguageModel | null {
   if (auxLocal?.baseUrl) {
     const baseUrl =
       normalizeOpenRouterBaseUrl(auxLocal.baseUrl) ?? auxLocal.baseUrl;
-    return providers.local(baseUrl, auxLocal.apiKey).chat(auxLocal.id);
+    return providers
+      .local(baseUrl, localApiKeyForModel(auxLocal))
+      .chat(auxLocal.id);
   }
   if (hasAnthropicApiKey) return providers.anthropic()('claude-haiku-4-5');
   return null;

@@ -241,7 +241,7 @@ To add your own local models (LM Studio, Ollama, LiteLLM, etc.) alongside the cl
      "name": "DeepSeek v4 Flash",
      "description": "Third Party LLM",
      "baseUrl": "https://api.deepseek.com",
-     "apiKey": "<Test DeepSeek API Key>",
+     "apiKey": "DEEPSEEK_API_KEY",
      "supportsTools": true,
      "supportsThinking": true,
      "supportsVision": false,
@@ -249,7 +249,9 @@ To add your own local models (LM Studio, Ollama, LiteLLM, etc.) alongside the cl
    }
    ```
 
-3. Optionally set `OPENROUTER_API_KEY="local"` in `.env.local` if your local server expects an API key header (many accept any value). **Note:** this value is also used for OpenRouter cloud model calls, so only use a dummy value if you are not using any OpenRouter-hosted models.
+3. Set local model API keys in `.env.local`.
+   - `apiKey` in `local-models.json` should be the env var name, not the secret value.
+     - Example: `"apiKey": "DEEPSEEK_API_KEY"` and then set `DEEPSEEK_API_KEY="<your key>"` in `.env.local`.
 
 4. Restart `npm run dev`. Models with a `baseUrl` appear in the parametric model picker.
 

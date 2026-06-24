@@ -84,6 +84,18 @@ export function getActiveLocalModel(
   );
 }
 
+// Resolve local API key from env without exposing secrets to the client bundle.
+// If `apiKey` is set in `local-models.json`, it is interpreted as the env var
+// name (for example `DEEPSEEK_API_KEY`), not a raw secret.
+export function localApiKeyForModel(
+  model: LocalModelConfig,
+): string | undefined {
+  const configuredName = model.apiKey?.trim();
+  if (!configuredName) return undefined;
+  const configured = env(configuredName).trim();
+  return configured || undefined;
+}
+
 // Client may show catalog ids whose baseUrl is missing on the server — reject
 // those requests with a clear error.
 export function isMissingLocalBaseUrl(modelId: string): boolean {
