@@ -7,7 +7,11 @@ import {
   normalizeOpenRouterBaseUrl,
 } from '@shared/localModels';
 import { cleanAssistantText, getParametricText } from '@shared/parametricParts';
-import { imageIdFromFilename, imageStoragePath } from '@shared/imageRefs';
+import {
+  imageIdFromFilename,
+  imageStoragePath,
+  inspectionPreviewStoragePath,
+} from '@shared/imageRefs';
 import { normalizeConversationSuggestions } from '@shared/suggestions';
 import type { Conversation, Message, MeshFileType, Model } from '@shared/types';
 import {
@@ -47,6 +51,7 @@ import {
   type ChatProvider,
 } from './localChatConfig';
 import { getAnonSupabaseClient } from './supabaseClient';
+import { findLatestBuildToolCallId } from './messageUtils';
 
 /**
  * USD list price per **million** tokens, keyed by the same model IDs the
@@ -341,14 +346,14 @@ type ChatProviders = {
   anthropic: () => AnthropicProvider;
   google: () => GoogleProvider;
   openrouter: () => OpenRouterProvider;
-  local: (baseUrl: string) => OpenRouterProvider;
+  local: (baseUrl: string, apiKey?: string) => OpenRouterProvider;
 };
 
 function createChatProviders(): ChatProviders {
   let anthropic: AnthropicProvider | undefined;
   let google: GoogleProvider | undefined;
   let openrouter: OpenRouterProvider | undefined;
-  const localByUrl = new Map<string, OpenRouterProvider>();
+  const localByTarget = new Map<string, OpenRouterProvider>();
   return {
     anthropic: () => {
       if (!anthropic) {
@@ -372,15 +377,18 @@ function createChatProviders(): ChatProviders {
       });
       return openrouter;
     },
-    local: (baseUrl: string) => {
-      let provider = localByUrl.get(baseUrl);
+    local: (baseUrl: string, apiKey?: string) => {
+      const resolvedApiKey =
+        apiKey?.trim() || env('OPENROUTER_API_KEY').trim() || 'local';
+      const providerKey = `${baseUrl}::${resolvedApiKey}`;
+      let provider = localByTarget.get(providerKey);
       if (!provider) {
         provider = createOpenRouter({
           baseURL: baseUrl,
-          apiKey: env('OPENROUTER_API_KEY').trim() || 'local',
+          apiKey: resolvedApiKey,
           compatibility: 'compatible',
         });
-        localByUrl.set(baseUrl, provider);
+        localByTarget.set(providerKey, provider);
       }
       return provider;
     },
@@ -411,7 +419,9 @@ function buildChatModel(
     if (!rawBaseUrl)
       throw new Error(`No baseUrl configured for local model ${modelId}`);
     const baseUrl = normalizeOpenRouterBaseUrl(rawBaseUrl) ?? rawBaseUrl;
-    return { model: providers.local(baseUrl).chat(modelId) };
+    return {
+      model: providers.local(baseUrl, modelConfig?.apiKey).chat(modelId),
+    };
   }
 
   if (provider === 'openrouter') {
@@ -911,90 +921,99 @@ async function buildHydratedMessages(
     conversation,
     modelId,
     provider,
-    previewPathForToolCall,
   }: {
     supabaseClient: SupabaseAnon;
     conversation: ConversationAccess;
     modelId: string;
     provider: ChatProvider;
-    previewPathForToolCall: (toolCallId: string) => string;
   },
 ): Promise<Array<Omit<AppUIMessage, 'id'>>> {
-  const isLocal = provider === 'local';
-  const result: Array<Omit<AppUIMessage, 'id'>> = [];
+  const shouldAddInspection =
+    provider === 'local' &&
+    conversation.type === 'parametric' &&
+    chatModelSupportsVision(modelId);
+  const latestBuildToolCallId = shouldAddInspection
+    ? findLatestBuildToolCallId(messages)
+    : null;
 
-  for (const message of messages) {
-    const hydratedParts = (
-      await Promise.all(
-        message.parts.map(async (part) => {
-          if (
-            part.type !== 'file' ||
-            typeof part.mediaType !== 'string' ||
-            !part.mediaType.startsWith('image/') ||
-            part.url.startsWith('data:')
-          ) {
-            return part;
-          }
-          const imageId = imageIdFromFilename(part.filename);
-          if (!imageId) return null;
-          const downloaded = await downloadAsBase64(
-            supabaseClient,
-            'images',
-            imageStoragePath(conversation.user_id, conversation.id, imageId),
-          );
-          if (!downloaded) return null;
-          return {
-            ...part,
-            mediaType: downloaded.mediaType,
-            url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
-          };
-        }),
-      )
-    ).filter((part): part is NonNullable<typeof part> => part != null);
-
-    result.push({ ...message, parts: hydratedParts });
-
-    // Local providers: inject image renders as user messages so they
-    // never end up inside `role: tool` output (strict OpenAI-compat servers
-    // reject images there). Only applies for parametric conversations where
-    // the model supports vision.
-    if (
-      isLocal &&
-      conversation.type === 'parametric' &&
-      chatModelSupportsVision(modelId) &&
-      message.role === 'assistant'
-    ) {
-      for (const part of message.parts) {
-        if (
-          part.type !== 'tool-build_parametric_model' ||
-          part.state !== 'output-available' ||
-          !('toolCallId' in part) ||
-          typeof part.toolCallId !== 'string'
-        ) {
-          continue;
-        }
-        const downloaded = await downloadAsBase64(
-          supabaseClient,
-          'images',
-          previewPathForToolCall(part.toolCallId),
-        );
-        if (!downloaded) continue;
-        result.push({
-          role: 'user',
-          parts: [
-            {
-              type: 'text',
-              text: 'Multi-view inspection render from the tool result above.',
-            },
-            {
-              type: 'file',
+  const hydrated = await Promise.all(
+    messages.map(async (message) => ({
+      ...message,
+      parts: (
+        await Promise.all(
+          message.parts.map(async (part) => {
+            if (
+              part.type !== 'file' ||
+              typeof part.mediaType !== 'string' ||
+              !part.mediaType.startsWith('image/') ||
+              part.url.startsWith('data:')
+            ) {
+              return part;
+            }
+            const imageId = imageIdFromFilename(part.filename);
+            if (!imageId) return null;
+            const downloaded = await downloadAsBase64(
+              supabaseClient,
+              'images',
+              imageStoragePath(conversation.user_id, conversation.id, imageId),
+            );
+            if (!downloaded) return null;
+            return {
+              ...part,
               mediaType: downloaded.mediaType,
               url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
-            },
-          ],
-        });
-      }
-    }
+            };
+          }),
+        )
+      ).filter((part): part is NonNullable<typeof part> => part != null),
+    })),
+  );
+
+  if (!latestBuildToolCallId) {
+    return hydrated.map(({ id: _id, ...message }) => message);
+  }
+
+  const result: Array<Omit<AppUIMessage, 'id'>> = [];
+  for (const message of hydrated) {
+    const { id: _id, ...messageWithoutId } = message;
+    result.push(messageWithoutId);
+
+    if (message.role !== 'assistant') continue;
+
+    const hasLatestBuild = message.parts.some(
+      (part) =>
+        part.type === 'tool-build_parametric_model' &&
+        part.state === 'output-available' &&
+        'toolCallId' in part &&
+        part.toolCallId === latestBuildToolCallId,
+    );
+    if (!hasLatestBuild) continue;
+
+    const downloaded = await downloadAsBase64(
+      supabaseClient,
+      'images',
+      inspectionPreviewStoragePath(
+        conversation.user_id,
+        conversation.id,
+        latestBuildToolCallId,
+      ),
+    );
+    if (!downloaded) continue;
+
+    result.push({
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text: 'Multi-view inspection render from the tool result above.',
+        },
+        {
+          type: 'file',
+          mediaType: downloaded.mediaType,
+          url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
+        },
+      ],
+    });
   }
 
   return result;
@@ -1027,15 +1046,14 @@ async function downloadAsBase64(
 }
 
 function parametricTools({
-  previewPathForToolCall,
   supabaseClient,
+  conversation,
   modelId,
 }: {
-  previewPathForToolCall: (toolCallId: string) => string;
   supabaseClient: SupabaseAnon;
+  conversation: ConversationAccess;
   modelId: string;
 }) {
-  const isLocal = providerFor(modelId) === 'local';
   return {
     build_parametric_model: {
       ...chatTools.build_parametric_model,
@@ -1050,7 +1068,10 @@ function parametricTools({
           output.inspection?.views.join(', ') ??
           'ISO, FRONT, BACK, LEFT, RIGHT, TOP, BOTTOM';
 
-        if (!isLocal && chatModelSupportsVision(modelId)) {
+        if (
+          providerFor(modelId) !== 'local' &&
+          chatModelSupportsVision(modelId)
+        ) {
           // The client uploads a multi-view render of the compiled SCAD to a path
           // derived from toolCallId BEFORE sending the tool result (see
           // ChatSession's `onToolCall`). If for any reason the upload
@@ -1059,7 +1080,11 @@ function parametricTools({
           const downloaded = await downloadAsBase64(
             supabaseClient,
             'images',
-            previewPathForToolCall(toolCallId),
+            inspectionPreviewStoragePath(
+              conversation.user_id,
+              conversation.id,
+              toolCallId,
+            ),
           );
           const text = `${output.message}\nRendered inspection views: ${views}.\nMulti-view inspection image attached: ${downloaded ? 'yes' : 'no'}.`;
 
@@ -1097,7 +1122,7 @@ function getAuxLanguageModel(providers: ChatProviders): LanguageModel | null {
   if (auxLocal?.baseUrl) {
     const baseUrl =
       normalizeOpenRouterBaseUrl(auxLocal.baseUrl) ?? auxLocal.baseUrl;
-    return providers.local(baseUrl).chat(auxLocal.id);
+    return providers.local(baseUrl, auxLocal.apiKey).chat(auxLocal.id);
   }
   if (hasAnthropicApiKey) return providers.anthropic()('claude-haiku-4-5');
   return null;
@@ -1204,8 +1229,7 @@ export async function handleAiChatRequest(req: Request) {
       ? creativeTools({ conversation, req, model: rawBody.model })
       : parametricTools({
           supabaseClient,
-          previewPathForToolCall: (toolCallId) =>
-            `${user.id}/${conversation.id}/inspection-preview-${toolCallId}`,
+          conversation,
           modelId: actualModelId,
         });
 
@@ -1257,8 +1281,6 @@ export async function handleAiChatRequest(req: Request) {
 
   // Resolve the actual model ID the request will run against.
   const resolvedProvider = providerFor(actualModelId);
-  const previewPathForToolCall = (toolCallId: string) =>
-    `${user.id}/${conversation.id}/inspection-preview-${toolCallId}`;
 
   // Rehydrate image file parts before handing them to the model. The
   // persisted `url` is a storage reference (or, for the oldest backfilled
@@ -1272,15 +1294,14 @@ export async function handleAiChatRequest(req: Request) {
   //
   // For local providers on parametric conversations, strict OpenAI-compatible
   // servers reject images inside `role: tool` messages. We instead insert a
-  // follow-up `role: user` message carrying the inspection render after each
-  // resolved build tool call so `convertToModelMessages` never needs to put
-  // images in tool output.
+  // follow-up `role: user` message carrying the latest inspection render after
+  // the most recent build tool call so `convertToModelMessages` never needs to
+  // put images in tool output.
   const hydratedMessages = await buildHydratedMessages(branchMessages, {
     supabaseClient,
     conversation,
     modelId: actualModelId,
     provider: resolvedProvider,
-    previewPathForToolCall,
   });
 
   const modelMessages = await convertToModelMessages<AppUIMessage>(

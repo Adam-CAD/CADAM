@@ -33,12 +33,11 @@ const projectRoot = path.resolve(
   '../..',
 );
 
-// Cached in production; re-read on each request in dev so `local-models.json`
-// edits take effect without restarting the dev server.
+// Cached after first read; restart the dev server after editing `local-models.json`.
 let cachedCatalog: LocalModelConfig[] | undefined;
 
 function loadCatalogFromDisk(): LocalModelConfig[] {
-  if (cachedCatalog && import.meta.env.PROD) return cachedCatalog;
+  if (cachedCatalog) return cachedCatalog;
 
   const userPath = path.join(projectRoot, 'local-models.json');
   if (!fs.existsSync(userPath)) {

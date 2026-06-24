@@ -235,6 +235,17 @@ To add your own local models (LM Studio, Ollama, LiteLLM, etc.) alongside the cl
      "supportsTools": true,
      "supportsVision": true,
      "useForAux": true
+   },
+   {
+     "id": "deepseek-v4-flash",
+     "name": "DeepSeek v4 Flash",
+     "description": "Third Party LLM",
+     "baseUrl": "https://api.deepseek.com",
+     "apiKey": "<Test DeepSeek API Key>",
+     "supportsTools": true,
+     "supportsThinking": true,
+     "supportsVision": false,
+     "useForAux": false
    }
    ```
 

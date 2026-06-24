@@ -11,6 +11,7 @@ const localModelSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   baseUrl: z.string().optional(),
+  apiKey: z.string().optional(),
   supportsTools: z.boolean().optional(),
   supportsThinking: z.boolean().optional(),
   supportsVision: z.boolean().optional(),
@@ -33,12 +34,16 @@ export type PickerModelConfig = {
 
 export type ChatProvider = 'anthropic' | 'google' | 'openrouter' | 'local';
 
-/** Parse and validate a raw `local-models.json` payload; skip invalid entries. */
+// Parse and validate a raw `local-models.json` payload; skip invalid entries.
+// skip second occurence of local model with same model id
 export function parseLocalModelsJson(raw: unknown): LocalModelConfig[] {
   if (!Array.isArray(raw)) return [];
+  const seenIds = new Set<string>();
   return raw.flatMap((entry) => {
     const parsed = localModelSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
+    if (!parsed.success || seenIds.has(parsed.data.id)) return [];
+    seenIds.add(parsed.data.id);
+    return [parsed.data];
   });
 }
 

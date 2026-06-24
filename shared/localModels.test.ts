@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   getAuxiliaryLocalModel,
+  getLocalModels,
   isMissingLocalBaseUrl,
   isLocalModelId,
   localModelToPickerConfig,
@@ -32,6 +33,7 @@ describe('parseLocalModelsJson', () => {
           id: 'qwen2.5-coder-7b',
           name: 'Qwen',
           description: 'Local coder',
+          apiKey: 'test-key',
           supportsTools: true,
         },
         { id: '', name: 'Bad', description: 'x' },
@@ -41,7 +43,90 @@ describe('parseLocalModelsJson', () => {
           id: 'qwen2.5-coder-7b',
           name: 'Qwen',
           description: 'Local coder',
+          apiKey: 'test-key',
           supportsTools: true,
+        },
+      ],
+    );
+  });
+
+  it('keeps the first entry when duplicate ids appear', () => {
+    assert.deepEqual(
+      parseLocalModelsJson([
+        {
+          id: 'dup-model',
+          name: 'First',
+          description: 'First wins',
+          baseUrl: 'http://localhost:1111',
+        },
+        {
+          id: 'dup-model',
+          name: 'Second',
+          description: 'Dropped',
+          baseUrl: 'http://localhost:2222',
+        },
+      ]),
+      [
+        {
+          id: 'dup-model',
+          name: 'First',
+          description: 'First wins',
+          baseUrl: 'http://localhost:1111',
+        },
+      ],
+    );
+  });
+});
+
+describe('getLocalModels', () => {
+  it('returns only entries with a configured baseUrl', () => {
+    assert.deepEqual(
+      getLocalModels([
+        {
+          id: 'with-url',
+          name: 'With URL',
+          description: 'Has baseUrl',
+          baseUrl: 'http://localhost:1234',
+        },
+        {
+          id: 'without-url',
+          name: 'Without URL',
+          description: 'Missing baseUrl',
+        },
+      ]),
+      [
+        {
+          id: 'with-url',
+          name: 'With URL',
+          description: 'Has baseUrl',
+          baseUrl: 'http://localhost:1234',
+        },
+      ],
+    );
+  });
+
+  it('excludes entries with blank or whitespace-only baseUrl', () => {
+    assert.deepEqual(
+      getLocalModels([
+        {
+          id: 'blank-url',
+          name: 'Blank',
+          description: 'Blank baseUrl',
+          baseUrl: '   ',
+        },
+        {
+          id: 'valid-url',
+          name: 'Valid',
+          description: 'Valid baseUrl',
+          baseUrl: 'http://localhost:1234',
+        },
+      ]),
+      [
+        {
+          id: 'valid-url',
+          name: 'Valid',
+          description: 'Valid baseUrl',
+          baseUrl: 'http://localhost:1234',
         },
       ],
     );

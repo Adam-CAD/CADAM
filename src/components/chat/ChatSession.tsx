@@ -29,6 +29,7 @@ import {
 } from 'ai';
 import Tree from '@shared/Tree';
 import { isParametricArtifact } from '@shared/parametricParts';
+import { inspectionPreviewStoragePath } from '@shared/imageRefs';
 import type {
   Conversation,
   Message,
@@ -470,7 +471,11 @@ export function ChatSession({
             const inspectionBlob = await fetch(inspectionDataUrl).then(
               (response) => response.blob(),
             );
-            const inspectionPath = `${user.id}/${conversation.id}/inspection-preview-${toolCall.toolCallId}`;
+            const inspectionPath = inspectionPreviewStoragePath(
+              user.id,
+              conversation.id,
+              toolCall.toolCallId,
+            );
             const { error: inspectionUploadError } = await supabase.storage
               .from('images')
               .upload(inspectionPath, inspectionBlob, {
