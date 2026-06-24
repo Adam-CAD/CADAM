@@ -33,3 +33,6 @@ dist-ssr
 # other secret files
 .env.local
 .env.langfuse
+
+# local models config
+local-models.json
