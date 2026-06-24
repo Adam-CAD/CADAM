@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Parameter } from '@shared/types';
+import { getLocalModels, localModelToPickerConfig } from '@shared/localModels';
 import { ModelConfig } from '../types/misc.ts';
 
 export function cn(...inputs: ClassValue[]) {
@@ -235,7 +236,7 @@ export function getInitials(fullName: string | null) {
   return 'U';
 }
 
-export const PARAMETRIC_MODELS: ModelConfig[] = [
+const CLOUD_PARAMETRIC_MODELS: ModelConfig[] = [
   {
     id: 'google/gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
@@ -272,6 +273,22 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsThinking: true,
     supportsVision: false,
   },
+];
+
+const localModelsRaw = Object.values(
+  import.meta.glob('../../local-models.json', {
+    eager: true,
+    import: 'default',
+  }),
+)[0] as unknown;
+
+const LOCAL_PARAMETRIC_MODELS: ModelConfig[] = getLocalModels(
+  localModelsRaw,
+).map(localModelToPickerConfig);
+
+export const PARAMETRIC_MODELS: ModelConfig[] = [
+  ...CLOUD_PARAMETRIC_MODELS,
+  ...LOCAL_PARAMETRIC_MODELS,
 ];
 
 export const CREATIVE_MODELS: ModelConfig[] = [

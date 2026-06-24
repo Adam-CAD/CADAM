@@ -211,6 +211,39 @@ npm run dev
   NGROK_URL="<NGROK URL>" # Optional local Supabase Storage tunnel for provider-readable signed URLs
   ```
 
+### 3. Optional Local LLM Models
+
+To add your own local models (LM Studio, Ollama, LiteLLM, etc.) alongside the cloud models:
+
+1. Start one or more local OpenAI-compatible servers (for example LM Studio on port `1234`).
+2. Copy the example catalog and edit entries to match your servers:
+
+   ```bash
+   cp local-models.json.example local-models.json
+   ```
+
+   Each entry needs an `id`, `name`, `description`, and `baseUrl`. The `id` must match what your server exposes.
+
+   Example:
+
+   ```json
+   {
+     "id": "qwen2.5-vl-7b-instruct",
+     "name": "Qwen2.5 VL 7B",
+     "description": "Local VLM",
+     "baseUrl": "http://localhost:1234",
+     "supportsTools": true,
+     "supportsVision": true,
+     "useForAux": true
+   }
+   ```
+
+3. Optionally set `OPENROUTER_API_KEY="local"` in `.env.local` if your local server expects an API key header (many accept any value).
+
+4. Restart `npm run dev`. Models with a `baseUrl` appear in the parametric model picker.
+
+Cloud models (Gemini, Claude, OpenAI, Z-AI) keep using their existing cloud routes. Only ids listed in `local-models.json` with a `baseUrl` are sent to that model's server.
+
 ## 🌐 Setting Up ngrok for Local Development
 
 CADAM uses public URLs for provider callbacks and local signed storage URLs:

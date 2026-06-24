@@ -1,0 +1,12 @@
+[
+  {
+    "id": "qwen2.5-vl-7b-instruct",
+    "name": "Qwen2.5 VL 7B",
+    "description": "Local VLM",
+    "baseUrl": "http://localhost:1234",
+    "supportsTools": true,
+    "supportsThinking": false,
+    "supportsVision": true,
+    "useForAux": true
+  }
+]
