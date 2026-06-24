@@ -249,7 +249,7 @@ To add your own local models (LM Studio, Ollama, LiteLLM, etc.) alongside the cl
    }
    ```
 
-3. Optionally set `OPENROUTER_API_KEY="local"` in `.env.local` if your local server expects an API key header (many accept any value).
+3. Optionally set `OPENROUTER_API_KEY="local"` in `.env.local` if your local server expects an API key header (many accept any value). **Note:** this value is also used for OpenRouter cloud model calls, so only use a dummy value if you are not using any OpenRouter-hosted models.
 
 4. Restart `npm run dev`. Models with a `baseUrl` appear in the parametric model picker.
 
