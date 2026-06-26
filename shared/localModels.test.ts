@@ -226,6 +226,19 @@ describe('localModelToPickerConfig', () => {
       disabled: false,
     });
   });
+
+  it('does not expose apiKey or baseUrl in picker config', () => {
+    const picker = localModelToPickerConfig({
+      id: 'secure-model',
+      name: 'Secure',
+      description: 'Server-only key',
+      baseUrl: 'https://example.local/v1',
+      apiKey: 'DO_NOT_EXPOSE',
+    });
+
+    assert.equal('apiKey' in picker, false);
+    assert.equal('baseUrl' in picker, false);
+  });
 });
 
 describe('normalizeOpenRouterBaseUrl', () => {

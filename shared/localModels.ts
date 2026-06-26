@@ -1,36 +1,35 @@
 /**
  * Pure routing logic for the local OpenAI-compatible model catalog
  * (`local-models.json`). No env or disk I/O — `localChatConfig.ts` wires
- * server env + file reads; `utils.ts` loads the catalog for the client picker.
+ * server env + file reads; the client fetches picker entries from `/api/local-models`.
  */
 import { z } from 'zod';
 
-// Shape of each entry in `local-models.json`.
-const localModelSchema = z.object({
+const modelCoreSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().min(1),
-  baseUrl: z.string().optional(),
-  apiKey: z.string().optional(),
   supportsTools: z.boolean().optional(),
   supportsThinking: z.boolean().optional(),
   supportsVision: z.boolean().optional(),
+});
+
+// Shape of each entry in `local-models.json`.
+export const localModelSchema = modelCoreSchema.extend({
+  baseUrl: z.string().optional(),
+  apiKey: z.string().optional(),
   useForAux: z.boolean().optional(),
 });
 
 export type LocalModelConfig = z.infer<typeof localModelSchema>;
 
+export const pickerModelSchema = modelCoreSchema.extend({
+  provider: z.string().optional(),
+  disabled: z.boolean().optional(),
+});
+
 // UI model-picker shape; cloud entries in `utils.ts` use the same fields.
-export type PickerModelConfig = {
-  id: string;
-  name: string;
-  description: string;
-  provider?: string;
-  supportsTools?: boolean;
-  supportsThinking?: boolean;
-  supportsVision?: boolean;
-  disabled?: boolean;
-};
+export type PickerModelConfig = z.infer<typeof pickerModelSchema>;
 
 export type ChatProvider = 'anthropic' | 'google' | 'openrouter' | 'local';
 

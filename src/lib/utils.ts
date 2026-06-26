@@ -1,7 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { Parameter } from '@shared/types';
-import { getLocalModels, localModelToPickerConfig } from '@shared/localModels';
 import { ModelConfig } from '../types/misc.ts';
 
 export function cn(...inputs: ClassValue[]) {
@@ -275,21 +274,7 @@ const CLOUD_PARAMETRIC_MODELS: ModelConfig[] = [
   },
 ];
 
-const localModelsRaw = Object.values(
-  import.meta.glob('../../local-models.json', {
-    eager: true,
-    import: 'default',
-  }),
-)[0] as unknown;
-
-const LOCAL_PARAMETRIC_MODELS: ModelConfig[] = getLocalModels(
-  localModelsRaw,
-).map(localModelToPickerConfig);
-
-export const PARAMETRIC_MODELS: ModelConfig[] = [
-  ...CLOUD_PARAMETRIC_MODELS,
-  ...LOCAL_PARAMETRIC_MODELS,
-];
+export const PARAMETRIC_MODELS: ModelConfig[] = [...CLOUD_PARAMETRIC_MODELS];
 
 export const CREATIVE_MODELS: ModelConfig[] = [
   {
@@ -315,7 +300,10 @@ export const CREATIVE_MODELS: ModelConfig[] = [
 // Whether the selected parametric model can accept image / STL-render inputs.
 // Unknown ids (e.g. historical messages tagged with a removed model) fall back
 // to `true` so older saved rows still render normally.
-export function parametricModelSupportsVision(modelId: string): boolean {
-  const cfg = PARAMETRIC_MODELS.find((m) => m.id === modelId);
+export function parametricModelSupportsVision(
+  modelId: string,
+  models: ModelConfig[] = PARAMETRIC_MODELS,
+): boolean {
+  const cfg = models.find((m) => m.id === modelId);
   return cfg?.supportsVision !== false;
 }

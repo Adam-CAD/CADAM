@@ -20,9 +20,9 @@ import {
 import {
   cn,
   CREATIVE_MODELS,
-  PARAMETRIC_MODELS,
   parametricModelSupportsVision,
 } from '@/lib/utils';
+import { useParametricModels } from '@/hooks/useLocalModels.ts';
 import { CreativeModel, MeshFileType, Model } from '@shared/types';
 import type { AppUIMessage } from '@shared/chatAi';
 import { imageFilePartUrl } from '@shared/imageRefs';
@@ -652,12 +652,13 @@ function TextAreaChat({
     },
   };
 
+  const parametricModels = useParametricModels();
   const memoizedModels = useMemo(() => {
     if (type === 'creative') {
       return CREATIVE_MODELS;
     }
-    return PARAMETRIC_MODELS;
-  }, [type]);
+    return parametricModels;
+  }, [type, parametricModels]);
 
   // ------------------------------------------------------------
   // Placeholder – Typed-out Animation
@@ -1594,7 +1595,7 @@ function TextAreaChat({
         <div className="flex items-center justify-between border-t border-[#2a2a2a] p-3">
           <div className="flex items-center gap-1">
             {(type !== 'parametric' ||
-              parametricModelSupportsVision(model)) && (
+              parametricModelSupportsVision(model, memoizedModels)) && (
               <div
                 className={cn(
                   'transition-all duration-300 ease-out',

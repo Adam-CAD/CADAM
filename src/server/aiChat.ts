@@ -991,16 +991,30 @@ async function buildHydratedMessages(
     );
     if (!hasLatestBuild) continue;
 
+    const inspectionPath = inspectionPreviewStoragePath(
+      conversation.user_id,
+      conversation.id,
+      latestBuildToolCallId,
+    );
     const downloaded = await downloadAsBase64(
       supabaseClient,
       'images',
-      inspectionPreviewStoragePath(
-        conversation.user_id,
-        conversation.id,
-        latestBuildToolCallId,
-      ),
+      inspectionPath,
     );
-    if (!downloaded) continue;
+    if (!downloaded) {
+      logError(new Error('Failed to hydrate inspection preview image'), {
+        functionName: 'ai-chat',
+        statusCode: 500,
+        userId: conversation.user_id,
+        conversationId: conversation.id,
+        additionalContext: {
+          operation: 'inspection_hydration_download',
+          toolCallId: latestBuildToolCallId,
+          storagePath: inspectionPath,
+        },
+      });
+      continue;
+    }
 
     result.push({
       role: 'user',
@@ -1045,6 +1059,17 @@ async function downloadAsBase64(
   const mediaType =
     (await sniffImageMediaType(bytes)) || data.type || 'image/png';
   return { base64: btoa(binary), mediaType };
+}
+
+async function storageObjectExists(
+  supabaseClient: SupabaseAnon,
+  bucket: string,
+  path: string,
+): Promise<boolean> {
+  const { data, error } = await supabaseClient.storage
+    .from(bucket)
+    .createSignedUrl(path, 60);
+  return !error && !!data?.signedUrl;
 }
 
 function parametricTools({
@@ -1108,7 +1133,29 @@ function parametricTools({
         } else {
           // For models that do not support multimodal tools result messages,
           // the rendered inspection views are appended as user messages in buildHydratedMessages
-          const imageAttached = output.inspection?.imageAttached === true;
+
+          // Text-only models never receive inspection images
+          if (!chatModelSupportsVision(modelId)) {
+            return { type: 'text' as const, value: output.message };
+          }
+
+          // Local vision models rely on the hydration path for the actual image.
+          // First check storage prescence to determine output message.
+          let imageAttached = output.inspection?.imageAttached === true;
+          if (
+            providerFor(modelId) === 'local' &&
+            chatModelSupportsVision(modelId)
+          ) {
+            imageAttached = await storageObjectExists(
+              supabaseClient,
+              'images',
+              inspectionPreviewStoragePath(
+                conversation.user_id,
+                conversation.id,
+                toolCallId,
+              ),
+            );
+          }
           const text = `${output.message}\nRendered inspection views: ${views}.\nMulti-view inspection image attached: ${imageAttached ? 'yes' : 'no'}.`;
           return { type: 'text' as const, value: text };
         }
