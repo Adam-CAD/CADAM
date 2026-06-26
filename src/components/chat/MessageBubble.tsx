@@ -838,18 +838,20 @@ function RetryModelDropdown({
         align="end"
         className="w-48 rounded-lg border border-adam-neutral-700 bg-adam-neutral-800 p-1"
       >
-        {modelOptions.map((option) => (
-          <DropdownMenuItem
-            key={option.id}
-            className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-1.5 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
-            onClick={() => {
-              onRetry(option.id);
-              setIsOpen(false);
-            }}
-          >
-            {option.name}
-          </DropdownMenuItem>
-        ))}
+        <ScrollArea className="[&_[data-radix-scroll-area-viewport]]:max-h-[140px] [&_[data-radix-scroll-area-viewport]]:overflow-x-hidden">
+          {modelOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.id}
+              className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-1.5 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
+              onClick={() => {
+                onRetry(option.id);
+                setIsOpen(false);
+              }}
+            >
+              {option.name}
+            </DropdownMenuItem>
+          ))}
+        </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   );

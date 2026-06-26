@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Model } from '@shared/types';
 import { ModelConfig } from '../types/misc.ts';
@@ -174,7 +175,7 @@ export function ModelSelector({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="flex w-64 flex-col gap-1 rounded-lg bg-adam-neutral-700 p-1"
+        className="w-64 rounded-lg bg-adam-neutral-700 p-1"
         align="end"
         // Radix fires this just before it tries to refocus the trigger.
         // We intercept the event: if the menu was opened with a pointer we
@@ -189,43 +190,47 @@ export function ModelSelector({
           }
         }}
       >
-        {models.map((model) => (
-          <DropdownMenuItem
-            key={model.id}
-            className={cn(
-              'cursor-pointer rounded-md bg-adam-neutral-700 px-4 py-3 transition-colors duration-150 focus:bg-adam-bg-secondary-dark',
-              selectedModel === model.id && 'bg-adam-neutral-800',
-              !!model.disabled && 'cursor-not-allowed opacity-50',
-            )}
-            onClick={(event) => {
-              onModelChange(model.id);
-              setIsDropdownOpen(false);
-              event.stopPropagation();
-            }}
-            disabled={!!model.disabled}
-          >
-            <div className="flex-1">
-              <div className="flex items-center">
-                <span
-                  className={cn(
-                    'font-medium',
-                    focused ? 'text-white' : 'text-adam-text-primary',
-                  )}
-                >
-                  {model.name}
-                </span>
-              </div>
-              <p
+        <ScrollArea className="[&_[data-radix-scroll-area-viewport]]:max-h-[360px] [&_[data-radix-scroll-area-viewport]]:overflow-x-hidden">
+          <div className="flex flex-col gap-1">
+            {models.map((model) => (
+              <DropdownMenuItem
+                key={model.id}
                 className={cn(
-                  'mt-0.5 text-xs',
-                  focused ? 'text-white' : 'text-gray-400',
+                  'cursor-pointer rounded-md bg-adam-neutral-700 px-4 py-3 transition-colors duration-150 focus:bg-adam-bg-secondary-dark',
+                  selectedModel === model.id && 'bg-adam-neutral-800',
+                  !!model.disabled && 'cursor-not-allowed opacity-50',
                 )}
+                onClick={(event) => {
+                  onModelChange(model.id);
+                  setIsDropdownOpen(false);
+                  event.stopPropagation();
+                }}
+                disabled={!!model.disabled}
               >
-                {model.description}
-              </p>
-            </div>
-          </DropdownMenuItem>
-        ))}
+                <div className="flex-1">
+                  <div className="flex items-center">
+                    <span
+                      className={cn(
+                        'font-medium',
+                        focused ? 'text-white' : 'text-adam-text-primary',
+                      )}
+                    >
+                      {model.name}
+                    </span>
+                  </div>
+                  <p
+                    className={cn(
+                      'mt-0.5 text-xs',
+                      focused ? 'text-white' : 'text-gray-400',
+                    )}
+                  >
+                    {model.description}
+                  </p>
+                </div>
+              </DropdownMenuItem>
+            ))}
+          </div>
+        </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   );
