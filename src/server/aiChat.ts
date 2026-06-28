@@ -593,6 +593,7 @@ function billingTokensFromUsage(
   modelId: string,
   usage: LanguageModelUsage,
 ): number {
+  if (isActiveLocalModel(modelId)) return 0;
   const usdCost = usdCostFromUsage(modelId, usage) * billingMultiplier();
   return Math.max(1, Math.ceil(usdCost / USD_PER_BILLING_TOKEN));
 }
@@ -1238,41 +1239,44 @@ export async function handleAiChatRequest(req: Request) {
     );
   }
 
-  // Pre-flight balance gate. A chat costs at least 1 billing token, so a
-  // total of 0 means we cannot let the stream start. We don't try to
-  // estimate the exact cost up front — chat is variable, and the billing
-  // service drains the remainder to zero if the actual usage exceeds
-  // what's left (see onFinish below).
-  try {
-    const status = await billing.getStatus(user.email);
-    if (status.tokens.total <= 0) {
-      return jsonResponse(
-        {
-          error: 'insufficient_tokens',
-          code: 'insufficient_tokens',
-          tokensRequired: 1,
-          tokensAvailable: 0,
-        },
-        402,
-      );
-    }
-  } catch (error) {
-    logError(error, {
-      functionName: 'ai-chat',
-      statusCode: error instanceof BillingClientError ? error.status : 502,
-      userId: user.id,
-      conversationId: conversation.id,
-      additionalContext: { operation: 'billing_preflight' },
-    });
-    return jsonResponse({ error: 'Billing service unavailable' }, 503);
-  }
-
   const actualModelId = chatModel(conversation, rawBody.model);
   if (isMissingLocalBaseUrl(actualModelId)) {
     return jsonResponse(
       { error: 'baseUrl is not configured for local model' },
       503,
     );
+  }
+
+  // Pre-flight balance gate for billable (cloud) models. Local-catalog
+  // models are billing-exempt. Cloud chat costs at least 1 billing token,
+  // so a total of 0 means we cannot let the stream start. We don't try to
+  // estimate the exact cost up front — chat is variable, and the billing
+  // service drains the remainder to zero if the actual usage exceeds
+  // what's left (see onFinish below).
+  if (!isActiveLocalModel(actualModelId)) {
+    try {
+      const status = await billing.getStatus(user.email);
+      if (status.tokens.total <= 0) {
+        return jsonResponse(
+          {
+            error: 'insufficient_tokens',
+            code: 'insufficient_tokens',
+            tokensRequired: 1,
+            tokensAvailable: 0,
+          },
+          402,
+        );
+      }
+    } catch (error) {
+      logError(error, {
+        functionName: 'ai-chat',
+        statusCode: error instanceof BillingClientError ? error.status : 502,
+        userId: user.id,
+        conversationId: conversation.id,
+        additionalContext: { operation: 'billing_preflight' },
+      });
+      return jsonResponse({ error: 'Billing service unavailable' }, 503);
+    }
   }
 
   const tools =
@@ -1699,29 +1703,31 @@ export async function handleAiChatRequest(req: Request) {
               });
             }
 
-            try {
-              // Drains the user's remaining balance to zero if the
-              // request cost more than they had. The billing service
-              // accepts the partial deduction, writes an audit row as
-              // `<operation>_partial`, and the pre-flight gate above
-              // will block the next request. Not an error path —
-              // intentional terminal state. Runs after the persist above so
-              // its latency never delays the row the client is waiting on.
-              await billing.consume(user.email!, {
-                tokens: billingTokens,
-                operation:
-                  conversation.type === 'creative' ? 'chat' : 'parametric',
-                referenceId: responseMessage.id,
-              });
-            } catch (error) {
-              logError(error, {
-                functionName: 'ai-chat',
-                statusCode:
-                  error instanceof BillingClientError ? error.status : 502,
-                userId: user.id,
-                conversationId: conversation.id,
-                additionalContext: { operation: 'billing_consume' },
-              });
+            if (billingTokens > 0) {
+              try {
+                // Drains the user's remaining balance to zero if the
+                // request cost more than they had. The billing service
+                // accepts the partial deduction, writes an audit row as
+                // `<operation>_partial`, and the pre-flight gate above
+                // will block the next request. Not an error path —
+                // intentional terminal state. Runs after the persist above so
+                // its latency never delays the row the client is waiting on.
+                await billing.consume(user.email!, {
+                  tokens: billingTokens,
+                  operation:
+                    conversation.type === 'creative' ? 'chat' : 'parametric',
+                  referenceId: responseMessage.id,
+                });
+              } catch (error) {
+                logError(error, {
+                  functionName: 'ai-chat',
+                  statusCode:
+                    error instanceof BillingClientError ? error.status : 502,
+                  userId: user.id,
+                  conversationId: conversation.id,
+                  additionalContext: { operation: 'billing_consume' },
+                });
+              }
             }
 
             // Only generate suggestions once the assistant has actually

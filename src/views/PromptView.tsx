@@ -14,6 +14,7 @@ import { LowPromptsWarningMessage } from '@/components/LowPromptsWarningMessage'
 import { NewProductBanner } from '@/components/NewProductBanner';
 import { FreePlanTrialPill } from '@/components/FreePlanTrialPill';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useIsLocalModel } from '@/hooks/useLocalModels.ts';
 import { cn } from '@/lib/utils';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
 import posthog from 'posthog-js';
@@ -65,6 +66,8 @@ export function PromptView() {
 
   const [model, setModel] = useState<Model>('google/gemini-3.1-pro-preview');
 
+  const isLocalModel = useIsLocalModel(model);
+
   const handleTypeChange = (newType: 'parametric' | 'creative') => {
     setType(newType);
     // Reset model to the default for the new type
@@ -91,8 +94,9 @@ export function PromptView() {
 
   const limitReached = useMemo(() => {
     if (isLoading) return false;
+    if (type === 'parametric' && isLocalModel) return false;
     return totalTokens <= 0;
-  }, [totalTokens, isLoading]);
+  }, [totalTokens, isLoading, type, isLocalModel]);
 
   // Trigger fade in on mount
   useEffect(() => {
