@@ -63,7 +63,7 @@
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
     "@streamdown/mermaid": "^1.0.2",
-    "@supabase/supabase-js": "^2.39.8",
+    "@supabase/supabase-js": "^2.108.2",
     "@tanstack/react-query": "^5.64.2",
     "@tanstack/react-router": "^1.169.2",
     "@tanstack/react-start": "^1.167.65",

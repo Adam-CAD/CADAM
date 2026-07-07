@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from '@tanstack/react-router';
-import { Loader2 } from 'lucide-react';
+import { KeyRound, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, ssoProvider, ssoLabel } from '@/lib/supabase';
 import { useMutation } from '@tanstack/react-query';
 import { GoogleIcon } from '@/components/icons/CompanyIcons';
 import { validateRedirectUrl } from '@/lib/utils';
@@ -65,6 +65,33 @@ export function SignUpEmailView() {
         });
       },
     });
+
+  const { mutate: signInWithSso, isPending: isSigningInWithSso } = useMutation({
+    mutationFn: async () => {
+      if (!ssoProvider) return;
+
+      // Use Supabase's built-in redirectTo parameter with validated URL
+      const redirectTo =
+        redirectPath !== '/'
+          ? getAppRedirectUrl(redirectPath)
+          : getAppRedirectUrl('/');
+
+      await supabase.auth.signInWithOAuth({
+        provider: ssoProvider,
+        options: {
+          redirectTo,
+        },
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Whoopsies',
+        description:
+          error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +164,18 @@ export function SignUpEmailView() {
               <span>Continue with Google</span>
             </Button>
           </div>
+          {ssoProvider && (
+            <div className="w-full py-2">
+              <Button
+                onClick={() => signInWithSso()}
+                className="flex w-full items-center gap-2 hover:bg-adam-blue/10"
+                disabled={isSigningInWithSso}
+              >
+                <KeyRound className="h-4 w-4" />
+                <span>{ssoLabel}</span>
+              </Button>
+            </div>
+          )}
 
           <form onSubmit={handleSignUp} className="space-y-6">
             <div className="space-y-2">
