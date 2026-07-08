@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from '@tanstack/react-router';
-import { KeyRound, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -145,6 +145,36 @@ export function SignUpEmailView() {
     }
   };
 
+  // With an SSO provider configured, the deployment delegates auth entirely
+  // to that provider — the redirect is the sign-in, so render a single
+  // action instead of the native auth UI.
+  if (ssoProvider) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-adam-bg-dark p-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-lg bg-adam-bg-secondary-dark p-8 shadow-md">
+            <div className="mb-4 flex flex-col items-center justify-center gap-2">
+              <img
+                src={`${import.meta.env.BASE_URL}/cadam-logo.svg`}
+                alt="CADAM Logo"
+                className="h-8 w-auto"
+              />
+            </div>
+            <div className="w-full py-2">
+              <Button
+                onClick={() => signInWithSso()}
+                className="w-full p-6"
+                disabled={isSigningInWithSso}
+              >
+                {ssoLabel}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-adam-bg-dark p-4">
       <div className="w-full max-w-md">
@@ -169,18 +199,6 @@ export function SignUpEmailView() {
               <span>Continue with Google</span>
             </Button>
           </div>
-          {ssoProvider && (
-            <div className="w-full py-2">
-              <Button
-                onClick={() => signInWithSso()}
-                className="flex w-full items-center gap-2 hover:bg-adam-blue/10"
-                disabled={isSigningInWithSso}
-              >
-                <KeyRound className="h-4 w-4" />
-                <span>{ssoLabel}</span>
-              </Button>
-            </div>
-          )}
 
           <form onSubmit={handleSignUp} className="space-y-6">
             <div className="space-y-2">

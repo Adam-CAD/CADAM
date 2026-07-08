@@ -1,5 +1,4 @@
 import { Link, useNavigate, useLocation } from '@tanstack/react-router';
-import { KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -91,6 +90,36 @@ export function SignUpView() {
     },
   });
 
+  // With an SSO provider configured, the deployment delegates auth entirely
+  // to that provider — the redirect is the sign-in, so render a single
+  // action instead of the native auth UI.
+  if (ssoProvider) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-adam-bg-dark p-4">
+        <div className="w-full max-w-md">
+          <div className="rounded-lg bg-adam-bg-secondary-dark p-8 shadow-md">
+            <div className="mb-4 flex flex-col items-center justify-center gap-2">
+              <img
+                src={`${import.meta.env.BASE_URL}/cadam-logo.svg`}
+                alt="CADAM Logo"
+                className="h-8 w-auto"
+              />
+            </div>
+            <div className="w-full py-2">
+              <Button
+                onClick={() => signInWithSso()}
+                className="w-full p-6"
+                disabled={isSigningInWithSso}
+              >
+                {ssoLabel}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-adam-bg-dark p-4">
       <div className="w-full max-w-md">
@@ -112,18 +141,6 @@ export function SignUpView() {
               <span>Continue with Google</span>
             </Button>
           </div>
-          {ssoProvider && (
-            <div className="w-full py-2">
-              <Button
-                onClick={() => signInWithSso()}
-                className="flex w-full items-center gap-2 p-6 md:hover:bg-adam-blue/10"
-                disabled={isSigningInWithSso}
-              >
-                <KeyRound className="h-4 w-4" />
-                <span>{ssoLabel}</span>
-              </Button>
-            </div>
-          )}
           <div className="pt-4 text-center text-sm text-adam-text-secondary">
             <Link
               to="/signup-email"
