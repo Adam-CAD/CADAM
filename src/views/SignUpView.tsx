@@ -69,12 +69,17 @@ export function SignUpView() {
           ? getAppRedirectUrl(redirectPath)
           : getAppRedirectUrl('/');
 
-      await supabase.auth.signInWithOAuth({
+      // signInWithOAuth reports provider/config failures via the returned
+      // error rather than throwing — surface it so onError shows the toast.
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: ssoProvider,
         options: {
           redirectTo,
         },
       });
+      if (error) {
+        throw error;
+      }
     },
     onError: (error) => {
       toast({
