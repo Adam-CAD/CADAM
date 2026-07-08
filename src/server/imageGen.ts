@@ -395,7 +395,7 @@ export const generateImageWithFalFlux = async (
 
     imageInputs = rawImageUrls
       .filter((image) => !image.error && image.signedUrl)
-      .map((image) => reformatSignedUrl(image.signedUrl));
+      .map((image) => reformatSignedUrl(image.signedUrl!));
   }
 
   if (imageInputs.length > 0) {

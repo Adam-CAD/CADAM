@@ -934,7 +934,7 @@ async function submitMeshJob(
       // Filter out any errors and map to just get signedURL, swap out basename for supabase host
       imageInputs = imageSignedUrls
         .filter((image) => !image.error && image.signedUrl)
-        .map((image) => reformatSignedUrl(image.signedUrl));
+        .map((image) => reformatSignedUrl(image.signedUrl!));
 
       if (imageInputs.length === 0) {
         throw new Error('No valid images found for mesh generation');
@@ -1556,7 +1556,7 @@ async function submitPreviewJob(
       // Filter out any errors and map to just get signedURL, swap out basename for supabase host
       imageInputs = imageSignedUrls
         .filter((image) => !image.error && image.signedUrl)
-        .map((image) => reformatSignedUrl(image.signedUrl));
+        .map((image) => reformatSignedUrl(image.signedUrl!));
 
       if (imageInputs.length === 0) {
         throw new Error('No valid images found for mesh generation');

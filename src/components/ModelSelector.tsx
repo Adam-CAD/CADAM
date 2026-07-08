@@ -218,14 +218,19 @@ export function ModelSelector({
                       {model.name}
                     </span>
                   </div>
-                  <p
-                    className={cn(
-                      'mt-0.5 text-xs',
-                      focused ? 'text-white' : 'text-gray-400',
-                    )}
-                  >
-                    {model.description}
-                  </p>
+                  {/* Creative modes (Draft/Textureless/Max Quality) rely on the
+                    description to explain the speed/quality/texture tradeoff;
+                    parametric models show names only to keep the list compact. */}
+                  {currentType === 'creative' && model.description && (
+                    <span
+                      className={cn(
+                        'mt-0.5 text-xs',
+                        focused ? 'text-white' : 'text-gray-400',
+                      )}
+                    >
+                      {model.description}
+                    </span>
+                  )}
                 </div>
               </DropdownMenuItem>
             ))}

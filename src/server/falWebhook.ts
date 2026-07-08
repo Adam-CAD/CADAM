@@ -307,13 +307,16 @@ export async function handleFalWebhookRequest(request: Request) {
       throw new Error(uploadError.message);
     }
 
-    const { error: updateError } = await supabaseClient
-      .from(mode === 'preview' ? 'previews' : 'meshes')
-      .update({
-        status: 'success',
-        ...(mode === 'preview' ? {} : { file_type: fileExtension }),
-      })
-      .eq('id', id);
+    const { error: updateError } =
+      mode === 'preview'
+        ? await supabaseClient
+            .from('previews')
+            .update({ status: 'success' })
+            .eq('id', id)
+        : await supabaseClient
+            .from('meshes')
+            .update({ status: 'success', file_type: fileExtension })
+            .eq('id', id);
 
     if (updateError) {
       console.error('Failed to update mesh status:', updateError);

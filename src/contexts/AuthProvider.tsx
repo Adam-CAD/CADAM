@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, ssoProvider, ssoSignedOutStorageKey } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import posthog from 'posthog-js';
@@ -248,6 +248,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    // In SSO mode the auth views redirect to the provider on mount — mark
+    // the explicit sign-out so they wait for a click instead of signing the
+    // user straight back in.
+    if (ssoProvider) {
+      sessionStorage.setItem(ssoSignedOutStorageKey, '1');
+    }
   };
 
   const signInWithMagicLink = async (email: string) => {

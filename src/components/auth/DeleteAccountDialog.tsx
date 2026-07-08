@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { supabase } from '@/lib/supabase';
+import { supabase, ssoProvider, ssoSignedOutStorageKey } from '@/lib/supabase';
 import * as Sentry from '@sentry/react';
 import { useToast } from '@/hooks/use-toast';
 import { useMutation } from '@tanstack/react-query';
@@ -48,6 +48,11 @@ export const DeleteAccountDialog = ({
       });
     },
     onSuccess: () => {
+      // In SSO mode the auth views redirect to the provider on mount — mark
+      // the sign-out so the just-deleted user isn't signed straight back in.
+      if (ssoProvider) {
+        sessionStorage.setItem(ssoSignedOutStorageKey, '1');
+      }
       // Sign out locally and redirect after deletion
       supabase.auth.signOut();
     },
