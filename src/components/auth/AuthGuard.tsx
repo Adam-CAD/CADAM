@@ -1,7 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from '@tanstack/react-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/hooks/use-toast';
+// The module-level `toast`, not the hook: the SSO error handler lives inside
+// the guard's redirect effect, and a hook-returned reference would have to
+// join the effect's dependency array. The module function is identity-stable
+// by construction, keeping the deps — and the non-SSO re-run behavior —
+// exactly as they were before SSO mode existed.
+import { toast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { ssoProvider } from '@/lib/supabase';
 import { signInWithSsoProvider } from '@/lib/ssoAuth';
@@ -14,7 +19,6 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const { session, user, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { toast } = useToast();
   // In SSO mode the guard fires the provider redirect itself — once per
   // mount (StrictMode re-runs effects in dev).
   const hasFiredSsoRedirect = useRef(false);
@@ -57,7 +61,6 @@ export function AuthGuard({ children }: AuthGuardProps) {
     isLoading,
     location.pathname,
     location.searchStr,
-    toast,
   ]);
 
   if (isLoading) {
