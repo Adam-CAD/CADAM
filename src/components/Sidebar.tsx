@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, ssoProvider } from '@/lib/supabase';
 import {
   Sheet,
   SheetContent,
@@ -68,6 +68,15 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
 
   const handleSignOut = async () => {
     try {
+      if (ssoProvider) {
+        // In SSO mode root is the app's only auth surface, so sign-out lands
+        // there. Navigate BEFORE the session dies: on a guarded route the
+        // AuthGuard would otherwise fire the provider redirect the moment the
+        // session goes away and sign the user straight back in.
+        await navigate({ to: '/' });
+        await signOut();
+        return;
+      }
       await signOut();
       navigate({ to: '/signin' });
     } catch (error) {
