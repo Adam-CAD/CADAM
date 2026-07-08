@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from '@tanstack/react-router';
 import { ArrowLeft, Loader2, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,12 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthError } from '@supabase/supabase-js';
-import { supabase, ssoProvider, ssoLabel } from '@/lib/supabase';
+import {
+  supabase,
+  ssoProvider,
+  ssoLabel,
+  ssoSignedOutStorageKey,
+} from '@/lib/supabase';
 import { useMutation } from '@tanstack/react-query';
 import { GoogleIcon } from '@/components/icons/CompanyIcons';
 import { validateRedirectUrl } from '@/lib/utils';
@@ -92,7 +97,10 @@ export function SignInView() {
       },
     });
 
-  const { mutate: signInWithSso, isPending: isSigningInWithSso } = useMutation({
+  const [showSsoFallback, setShowSsoFallback] = useState(false);
+  const hasAutoFiredSso = useRef(false);
+
+  const { mutate: signInWithSso } = useMutation({
     mutationFn: async () => {
       if (!ssoProvider) return;
 
@@ -115,6 +123,8 @@ export function SignInView() {
       }
     },
     onError: (error) => {
+      // The auto-redirect failed — leave the manual button on screen.
+      setShowSsoFallback(true);
       toast({
         title: 'Whoopsies',
         description:
@@ -123,6 +133,30 @@ export function SignInView() {
       });
     },
   });
+
+  // In SSO mode the redirect is the sign-in: fire it on mount, exactly once
+  // (StrictMode re-runs effects in dev). Skip it right after an explicit
+  // sign-out — otherwise the still-live provider session would sign the user
+  // straight back in — and fall back to a manual button if the redirect
+  // hasn't happened after a few seconds, so nobody is stranded.
+  useEffect(() => {
+    if (!ssoProvider) return;
+
+    if (!hasAutoFiredSso.current) {
+      hasAutoFiredSso.current = true;
+
+      if (sessionStorage.getItem(ssoSignedOutStorageKey)) {
+        sessionStorage.removeItem(ssoSignedOutStorageKey);
+        setShowSsoFallback(true);
+        return;
+      }
+
+      signInWithSso();
+    }
+
+    const fallbackTimer = setTimeout(() => setShowSsoFallback(true), 4000);
+    return () => clearTimeout(fallbackTimer);
+  }, [signInWithSso]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,8 +229,9 @@ export function SignInView() {
   };
 
   // With an SSO provider configured, the deployment delegates auth entirely
-  // to that provider — the redirect is the sign-in, so render a single
-  // action instead of the native auth UI.
+  // to that provider — the redirect is the sign-in. The view auto-fires it
+  // on mount and only shows a manual button when the redirect is skipped
+  // (right after sign-out) or didn't happen (error, blocked navigation).
   if (ssoProvider) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-adam-bg-dark p-4">
@@ -211,13 +246,18 @@ export function SignInView() {
                 />
               </div>
             </div>
-            <Button
-              onClick={() => signInWithSso()}
-              className="w-full p-6"
-              disabled={isSigningInWithSso}
-            >
-              {ssoLabel}
-            </Button>
+            {showSsoFallback ? (
+              // Not disabled while pending: the mutation ends in a page
+              // navigation, and a re-click just re-issues the same redirect.
+              <Button onClick={() => signInWithSso()} className="w-full p-6">
+                {ssoLabel}
+              </Button>
+            ) : (
+              <div className="flex items-center justify-center gap-2 p-6 text-sm text-gray-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Redirecting to sign in...
+              </div>
+            )}
           </div>
         </div>
       </div>
