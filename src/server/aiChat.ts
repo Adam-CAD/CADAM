@@ -70,8 +70,8 @@ const MODEL_PRICES: Record<
     cacheWrite: 1.25,
   },
 
-  // OpenAI — prompt-cache reads at 50% of input.
-  'openai/gpt-5.5': { input: 5, output: 20, cacheRead: 2.5, cacheWrite: 5 },
+  // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.
+  'openai/gpt-5.6-sol': { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 },
 
   // MoonshotAI
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
