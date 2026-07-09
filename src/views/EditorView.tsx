@@ -14,6 +14,7 @@ import { OpenSCADPreview } from '@/components/viewer/OpenSCADViewer';
 import { MeshPreview } from '@/components/viewer/MeshPreview';
 import Loader from '@/components/viewer/Loader';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIsLocalModel } from '@/hooks/useLocalModels.ts';
 import { ConversationContext } from '@/contexts/ConversationContext';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
 import { useConversation } from '@/contexts/ConversationContext';
@@ -194,6 +195,7 @@ function ConversationEditor() {
         ? 'quality'
         : 'google/gemini-3.1-pro-preview'),
   );
+  const isLocalModel = useIsLocalModel(model);
   const [activePreview, setActivePreview] = useState<ActivePreview>(null);
   const [parameters, setParameters] = useState<Parameter[]>([]);
   const [currentOutput, setCurrentOutput] = useState<Blob | undefined>();
@@ -705,7 +707,7 @@ function ConversationEditor() {
             initialBranch={initialBranch}
             model={model}
             setModel={updateSelectedModel}
-            isDisabled={totalTokens <= 0}
+            isDisabled={totalTokens <= 0 && !isLocalModel}
             onSendParts={handleSendParts}
             onRetry={handleRetry}
             onEdit={handleEdit}

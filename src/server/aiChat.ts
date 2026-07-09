@@ -2,8 +2,16 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { chatTools, type AppUIMessage, type AppTools } from '@shared/chatAi';
+import {
+  getAuxiliaryLocalModel,
+  normalizeOpenRouterBaseUrl,
+} from '@shared/localModels';
 import { cleanAssistantText, getParametricText } from '@shared/parametricParts';
-import { imageIdFromFilename, imageStoragePath } from '@shared/imageRefs';
+import {
+  imageIdFromFilename,
+  imageStoragePath,
+  inspectionPreviewStoragePath,
+} from '@shared/imageRefs';
 import { normalizeConversationSuggestions } from '@shared/suggestions';
 import type { Conversation, Message, MeshFileType, Model } from '@shared/types';
 import {
@@ -34,7 +42,17 @@ import {
   resolveDanglingToolParts,
 } from './chatToolPersistence';
 import { handleMeshRequest } from './mesh';
+import {
+  getActiveLocalModel,
+  getLocalChatState,
+  isActiveLocalModel,
+  isMissingLocalBaseUrl,
+  localApiKeyForModel,
+  providerFor,
+  type ChatProvider,
+} from './localChatConfig';
 import { getAnonSupabaseClient } from './supabaseClient';
+import { findLatestBuildToolCallId } from './messageUtils';
 
 /**
  * USD list price per **million** tokens, keyed by the same model IDs the
@@ -309,16 +327,9 @@ function jsonResponse(body: unknown, status: number) {
 const THINKING_BUDGET_TOKENS = 9000;
 const PARAMETRIC_MAX_OUTPUT_TOKENS = 64000;
 
-type ChatProvider = 'anthropic' | 'google' | 'openrouter';
-
-function providerFor(modelId: string): ChatProvider {
-  if (modelId.startsWith('anthropic/')) return 'anthropic';
-  if (modelId.startsWith('google/')) return 'google';
-  return 'openrouter';
-}
-
 type AnthropicProvider = ReturnType<typeof createAnthropic>;
 type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
+type OpenRouterProvider = ReturnType<typeof createOpenRouter>;
 
 // The Vercel AI SDK's Anthropic provider expects ANTHROPIC_BASE_URL to already
 // include the "/v1" path segment (its built-in default is
@@ -337,13 +348,15 @@ function normalizedAnthropicBaseURL(): string | undefined {
 type ChatProviders = {
   anthropic: () => AnthropicProvider;
   google: () => GoogleProvider;
-  openrouter: () => ReturnType<typeof createOpenRouter>;
+  openrouter: () => OpenRouterProvider;
+  local: (baseUrl: string, apiKey?: string) => OpenRouterProvider;
 };
 
 function createChatProviders(): ChatProviders {
   let anthropic: AnthropicProvider | undefined;
   let google: GoogleProvider | undefined;
-  let openrouter: ReturnType<typeof createOpenRouter> | undefined;
+  let openrouter: OpenRouterProvider | undefined;
+  const localByTarget = new Map<string, OpenRouterProvider>();
   return {
     anthropic: () => {
       if (!anthropic) {
@@ -367,6 +380,20 @@ function createChatProviders(): ChatProviders {
       });
       return openrouter;
     },
+    local: (baseUrl: string, apiKey?: string) => {
+      const resolvedApiKey = apiKey?.trim() || 'local';
+      const providerKey = `${baseUrl}::${resolvedApiKey}`;
+      let provider = localByTarget.get(providerKey);
+      if (!provider) {
+        provider = createOpenRouter({
+          baseURL: baseUrl,
+          apiKey: resolvedApiKey,
+          compatibility: 'compatible',
+        });
+        localByTarget.set(providerKey, provider);
+      }
+      return provider;
+    },
   };
 }
 
@@ -386,8 +413,22 @@ function buildChatModel(
 ): { model: LanguageModel; providerOptions?: ProviderOptions } {
   const hasCappedThinkingBudget =
     thinking && thinkingBudget !== THINKING_BUDGET_TOKENS;
+  const provider = providerFor(modelId);
 
-  if (providerFor(modelId) === 'openrouter') {
+  if (provider === 'local') {
+    const modelConfig = getActiveLocalModel(modelId);
+    const rawBaseUrl = modelConfig?.baseUrl;
+    if (!rawBaseUrl)
+      throw new Error(`No baseUrl configured for local model ${modelId}`);
+    const baseUrl = normalizeOpenRouterBaseUrl(rawBaseUrl) ?? rawBaseUrl;
+    return {
+      model: providers
+        .local(baseUrl, localApiKeyForModel(modelConfig))
+        .chat(modelId),
+    };
+  }
+
+  if (provider === 'openrouter') {
     return {
       model: providers.openrouter().chat(modelId, {
         ...(thinking ? { reasoning: { max_tokens: thinkingBudget } } : {}),
@@ -457,6 +498,14 @@ function bareModelId(modelId: string): string {
   return id.replace(/\./g, '-');
 }
 
+// For local models, check supportsVision.
+// Otherwise, all cloud models support vision.
+function chatModelSupportsVision(modelId: string): boolean {
+  const local = getActiveLocalModel(modelId);
+  if (local) return local.supportsVision === true;
+  return true;
+}
+
 // The Claude 5 generation swaps the opus/sonnet/haiku tiers for code names
 // ("claude-fable-5", "claude-mythos-5", …). Match the `claude-<codename>-5`
 // shape rather than enumerating code names so future Claude 5 variants
@@ -475,13 +524,24 @@ function usesAdaptiveAnthropicThinking(modelId: string) {
   return match ? Number(match[1]) >= 6 : false;
 }
 
-// The reasoning-tier Claude 5 models (Fable, Mythos) reject a forced
-// `tool_choice` outright ("tool_choice forces tool use is not compatible with
-// this model"). Other Claude 5 tiers — notably Sonnet 5 — accept a forced
-// tool_choice on the first-party API, provided thinking is disabled for that
-// step (see the per-step override in the parametric flow).
+// The reasoning-tier Claude 5 models (Fable, Mythos) and some local /
+// OpenAI-compatible servers reject a forced `tool_choice` outright
+// ("tool_choice forces tool use is not compatible with this model"). Other
+// Claude 5 tiers — notably Sonnet 5 — accept a forced tool_choice on the
+// first-party API, provided thinking is disabled for that step (see the
+// per-step override in the parametric flow).
+//
+// For local catalog entries, `supportsForcedToolChoice` is the explicit
+// knob. When unset, fall back to treating `supportsThinking: true` as a
+// rejection signal (common for thinking-capable OpenAI-compatible servers).
 function rejectsForcedToolChoice(modelId: string): boolean {
-  return /^claude-(?:fable|mythos)\b/.test(bareModelId(modelId));
+  if (/^claude-(?:fable|mythos)\b/.test(bareModelId(modelId))) return true;
+  const local = getActiveLocalModel(modelId);
+  if (!local) return false;
+  if (local.supportsForcedToolChoice !== undefined) {
+    return local.supportsForcedToolChoice === false;
+  }
+  return local.supportsThinking === true;
 }
 
 // Whether a model accepts a forced `tool_choice` (type: "tool" / "any").
@@ -490,6 +550,14 @@ function supportsForcedToolChoice(modelId: string): boolean {
 }
 
 function priceFor(modelId: string) {
+  if (isActiveLocalModel(modelId)) {
+    return {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+  }
   const entry = MODEL_PRICES[modelId] ?? FALLBACK_MODEL_PRICE;
   return {
     input: entry.input,
@@ -543,6 +611,7 @@ function billingTokensFromUsage(
   modelId: string,
   usage: LanguageModelUsage,
 ): number {
+  if (isActiveLocalModel(modelId)) return 0;
   const usdCost = usdCostFromUsage(modelId, usage) * billingMultiplier();
   return Math.max(1, Math.ceil(usdCost / USD_PER_BILLING_TOKEN));
 }
@@ -712,16 +781,16 @@ async function loadBranchFromDb({
 }
 
 async function generateConversationTitle({
-  anthropic,
+  auxModel,
   firstMessage,
 }: {
-  anthropic: AnthropicProvider;
+  auxModel: LanguageModel;
   firstMessage: AppUIMessage;
 }) {
   const text = getParametricText(firstMessage.parts) || 'New conversation';
   try {
     const result = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model: auxModel,
       system:
         'Generate a short title for a 3D creation conversation. Return only the title.',
       prompt: text,
@@ -744,11 +813,11 @@ async function generateConversationTitle({
  * specific assistant turn.
  */
 async function generateConversationSuggestions({
-  anthropic,
+  auxModel,
   branch,
   conversationType,
 }: {
-  anthropic: AnthropicProvider;
+  auxModel: LanguageModel;
   branch: AppUIMessage[];
   conversationType: 'parametric' | 'creative';
 }): Promise<string[]> {
@@ -766,7 +835,7 @@ async function generateConversationSuggestions({
   const summary = `User request: ${firstUserText.slice(0, 400)}\n\nMost recent assistant reply: ${lastAssistantText.slice(0, 400)}`;
   try {
     const result = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model: auxModel,
       system:
         conversationType === 'creative'
           ? 'Given a 3D mesh design conversation, return an array of exactly 2 follow-up prompts the user might want to send next. Each prompt is a concise instruction of 3 words or fewer, not a question. Return exactly 2 items — no more, no fewer.'
@@ -866,6 +935,125 @@ async function sniffImageMediaType(bytes: Uint8Array): Promise<string | null> {
   return sniffed && ACCEPTED_IMAGE_MEDIA_TYPES.has(sniffed) ? sniffed : null;
 }
 
+async function buildHydratedMessages(
+  messages: AppUIMessage[],
+  {
+    supabaseClient,
+    conversation,
+    modelId,
+    provider,
+  }: {
+    supabaseClient: SupabaseAnon;
+    conversation: ConversationAccess;
+    modelId: string;
+    provider: ChatProvider;
+  },
+): Promise<Array<Omit<AppUIMessage, 'id'>>> {
+  const shouldAddInspection =
+    provider === 'local' &&
+    conversation.type === 'parametric' &&
+    chatModelSupportsVision(modelId);
+  const latestBuildToolCallId = shouldAddInspection
+    ? findLatestBuildToolCallId(messages)
+    : null;
+
+  const hydrated = await Promise.all(
+    messages.map(async (message) => ({
+      ...message,
+      parts: (
+        await Promise.all(
+          message.parts.map(async (part) => {
+            if (
+              part.type !== 'file' ||
+              typeof part.mediaType !== 'string' ||
+              !part.mediaType.startsWith('image/') ||
+              part.url.startsWith('data:')
+            ) {
+              return part;
+            }
+            const imageId = imageIdFromFilename(part.filename);
+            if (!imageId) return null;
+            const downloaded = await downloadAsBase64(
+              supabaseClient,
+              'images',
+              imageStoragePath(conversation.user_id, conversation.id, imageId),
+            );
+            if (!downloaded) return null;
+            return {
+              ...part,
+              mediaType: downloaded.mediaType,
+              url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
+            };
+          }),
+        )
+      ).filter((part): part is NonNullable<typeof part> => part != null),
+    })),
+  );
+
+  if (!latestBuildToolCallId) {
+    return hydrated.map(({ id: _id, ...message }) => message);
+  }
+
+  const result: Array<Omit<AppUIMessage, 'id'>> = [];
+  for (const message of hydrated) {
+    const { id: _id, ...messageWithoutId } = message;
+    result.push(messageWithoutId);
+
+    if (message.role !== 'assistant') continue;
+
+    const hasLatestBuild = message.parts.some(
+      (part) =>
+        part.type === 'tool-build_parametric_model' &&
+        part.state === 'output-available' &&
+        'toolCallId' in part &&
+        part.toolCallId === latestBuildToolCallId,
+    );
+    if (!hasLatestBuild) continue;
+
+    const inspectionPath = inspectionPreviewStoragePath(
+      conversation.user_id,
+      conversation.id,
+      latestBuildToolCallId,
+    );
+    const downloaded = await downloadAsBase64(
+      supabaseClient,
+      'images',
+      inspectionPath,
+    );
+    if (!downloaded) {
+      logError(new Error('Failed to hydrate inspection preview image'), {
+        functionName: 'ai-chat',
+        statusCode: 500,
+        userId: conversation.user_id,
+        conversationId: conversation.id,
+        additionalContext: {
+          operation: 'inspection_hydration_download',
+          toolCallId: latestBuildToolCallId,
+          storagePath: inspectionPath,
+        },
+      });
+      continue;
+    }
+
+    result.push({
+      role: 'user',
+      parts: [
+        {
+          type: 'text',
+          text: 'Multi-view inspection render from the tool result above.',
+        },
+        {
+          type: 'file',
+          mediaType: downloaded.mediaType,
+          url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
+        },
+      ],
+    });
+  }
+
+  return result;
+}
+
 async function downloadAsBase64(
   supabaseClient: SupabaseAnon,
   bucket: string,
@@ -892,12 +1080,25 @@ async function downloadAsBase64(
   return { base64: btoa(binary), mediaType };
 }
 
+async function storageObjectExists(
+  supabaseClient: SupabaseAnon,
+  bucket: string,
+  path: string,
+): Promise<boolean> {
+  const { data, error } = await supabaseClient.storage
+    .from(bucket)
+    .createSignedUrl(path, 60);
+  return !error && !!data?.signedUrl;
+}
+
 function parametricTools({
-  previewPathForToolCall,
   supabaseClient,
+  conversation,
+  modelId,
 }: {
-  previewPathForToolCall: (toolCallId: string) => string;
   supabaseClient: SupabaseAnon;
+  conversation: ConversationAccess;
+  modelId: string;
 }) {
   return {
     build_parametric_model: {
@@ -909,40 +1110,92 @@ function parametricTools({
         toolCallId: string;
         output: AppTools['build_parametric_model']['output'];
       }) {
-        // The client uploads a multi-view render of the compiled SCAD to a path
-        // derived from toolCallId BEFORE sending the tool result (see
-        // ChatSession's `onToolCall`). If for any reason the upload
-        // didn't land, `downloadAsBase64` returns null and we fall back
-        // to text-only — never block the loop on a missing inspection sheet.
-        const downloaded = await downloadAsBase64(
-          supabaseClient,
-          'images',
-          previewPathForToolCall(toolCallId),
-        );
         const views =
           output.inspection?.views.join(', ') ??
           'ISO, FRONT, BACK, LEFT, RIGHT, TOP, BOTTOM';
-        const text = `${output.message}\nRendered inspection views: ${views}.\nMulti-view inspection image attached: ${downloaded ? 'yes' : 'no'}.`;
 
-        if (downloaded) {
-          return {
-            type: 'content' as const,
-            value: [
-              { type: 'text' as const, text },
-              {
-                type: 'image-data' as const,
-                data: downloaded.base64,
-                mediaType: downloaded.mediaType,
-              },
-            ],
-          };
+        if (
+          providerFor(modelId) !== 'local' &&
+          chatModelSupportsVision(modelId)
+        ) {
+          // The client uploads a multi-view render of the compiled SCAD to a path
+          // derived from toolCallId BEFORE sending the tool result (see
+          // ChatSession's `onToolCall`). If for any reason the upload
+          // didn't land, `downloadAsBase64` returns null and we fall back
+          // to text-only — never block the loop on a missing inspection sheet.
+          const downloaded = await downloadAsBase64(
+            supabaseClient,
+            'images',
+            inspectionPreviewStoragePath(
+              conversation.user_id,
+              conversation.id,
+              toolCallId,
+            ),
+          );
+          const text = `${output.message}\nRendered inspection views: ${views}.\nMulti-view inspection image attached: ${downloaded ? 'yes' : 'no'}.`;
+
+          if (downloaded) {
+            return {
+              type: 'content' as const,
+              value: [
+                { type: 'text' as const, text },
+                {
+                  type: 'image-data' as const,
+                  data: downloaded.base64,
+                  mediaType: downloaded.mediaType,
+                },
+              ],
+            };
+          }
+
+          return { type: 'text' as const, value: text };
+        } else {
+          // For models that do not support multimodal tools result messages,
+          // the rendered inspection views are appended as user messages in buildHydratedMessages
+
+          // Text-only models never receive inspection images
+          if (!chatModelSupportsVision(modelId)) {
+            return { type: 'text' as const, value: output.message };
+          }
+
+          // Local vision models rely on the hydration path for the actual image.
+          // First check storage prescence to determine output message.
+          let imageAttached = output.inspection?.imageAttached === true;
+          if (
+            providerFor(modelId) === 'local' &&
+            chatModelSupportsVision(modelId)
+          ) {
+            imageAttached = await storageObjectExists(
+              supabaseClient,
+              'images',
+              inspectionPreviewStoragePath(
+                conversation.user_id,
+                conversation.id,
+                toolCallId,
+              ),
+            );
+          }
+          const text = `${output.message}\nRendered inspection views: ${views}.\nMulti-view inspection image attached: ${imageAttached ? 'yes' : 'no'}.`;
+          return { type: 'text' as const, value: text };
         }
-
-        return { type: 'text' as const, value: text };
       },
     },
     answer_user: chatTools.answer_user,
   };
+}
+
+function getAuxLanguageModel(providers: ChatProviders): LanguageModel | null {
+  const { activeCatalog, hasAnthropicApiKey } = getLocalChatState();
+  const auxLocal = getAuxiliaryLocalModel(activeCatalog);
+  if (auxLocal?.baseUrl) {
+    const baseUrl =
+      normalizeOpenRouterBaseUrl(auxLocal.baseUrl) ?? auxLocal.baseUrl;
+    return providers
+      .local(baseUrl, localApiKeyForModel(auxLocal))
+      .chat(auxLocal.id);
+  }
+  if (hasAnthropicApiKey) return providers.anthropic()('claude-haiku-4-5');
+  return null;
 }
 
 function chatModel(conversation: ConversationAccess, model: Model) {
@@ -1004,33 +1257,44 @@ export async function handleAiChatRequest(req: Request) {
     );
   }
 
-  // Pre-flight balance gate. A chat costs at least 1 billing token, so a
-  // total of 0 means we cannot let the stream start. We don't try to
+  const actualModelId = chatModel(conversation, rawBody.model);
+  if (isMissingLocalBaseUrl(actualModelId)) {
+    return jsonResponse(
+      { error: 'baseUrl is not configured for local model' },
+      503,
+    );
+  }
+
+  // Pre-flight balance gate for billable (cloud) models. Local-catalog
+  // models are billing-exempt. Cloud chat costs at least 1 billing token,
+  // so a total of 0 means we cannot let the stream start. We don't try to
   // estimate the exact cost up front — chat is variable, and the billing
   // service drains the remainder to zero if the actual usage exceeds
   // what's left (see onFinish below).
-  try {
-    const status = await billing.getStatus(user.email);
-    if (status.tokens.total <= 0) {
-      return jsonResponse(
-        {
-          error: 'insufficient_tokens',
-          code: 'insufficient_tokens',
-          tokensRequired: 1,
-          tokensAvailable: 0,
-        },
-        402,
-      );
+  if (!isActiveLocalModel(actualModelId)) {
+    try {
+      const status = await billing.getStatus(user.email);
+      if (status.tokens.total <= 0) {
+        return jsonResponse(
+          {
+            error: 'insufficient_tokens',
+            code: 'insufficient_tokens',
+            tokensRequired: 1,
+            tokensAvailable: 0,
+          },
+          402,
+        );
+      }
+    } catch (error) {
+      logError(error, {
+        functionName: 'ai-chat',
+        statusCode: error instanceof BillingClientError ? error.status : 502,
+        userId: user.id,
+        conversationId: conversation.id,
+        additionalContext: { operation: 'billing_preflight' },
+      });
+      return jsonResponse({ error: 'Billing service unavailable' }, 503);
     }
-  } catch (error) {
-    logError(error, {
-      functionName: 'ai-chat',
-      statusCode: error instanceof BillingClientError ? error.status : 502,
-      userId: user.id,
-      conversationId: conversation.id,
-      additionalContext: { operation: 'billing_preflight' },
-    });
-    return jsonResponse({ error: 'Billing service unavailable' }, 503);
   }
 
   const tools =
@@ -1038,8 +1302,8 @@ export async function handleAiChatRequest(req: Request) {
       ? creativeTools({ conversation, req, model: rawBody.model })
       : parametricTools({
           supabaseClient,
-          previewPathForToolCall: (toolCallId) =>
-            `${user.id}/${conversation.id}/inspection-preview-${toolCallId}`,
+          conversation,
+          modelId: actualModelId,
         });
 
   let branchMessages: AppUIMessage[];
@@ -1088,6 +1352,9 @@ export async function handleAiChatRequest(req: Request) {
   // the very first user turn.
   const isFirstUserTurn = branchMessages.length === 1 && leafRole === 'user';
 
+  // Resolve the actual model ID the request will run against.
+  const resolvedProvider = providerFor(actualModelId);
+
   // Rehydrate image file parts before handing them to the model. The
   // persisted `url` is a storage reference (or, for the oldest backfilled
   // rows, a dead `/public/` path), neither of which the provider can fetch —
@@ -1097,38 +1364,18 @@ export async function handleAiChatRequest(req: Request) {
   // (legacy rows that inlined base64) pass through untouched; anything we
   // can't resolve is dropped so a missing image never poisons the request
   // with an unfetchable URL.
-  const hydratedMessages = await Promise.all(
-    branchMessages.map(async (message) => ({
-      ...message,
-      parts: (
-        await Promise.all(
-          message.parts.map(async (part) => {
-            if (
-              part.type !== 'file' ||
-              typeof part.mediaType !== 'string' ||
-              !part.mediaType.startsWith('image/') ||
-              part.url.startsWith('data:')
-            ) {
-              return part;
-            }
-            const imageId = imageIdFromFilename(part.filename);
-            if (!imageId) return null;
-            const downloaded = await downloadAsBase64(
-              supabaseClient,
-              'images',
-              imageStoragePath(conversation.user_id, conversation.id, imageId),
-            );
-            if (!downloaded) return null;
-            return {
-              ...part,
-              mediaType: downloaded.mediaType,
-              url: `data:${downloaded.mediaType};base64,${downloaded.base64}`,
-            };
-          }),
-        )
-      ).filter((part): part is NonNullable<typeof part> => part != null),
-    })),
-  );
+  //
+  // For local providers on parametric conversations, strict OpenAI-compatible
+  // servers reject images inside `role: tool` messages. We instead insert a
+  // follow-up `role: user` message carrying the latest inspection render after
+  // the most recent build tool call so `convertToModelMessages` never needs to
+  // put images in tool output.
+  const hydratedMessages = await buildHydratedMessages(branchMessages, {
+    supabaseClient,
+    conversation,
+    modelId: actualModelId,
+    provider: resolvedProvider,
+  });
 
   const modelMessages = await convertToModelMessages<AppUIMessage>(
     hydratedMessages,
@@ -1161,13 +1408,6 @@ export async function handleAiChatRequest(req: Request) {
       },
     },
   );
-
-  // Resolve the actual model ID the request will run against. For
-  // `creative` conversations this is hardcoded to Sonnet regardless of
-  // what the client picked — billing has to price the model that ran,
-  // not the one the user requested.
-  const actualModelId = chatModel(conversation, rawBody.model);
-  const resolvedProvider = providerFor(actualModelId);
   const baseLogContext = {
     userId: user.id,
     conversationId: conversation.id,
@@ -1246,14 +1486,12 @@ export async function handleAiChatRequest(req: Request) {
         leafRole === 'user' &&
         stepNumber === 0
       ) {
-        // Restrict the toolset to the build tool on the first step. Models that
-        // accept a forced tool_choice get it pinned; the reasoning-tier Claude 5
-        // models (Fable/Mythos) reject forced tool use and fall back to auto,
-        // relying on the system prompt to call build_parametric_model.
-        // When pinning the tool on a thinking-enabled Anthropic model, thinking
-        // must be off for this step (Anthropic rejects forced tool use while
-        // thinking is on) — disable it here only; later steps keep the adaptive
-        // thinking configured in buildChatModel.
+        // Restrict the toolset to the build tool on the first step. Turns that
+        // accept a forced tool_choice get it pinned; turns that reject forced
+        // tool use (Claude Fable/Mythos, local models with
+        // supportsForcedToolChoice: false, or the supportsThinking fallback)
+        // fall back to auto and rely on the system prompt to call
+        // build_parametric_model.
         return {
           activeTools: ['build_parametric_model' as never],
           ...(forceBuildToolChoice
@@ -1373,14 +1611,17 @@ export async function handleAiChatRequest(req: Request) {
     execute: async ({ writer }) => {
       // Title (first user turn only) runs in parallel with the model
       // stream — fire-and-forget; the assistant doesn't wait on it.
-      if (isFirstUserTurn && env('ANTHROPIC_API_KEY')) {
-        void emitConversationTitle({
-          writer,
-          anthropic: providers.anthropic(),
-          supabaseClient,
-          conversation,
-          firstMessage: branchMessages[0],
-        });
+      if (isFirstUserTurn) {
+        const auxModel = getAuxLanguageModel(providers);
+        if (auxModel) {
+          void emitConversationTitle({
+            writer,
+            auxModel,
+            supabaseClient,
+            conversation,
+            firstMessage: branchMessages[0],
+          });
+        }
       }
 
       writer.merge(
@@ -1488,29 +1729,31 @@ export async function handleAiChatRequest(req: Request) {
               });
             }
 
-            try {
-              // Drains the user's remaining balance to zero if the
-              // request cost more than they had. The billing service
-              // accepts the partial deduction, writes an audit row as
-              // `<operation>_partial`, and the pre-flight gate above
-              // will block the next request. Not an error path —
-              // intentional terminal state. Runs after the persist above so
-              // its latency never delays the row the client is waiting on.
-              await billing.consume(user.email!, {
-                tokens: billingTokens,
-                operation:
-                  conversation.type === 'creative' ? 'chat' : 'parametric',
-                referenceId: responseMessage.id,
-              });
-            } catch (error) {
-              logError(error, {
-                functionName: 'ai-chat',
-                statusCode:
-                  error instanceof BillingClientError ? error.status : 502,
-                userId: user.id,
-                conversationId: conversation.id,
-                additionalContext: { operation: 'billing_consume' },
-              });
+            if (billingTokens > 0) {
+              try {
+                // Drains the user's remaining balance to zero if the
+                // request cost more than they had. The billing service
+                // accepts the partial deduction, writes an audit row as
+                // `<operation>_partial`, and the pre-flight gate above
+                // will block the next request. Not an error path —
+                // intentional terminal state. Runs after the persist above so
+                // its latency never delays the row the client is waiting on.
+                await billing.consume(user.email!, {
+                  tokens: billingTokens,
+                  operation:
+                    conversation.type === 'creative' ? 'chat' : 'parametric',
+                  referenceId: responseMessage.id,
+                });
+              } catch (error) {
+                logError(error, {
+                  functionName: 'ai-chat',
+                  statusCode:
+                    error instanceof BillingClientError ? error.status : 502,
+                  userId: user.id,
+                  conversationId: conversation.id,
+                  additionalContext: { operation: 'billing_consume' },
+                });
+              }
             }
 
             // Only generate suggestions once the assistant has actually
@@ -1519,28 +1762,31 @@ export async function handleAiChatRequest(req: Request) {
             // continuation `onFinish` will fire suggestions for the real
             // final state. Avoids a wasted Haiku call AND prevents
             // mid-turn placeholder pills.
-            if (!hasPendingToolCall && env('ANTHROPIC_API_KEY')) {
-              // MUST be awaited (not `void`). `createUIMessageStream`
-              // closes the SSE controller as soon as the merged stream
-              // drains — and the merged stream resolves once this
-              // `onFinish` returns. A fire-and-forget here would race
-              // the close, and the `writer.write` inside
-              // `emitConversationSuggestions` would silently no-op
-              // because `safeEnqueue` swallows enqueue errors on a
-              // closed controller (see ai/dist/index.mjs:8264). The
-              // ~200-500ms Haiku call delays the client's "streaming"
-              // → "ready" transition by the same amount, which is the
-              // tradeoff for getting pills delivered.
-              await emitConversationSuggestions({
-                writer,
-                anthropic: providers.anthropic(),
-                supabaseClient,
-                conversation,
-                branch: [
-                  ...branchMessages,
-                  { ...responseMessage, parts: finalizedParts },
-                ],
-              });
+            if (!hasPendingToolCall) {
+              const auxModel = getAuxLanguageModel(providers);
+              if (auxModel) {
+                // MUST be awaited (not `void`). `createUIMessageStream`
+                // closes the SSE controller as soon as the merged stream
+                // drains — and the merged stream resolves once this
+                // `onFinish` returns. A fire-and-forget here would race
+                // the close, and the `writer.write` inside
+                // `emitConversationSuggestions` would silently no-op
+                // because `safeEnqueue` swallows enqueue errors on a
+                // closed controller (see ai/dist/index.mjs:8264). The
+                // ~200-500ms aux-model call delays the client's "streaming"
+                // → "ready" transition by the same amount, which is the
+                // tradeoff for getting pills delivered.
+                await emitConversationSuggestions({
+                  writer,
+                  auxModel,
+                  supabaseClient,
+                  conversation,
+                  branch: [
+                    ...branchMessages,
+                    { ...responseMessage, parts: finalizedParts },
+                  ],
+                });
+              }
             }
           },
         }),
@@ -1565,19 +1811,19 @@ export async function handleAiChatRequest(req: Request) {
  */
 async function emitConversationTitle({
   writer,
-  anthropic,
+  auxModel,
   supabaseClient,
   conversation,
   firstMessage,
 }: {
   writer: UIMessageStreamWriter<AppUIMessage>;
-  anthropic: AnthropicProvider;
+  auxModel: LanguageModel;
   supabaseClient: SupabaseAnon;
   conversation: ConversationAccess;
   firstMessage: AppUIMessage;
 }) {
   try {
-    const title = await generateConversationTitle({ anthropic, firstMessage });
+    const title = await generateConversationTitle({ auxModel, firstMessage });
     await supabaseClient
       .from('conversations')
       .update({ title })
@@ -1607,20 +1853,20 @@ async function emitConversationTitle({
  */
 async function emitConversationSuggestions({
   writer,
-  anthropic,
+  auxModel,
   supabaseClient,
   conversation,
   branch,
 }: {
   writer: UIMessageStreamWriter<AppUIMessage>;
-  anthropic: AnthropicProvider;
+  auxModel: LanguageModel;
   supabaseClient: SupabaseAnon;
   conversation: ConversationAccess;
   branch: AppUIMessage[];
 }) {
   try {
     const suggestions = await generateConversationSuggestions({
-      anthropic,
+      auxModel,
       branch,
       conversationType: conversation.type,
     });

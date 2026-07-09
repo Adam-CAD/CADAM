@@ -8,7 +8,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CREATIVE_MODELS, PARAMETRIC_MODELS } from '@/lib/utils';
+import { CREATIVE_MODELS } from '@/lib/utils';
+import { useParametricModels } from '@/hooks/useLocalModels';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -430,8 +431,9 @@ function AssistantBubble({
   onRestore,
 }: MessageBubbleProps) {
   const { conversation } = useConversation();
+  const parametricModels = useParametricModels();
   const modelOptions =
-    conversation.type === 'creative' ? CREATIVE_MODELS : PARAMETRIC_MODELS;
+    conversation.type === 'creative' ? CREATIVE_MODELS : parametricModels;
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
   const lastParametricBuildIndex = useMemo(() => {
     if (conversation.type !== 'parametric') return -1;
@@ -836,18 +838,20 @@ function RetryModelDropdown({
         align="end"
         className="w-48 rounded-lg border border-adam-neutral-700 bg-adam-neutral-800 p-1"
       >
-        {modelOptions.map((option) => (
-          <DropdownMenuItem
-            key={option.id}
-            className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-1.5 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
-            onClick={() => {
-              onRetry(option.id);
-              setIsOpen(false);
-            }}
-          >
-            {option.name}
-          </DropdownMenuItem>
-        ))}
+        <ScrollArea className="[&_[data-radix-scroll-area-viewport]]:max-h-[140px] [&_[data-radix-scroll-area-viewport]]:overflow-x-hidden">
+          {modelOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.id}
+              className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-1.5 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
+              onClick={() => {
+                onRetry(option.id);
+                setIsOpen(false);
+              }}
+            >
+              {option.name}
+            </DropdownMenuItem>
+          ))}
+        </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -29,6 +29,14 @@ export function imageStoragePath(
   return `${userId}/${conversationId}/${imageId}`;
 }
 
+export function inspectionPreviewStoragePath(
+  userId: string,
+  conversationId: string,
+  toolCallId: string,
+): string {
+  return `${userId}/${conversationId}/inspection-preview-${toolCallId}`;
+}
+
 // Canonical reference persisted in a file part's `url`. Kept in the exact
 // shape the 2026-05-18 AI-SDK backfill produced so every row in
 // `messages.parts` carries a single, uniform format. Never fetched directly —

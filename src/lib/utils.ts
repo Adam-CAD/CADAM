@@ -235,7 +235,7 @@ export function getInitials(fullName: string | null) {
   return 'U';
 }
 
-export const PARAMETRIC_MODELS: ModelConfig[] = [
+const CLOUD_PARAMETRIC_MODELS: ModelConfig[] = [
   {
     id: 'google/gemini-3.1-pro-preview',
     name: 'Gemini 3.1 Pro',
@@ -292,6 +292,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
   },
 ];
 
+export const PARAMETRIC_MODELS: ModelConfig[] = [...CLOUD_PARAMETRIC_MODELS];
+
 export const CREATIVE_MODELS: ModelConfig[] = [
   {
     id: 'ultra',
@@ -316,7 +318,10 @@ export const CREATIVE_MODELS: ModelConfig[] = [
 // Whether the selected parametric model can accept image / STL-render inputs.
 // Unknown ids (e.g. historical messages tagged with a removed model) fall back
 // to `true` so older saved rows still render normally.
-export function parametricModelSupportsVision(modelId: string): boolean {
-  const cfg = PARAMETRIC_MODELS.find((m) => m.id === modelId);
+export function parametricModelSupportsVision(
+  modelId: string,
+  models: ModelConfig[] = PARAMETRIC_MODELS,
+): boolean {
+  const cfg = models.find((m) => m.id === modelId);
   return cfg?.supportsVision !== false;
 }
