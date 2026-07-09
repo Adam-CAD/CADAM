@@ -6,6 +6,9 @@
 
 @layer base {
   :root {
+    /* Rotates the CSS bundle hash so browsers that cached the poisoned
+       index-BBgs0KEz.css (June 2026 CDN incident) fetch a fresh URL. */
+    --cache-generation: 2;
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;

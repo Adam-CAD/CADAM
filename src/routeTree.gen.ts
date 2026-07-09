@@ -19,6 +19,7 @@ import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy';
 import { Route as ConfirmEmailRouteImport } from './routes/confirm-email';
 import { Route as LayoutRouteImport } from './routes/_layout';
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index';
+import { Route as AssetsSplatRouteImport } from './routes/assets.$';
 import { Route as ApiTitleGeneratorRouteImport } from './routes/api/title-generator';
 import { Route as ApiPromptGeneratorRouteImport } from './routes/api/prompt-generator';
 import { Route as ApiParametricChatRouteImport } from './routes/api/parametric-chat';
@@ -88,6 +89,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => LayoutRoute,
+} as any);
+const AssetsSplatRoute = AssetsSplatRouteImport.update({
+  id: '/assets/$',
+  path: '/assets/$',
+  getParentRoute: () => rootRouteImport,
 } as any);
 const ApiTitleGeneratorRoute = ApiTitleGeneratorRouteImport.update({
   id: '/api/title-generator',
@@ -212,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/api/parametric-chat': typeof ApiParametricChatRoute;
   '/api/prompt-generator': typeof ApiPromptGeneratorRoute;
   '/api/title-generator': typeof ApiTitleGeneratorRoute;
+  '/assets/$': typeof AssetsSplatRoute;
   '/history': typeof LayoutAuthHistoryRoute;
   '/settings': typeof LayoutAuthSettingsRoute;
   '/subscription': typeof LayoutAuthSubscriptionRoute;
@@ -242,6 +249,7 @@ export interface FileRoutesByTo {
   '/api/parametric-chat': typeof ApiParametricChatRoute;
   '/api/prompt-generator': typeof ApiPromptGeneratorRoute;
   '/api/title-generator': typeof ApiTitleGeneratorRoute;
+  '/assets/$': typeof AssetsSplatRoute;
   '/history': typeof LayoutAuthHistoryRoute;
   '/settings': typeof LayoutAuthSettingsRoute;
   '/subscription': typeof LayoutAuthSubscriptionRoute;
@@ -274,6 +282,7 @@ export interface FileRoutesById {
   '/api/parametric-chat': typeof ApiParametricChatRoute;
   '/api/prompt-generator': typeof ApiPromptGeneratorRoute;
   '/api/title-generator': typeof ApiTitleGeneratorRoute;
+  '/assets/$': typeof AssetsSplatRoute;
   '/_layout/': typeof LayoutIndexRoute;
   '/_layout/_auth/history': typeof LayoutAuthHistoryRoute;
   '/_layout/_auth/settings': typeof LayoutAuthSettingsRoute;
@@ -307,6 +316,7 @@ export interface FileRouteTypes {
     | '/api/parametric-chat'
     | '/api/prompt-generator'
     | '/api/title-generator'
+    | '/assets/$'
     | '/history'
     | '/settings'
     | '/subscription'
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
     | '/api/parametric-chat'
     | '/api/prompt-generator'
     | '/api/title-generator'
+    | '/assets/$'
     | '/history'
     | '/settings'
     | '/subscription'
@@ -368,6 +379,7 @@ export interface FileRouteTypes {
     | '/api/parametric-chat'
     | '/api/prompt-generator'
     | '/api/title-generator'
+    | '/assets/$'
     | '/_layout/'
     | '/_layout/_auth/history'
     | '/_layout/_auth/settings'
@@ -399,6 +411,7 @@ export interface RootRouteChildren {
   ApiParametricChatRoute: typeof ApiParametricChatRoute;
   ApiPromptGeneratorRoute: typeof ApiPromptGeneratorRoute;
   ApiTitleGeneratorRoute: typeof ApiTitleGeneratorRoute;
+  AssetsSplatRoute: typeof AssetsSplatRoute;
   ApiJacksonPollockSplatRoute: typeof ApiJacksonPollockSplatRoute;
   ApiInternalAccountDeleteRoute: typeof ApiInternalAccountDeleteRoute;
 }
@@ -474,6 +487,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/';
       preLoaderRoute: typeof LayoutIndexRouteImport;
       parentRoute: typeof LayoutRoute;
+    };
+    '/assets/$': {
+      id: '/assets/$';
+      path: '/assets/$';
+      fullPath: '/assets/$';
+      preLoaderRoute: typeof AssetsSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
     };
     '/api/title-generator': {
       id: '/api/title-generator';
@@ -674,6 +694,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiParametricChatRoute: ApiParametricChatRoute,
   ApiPromptGeneratorRoute: ApiPromptGeneratorRoute,
   ApiTitleGeneratorRoute: ApiTitleGeneratorRoute,
+  AssetsSplatRoute: AssetsSplatRoute,
   ApiJacksonPollockSplatRoute: ApiJacksonPollockSplatRoute,
   ApiInternalAccountDeleteRoute: ApiInternalAccountDeleteRoute,
 };
