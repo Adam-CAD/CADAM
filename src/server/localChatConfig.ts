@@ -48,7 +48,11 @@ function loadCatalogFromDisk(): LocalModelConfig[] {
   try {
     const raw = JSON.parse(fs.readFileSync(userPath, 'utf8')) as unknown;
     cachedCatalog = parseLocalModelsJson(raw);
-  } catch {
+  } catch (error) {
+    console.error(
+      `Failed to load local-models.json from ${userPath}; using empty catalog.`,
+      error,
+    );
     cachedCatalog = [];
   }
 
