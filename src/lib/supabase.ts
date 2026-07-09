@@ -1,4 +1,4 @@
-import { createClient, Provider } from '@supabase/supabase-js';
+import { createClient, Provider, User } from '@supabase/supabase-js';
 import { Database } from '@shared/database';
 
 const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -34,6 +34,18 @@ export const accountUrl = (import.meta.env.VITE_ACCOUNT_URL || '') as string;
 // useProfile) imports THIS constant, so the condition can't drift between them.
 // False in self-host, or SSO without an account page (in-app controls win).
 export const ssoManaged = Boolean(ssoProvider && accountUrl);
+
+// The fresh provider-owned claims for the signed-in user: the SSO identity's
+// identity_data, which GoTrue refreshes from the OIDC token on EVERY sign-in.
+// This is the ONE source for provider-owned profile fields (name, picture, …)
+// under SSO — `user_metadata` is NOT refreshed by GoTrue (it keeps the
+// first-login value), so it must never be read for these. Matched by the
+// configured provider, so it's the Adam identity here (and the right provider
+// for a self-hoster). undefined when SSO isn't managing the profile.
+export function ssoClaims(user: User | null) {
+  if (!ssoManaged || !user) return undefined;
+  return user.identities?.find((i) => i.provider === ssoProvider)?.identity_data;
+}
 
 // Fallback values keep the client constructable so imports don't throw
 // when env vars are missing. The app should gate on isSupabaseConfigMissing

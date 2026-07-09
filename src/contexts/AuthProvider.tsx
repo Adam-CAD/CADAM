@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, ssoClaims } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import posthog from 'posthog-js';
@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ) {
       posthog.identify(user.id, {
         email: user.email,
-        full_name: profile?.full_name,
+        full_name: ssoClaims(user)?.name || profile?.full_name,
         subscription: getLevel(billing),
         has_trialed: billing?.user.hasTrialed ?? false,
       });

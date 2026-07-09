@@ -1,24 +1,15 @@
 import { User } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, ssoProvider, ssoManaged } from '@/lib/supabase';
+import { supabase, ssoClaims } from '@/lib/supabase';
 import { Profile } from '@shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-// Under SSO the display name is owned by the identity provider (Adam). Read it
-// from the linked identity's identity_data, which GoTrue refreshes from the
-// OIDC `name` claim on every sign-in. Two things matter here, both learned the
-// hard way:
-//   - Use `identity_data`, NOT `user_metadata`: GoTrue refreshes the identity
-//     on each login but leaves user_metadata at its first-login value.
-//   - Use the `name` claim specifically. identity_data also carries a
-//     `full_name` that Adam does NOT keep current (it lags the rename), so
-//     `full_name || name` returns the stale value. `name` is the live one.
-// !ssoManaged (in-app editor live, or self-host) → return undefined and let the
-// local profiles mirror win.
+// Under SSO the display name is owned by the identity provider (Adam): the live
+// `name` claim from ssoClaims (GoTrue refreshes it every sign-in). NOT the
+// `full_name` claim — Adam's identity_data carries a stale full_name while
+// `name` is current. undefined off-SSO → the local profiles mirror wins.
 function ssoDisplayName(user: User | null): string | undefined {
-  if (!ssoManaged || !user) return undefined;
-  const identity = user.identities?.find((i) => i.provider === ssoProvider);
-  return identity?.identity_data?.name || undefined;
+  return ssoClaims(user)?.name || undefined;
 }
 
 export function useProfile() {
