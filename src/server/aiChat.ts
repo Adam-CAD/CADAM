@@ -524,15 +524,24 @@ function usesAdaptiveAnthropicThinking(modelId: string) {
   return match ? Number(match[1]) >= 6 : false;
 }
 
-// The reasoning-tier Claude 5 models (Fable, Mythos) and third-party thinking models
-// reject a forced `tool_choice` outright ("tool_choice forces tool use
-// is not compatible with this model"). Other Claude 5 tiers — notably Sonnet 5 —
-// accept a forced tool_choice on the first-party API, provided thinking
-// is disabled for that step (see the per-step override in the parametric flow).
+// The reasoning-tier Claude 5 models (Fable, Mythos) and some local /
+// OpenAI-compatible servers reject a forced `tool_choice` outright
+// ("tool_choice forces tool use is not compatible with this model"). Other
+// Claude 5 tiers — notably Sonnet 5 — accept a forced tool_choice on the
+// first-party API, provided thinking is disabled for that step (see the
+// per-step override in the parametric flow).
+//
+// For local catalog entries, `supportsForcedToolChoice` is the explicit
+// knob. When unset, fall back to treating `supportsThinking: true` as a
+// rejection signal (common for thinking-capable OpenAI-compatible servers).
 function rejectsForcedToolChoice(modelId: string): boolean {
   if (/^claude-(?:fable|mythos)\b/.test(bareModelId(modelId))) return true;
   const local = getActiveLocalModel(modelId);
-  return local?.supportsThinking === true;
+  if (!local) return false;
+  if (local.supportsForcedToolChoice !== undefined) {
+    return local.supportsForcedToolChoice === false;
+  }
+  return local.supportsThinking === true;
 }
 
 // Whether a model accepts a forced `tool_choice` (type: "tool" / "any").
@@ -1479,9 +1488,10 @@ export async function handleAiChatRequest(req: Request) {
       ) {
         // Restrict the toolset to the build tool on the first step. Turns that
         // accept a forced tool_choice get it pinned; turns that reject forced
-        // tool use (Claude Fable/Mythos, local thinking models, or any
-        // thinking-enabled Anthropic turn) fall back to auto and rely on the
-        // system prompt to call build_parametric_model.
+        // tool use (Claude Fable/Mythos, local models with
+        // supportsForcedToolChoice: false, or the supportsThinking fallback)
+        // fall back to auto and rely on the system prompt to call
+        // build_parametric_model.
         return {
           activeTools: ['build_parametric_model' as never],
           ...(forceBuildToolChoice

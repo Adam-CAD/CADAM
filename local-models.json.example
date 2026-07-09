@@ -18,6 +18,7 @@
     "supportsTools": true,
     "supportsThinking": true,
     "supportsVision": false,
+    "supportsForcedToolChoice": false,
     "useForAux": false
   }
 ]

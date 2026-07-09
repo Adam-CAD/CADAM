@@ -245,6 +245,7 @@ To add your own local models (LM Studio, Ollama, LiteLLM, etc.) alongside the cl
      "supportsTools": true,
      "supportsThinking": true,
      "supportsVision": false,
+     "supportsForcedToolChoice": false,
      "useForAux": false
    }
    ```

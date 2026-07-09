@@ -227,17 +227,48 @@ describe('localModelToPickerConfig', () => {
     });
   });
 
-  it('does not expose apiKey or baseUrl in picker config', () => {
+  it('does not expose apiKey, baseUrl, or supportsForcedToolChoice', () => {
     const picker = localModelToPickerConfig({
       id: 'secure-model',
       name: 'Secure',
       description: 'Server-only key',
       baseUrl: 'https://example.local/v1',
       apiKey: 'DO_NOT_EXPOSE',
+      supportsForcedToolChoice: false,
     });
 
     assert.equal('apiKey' in picker, false);
     assert.equal('baseUrl' in picker, false);
+    assert.equal('supportsForcedToolChoice' in picker, false);
+  });
+});
+
+describe('supportsForcedToolChoice catalog field', () => {
+  it('parses supportsForcedToolChoice independently of supportsThinking', () => {
+    assert.deepEqual(
+      parseLocalModelsJson([
+        {
+          id: 'no-forced-choice',
+          name: 'No Forced',
+          description: 'Rejects forced tool_choice without thinking',
+          baseUrl: 'http://localhost:1234',
+          supportsTools: true,
+          supportsThinking: false,
+          supportsForcedToolChoice: false,
+        },
+      ]),
+      [
+        {
+          id: 'no-forced-choice',
+          name: 'No Forced',
+          description: 'Rejects forced tool_choice without thinking',
+          baseUrl: 'http://localhost:1234',
+          supportsTools: true,
+          supportsThinking: false,
+          supportsForcedToolChoice: false,
+        },
+      ],
+    );
   });
 });
 

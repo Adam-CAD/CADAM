@@ -19,6 +19,7 @@ export const localModelSchema = modelCoreSchema.extend({
   baseUrl: z.string().optional(),
   apiKey: z.string().optional(),
   useForAux: z.boolean().optional(),
+  supportsForcedToolChoice: z.boolean().optional(),
 });
 
 export type LocalModelConfig = z.infer<typeof localModelSchema>;
