@@ -7,20 +7,22 @@ import { createFileRoute } from '@tanstack/react-router';
 // cache-control on every /assets path, and letting that header onto a
 // fallthrough response poisons CDN and browser caches (see the June 2026
 // incident where the SPA shell was cached as index-*.css for 20 days).
-const missingAsset = () =>
-  new Response('Not Found', {
-    status: 404,
-    headers: {
-      'cache-control': 'no-store',
-      'content-type': 'text/plain; charset=utf-8',
-    },
-  });
+const missingAssetHeaders = {
+  'cache-control': 'no-store',
+  'content-type': 'text/plain; charset=utf-8',
+};
 
 export const Route = createFileRoute('/assets/$')({
   server: {
     handlers: {
-      GET: missingAsset,
-      HEAD: missingAsset,
+      GET: () =>
+        new Response('Not Found', {
+          status: 404,
+          headers: missingAssetHeaders,
+        }),
+      // RFC 9110 §9.3.2: HEAD responses must not carry a body.
+      HEAD: () =>
+        new Response(null, { status: 404, headers: missingAssetHeaders }),
     },
   },
 });
