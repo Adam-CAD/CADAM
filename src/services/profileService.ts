@@ -1,7 +1,21 @@
+import { User } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, ssoProvider, ssoManaged } from '@/lib/supabase';
 import { Profile } from '@shared/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+// Under SSO the display name is owned by the identity provider (Adam), whose
+// current value rides in the session — GoTrue refreshes the linked identity on
+// every sign-in. Prefer it over the local `profiles` mirror so a rename on the
+// Adam account page shows up everywhere — gated on the same shared `ssoManaged`
+// flag UserAvatar uses for the photo, so name and avatar can't diverge. When
+// !ssoManaged (in-app editor live, or self-host) the local mirror wins.
+function ssoDisplayName(user: User | null): string | undefined {
+  if (!ssoManaged || !user) return undefined;
+  const identity = user.identities?.find((i) => i.provider === ssoProvider);
+  const claims = { ...user.user_metadata, ...identity?.identity_data };
+  return claims.full_name || claims.name || undefined;
+}
 
 export function useProfile() {
   const { user } = useAuth();
@@ -24,6 +38,12 @@ export function useProfile() {
       return data;
     },
     enabled: !!user?.id,
+    // Every name read flows through here, so resolve it in one place: under SSO
+    // the provider's name wins over the local mirror (which is display-only).
+    select: (profile) => {
+      const name = ssoDisplayName(user);
+      return name ? { ...profile, full_name: name } : profile;
+    },
   });
 }
 

@@ -28,6 +28,13 @@ export const ssoProvider = (import.meta.env.VITE_SSO_PROVIDER ||
 // point it anywhere or leave it blank.
 export const accountUrl = (import.meta.env.VITE_ACCOUNT_URL || '') as string;
 
+// The single "Adam owns this profile" flag: true only when SSO is on AND an
+// external account page exists — i.e. name / avatar / password / delete are
+// managed by the provider, not in-app. Every SSO gate (UserAvatar, SettingsView,
+// useProfile) imports THIS constant, so the condition can't drift between them.
+// False in self-host, or SSO without an account page (in-app controls win).
+export const ssoManaged = Boolean(ssoProvider && accountUrl);
+
 // Fallback values keep the client constructable so imports don't throw
 // when env vars are missing. The app should gate on isSupabaseConfigMissing
 // and avoid making real requests in this state.

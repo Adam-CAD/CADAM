@@ -18,7 +18,7 @@ import { useProfile, useUpdateProfile } from '@/services/profileService';
 import { AvatarUpdateDialog } from '@/components/auth/AvatarUpdateDialog';
 import { useTokenPacks } from '@/hooks/useTokenPacks';
 import { PLAN_DISPLAY_NAMES } from '@/config/plan-features';
-import { accountUrl, ssoProvider } from '@/lib/supabase';
+import { accountUrl, ssoManaged } from '@/lib/supabase';
 import { UserAvatar } from '@/components/chat/UserAvatar';
 
 function formatPeriodEnd(iso: string | null | undefined): string | null {
@@ -142,8 +142,8 @@ export default function SettingsView() {
   // When SSO owns the identity and an external account page is configured,
   // profile / email / password / delete are managed there (the
   // accounts.google.com model) rather than edited in-app. Self-host (no SSO
-  // or no account URL) keeps the native controls.
-  const ssoManaged = Boolean(ssoProvider && accountUrl);
+  // or no account URL) keeps the native controls. `ssoManaged` is imported from
+  // @/lib/supabase so every SSO gate shares one definition.
 
   const tierLabel = `Adam ${PLAN_DISPLAY_NAMES[level]}`;
 

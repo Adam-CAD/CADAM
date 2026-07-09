@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProfile, useAvatarUrl } from '@/services/profileService';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getInitials } from '@/lib/utils';
-import { accountUrl, ssoProvider } from '@/lib/supabase';
+import { ssoManaged } from '@/lib/supabase';
 
 export function UserAvatar({ className }: { className?: string }) {
   const { user } = useAuth();
@@ -18,11 +18,9 @@ export function UserAvatar({ className }: { className?: string }) {
     | undefined;
   const providerAvatar = metadata?.avatar_url || metadata?.picture;
 
-  // When SSO owns the identity (same condition SettingsView uses to make the
-  // account read-only), the provider photo is the single source of truth, so it
-  // wins — a stale CADAM-local upload can no longer diverge from the Adam photo.
-  // In self-host mode the self-uploaded avatar keeps winning.
-  const ssoManaged = Boolean(ssoProvider && accountUrl);
+  // When Adam owns the profile (shared `ssoManaged` flag) the provider photo is
+  // the single source of truth and wins, so a stale CADAM-local upload can't
+  // diverge from the Adam photo. In self-host mode the self-uploaded avatar wins.
   const src = ssoManaged
     ? providerAvatar || avatarUrl || undefined
     : avatarUrl || providerAvatar || undefined;
