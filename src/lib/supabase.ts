@@ -19,6 +19,15 @@ export const isSupabaseConfigMissing = !rawSupabaseUrl || !rawSupabaseKey;
 export const ssoProvider = (import.meta.env.VITE_SSO_PROVIDER ||
   null) as Provider | null;
 
+// Optional external account-management URL. When SSO mode is on and the
+// identity is owned by an external provider, the deployment can point profile
+// / password / delete management at that provider's account page (the
+// accounts.google.com model) instead of editing them here. Set
+// VITE_ACCOUNT_URL to that page's URL; when unset (or when SSO is off) the
+// native in-app account controls are used. Provider-agnostic — self-hosters
+// point it anywhere or leave it blank.
+export const accountUrl = (import.meta.env.VITE_ACCOUNT_URL || '') as string;
+
 // Fallback values keep the client constructable so imports don't throw
 // when env vars are missing. The app should gate on isSupabaseConfigMissing
 // and avoid making real requests in this state.

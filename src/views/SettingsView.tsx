@@ -18,6 +18,8 @@ import { useProfile, useUpdateProfile } from '@/services/profileService';
 import { AvatarUpdateDialog } from '@/components/auth/AvatarUpdateDialog';
 import { useTokenPacks } from '@/hooks/useTokenPacks';
 import { PLAN_DISPLAY_NAMES } from '@/config/plan-features';
+import { accountUrl, ssoProvider } from '@/lib/supabase';
+import { UserAvatar } from '@/components/chat/UserAvatar';
 
 function formatPeriodEnd(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -137,6 +139,12 @@ export default function SettingsView() {
       },
     });
 
+  // When SSO owns the identity and an external account page is configured,
+  // profile / email / password / delete are managed there (the
+  // accounts.google.com model) rather than edited in-app. Self-host (no SSO
+  // or no account URL) keeps the native controls.
+  const ssoManaged = Boolean(ssoProvider && accountUrl);
+
   const tierLabel = `Adam ${PLAN_DISPLAY_NAMES[level]}`;
 
   const tierAccent =
@@ -165,93 +173,130 @@ export default function SettingsView() {
               Account
             </h2>
 
-            <div className="divide-y divide-adam-neutral-800">
-              <div className="flex items-center justify-between gap-4 pb-5">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <AvatarUpdateDialog />
-                  {editingName ? (
-                    <Input
-                      ref={nameInputRef}
-                      value={newName}
-                      className="h-9 w-full max-w-xs"
-                      onChange={(e) => setNewName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleUpdateName();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="min-w-0 truncate text-sm text-adam-neutral-50">
+            {ssoManaged ? (
+              <div className="flex flex-col gap-5">
+                <div className="flex items-center gap-3">
+                  <UserAvatar className="h-10 w-10" />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-adam-neutral-50">
                       {profile?.full_name || user?.email}
                     </div>
+                    <div className="mt-0.5 truncate text-xs text-adam-neutral-200">
+                      {user?.email}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-t border-adam-neutral-800 pt-5">
+                  <div className="min-w-0">
+                    <div className="text-sm text-adam-neutral-50">
+                      Manage account
+                    </div>
+                    <div className="mt-0.5 text-xs leading-relaxed text-adam-neutral-200">
+                      Update your name, email, password, and account details in
+                      your Adam account.
+                    </div>
+                  </div>
+                  <a
+                    href={accountUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-shrink-0"
+                  >
+                    <Button variant="dark" className="rounded-full font-light">
+                      Manage account
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-adam-neutral-800">
+                <div className="flex items-center justify-between gap-4 pb-5">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <AvatarUpdateDialog />
+                    {editingName ? (
+                      <Input
+                        ref={nameInputRef}
+                        value={newName}
+                        className="h-9 w-full max-w-xs"
+                        onChange={(e) => setNewName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleUpdateName();
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="min-w-0 truncate text-sm text-adam-neutral-50">
+                        {profile?.full_name || user?.email}
+                      </div>
+                    )}
+                  </div>
+                  {editingName ? (
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <Button
+                        onClick={() => handleUpdateName()}
+                        variant="light"
+                        disabled={isUpdateLoading}
+                        className="rounded-full font-light"
+                      >
+                        {isUpdateLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Save'
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setEditingName(false);
+                          setNewName(profile?.full_name || '');
+                        }}
+                        variant="dark"
+                        className="rounded-full font-light"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => setEditingName(true)}
+                      variant="dark"
+                      className="flex-shrink-0 rounded-full font-light"
+                    >
+                      Edit
+                    </Button>
                   )}
                 </div>
-                {editingName ? (
-                  <div className="flex flex-shrink-0 items-center gap-2">
-                    <Button
-                      onClick={() => handleUpdateName()}
-                      variant="light"
-                      disabled={isUpdateLoading}
-                      className="rounded-full font-light"
-                    >
-                      {isUpdateLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        'Save'
-                      )}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setEditingName(false);
-                        setNewName(profile?.full_name || '');
-                      }}
-                      variant="dark"
-                      className="rounded-full font-light"
-                    >
-                      Cancel
-                    </Button>
+
+                <div className="py-5">
+                  <div className="text-sm text-adam-neutral-50">Email</div>
+                  <div className="mt-0.5 truncate text-xs text-adam-neutral-200">
+                    {user?.email}
                   </div>
-                ) : (
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-5">
+                  <div className="min-w-0">
+                    <div className="text-sm text-adam-neutral-50">Password</div>
+                    <div className="mt-0.5 text-xs text-adam-neutral-200">
+                      Send a reset link to your email
+                    </div>
+                  </div>
                   <Button
-                    onClick={() => setEditingName(true)}
+                    onClick={() => handleResetPassword()}
+                    disabled={isResetLoading}
                     variant="dark"
                     className="flex-shrink-0 rounded-full font-light"
                   >
-                    Edit
+                    {isResetLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Reset Password'
+                    )}
                   </Button>
-                )}
-              </div>
-
-              <div className="py-5">
-                <div className="text-sm text-adam-neutral-50">Email</div>
-                <div className="mt-0.5 truncate text-xs text-adam-neutral-200">
-                  {user?.email}
                 </div>
               </div>
-
-              <div className="flex items-center justify-between gap-4 pt-5">
-                <div className="min-w-0">
-                  <div className="text-sm text-adam-neutral-50">Password</div>
-                  <div className="mt-0.5 text-xs text-adam-neutral-200">
-                    Send a reset link to your email
-                  </div>
-                </div>
-                <Button
-                  onClick={() => handleResetPassword()}
-                  disabled={isResetLoading}
-                  variant="dark"
-                  className="flex-shrink-0 rounded-full font-light"
-                >
-                  {isResetLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Reset Password'
-                  )}
-                </Button>
-              </div>
-            </div>
+            )}
           </section>
 
           {/* Notifications */}
@@ -418,31 +463,35 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* Data & Privacy */}
-          <section className="rounded-xl border border-adam-neutral-800 bg-adam-background-2 p-6">
-            <h2 className="mb-5 text-sm font-medium text-adam-neutral-50">
-              Data and privacy
-            </h2>
+          {/* Data & Privacy — when SSO owns the identity, account deletion is
+              handled in the Adam account ("Manage account" above), so the
+              in-app delete is hidden to avoid a partial, one-sided delete. */}
+          {!ssoManaged && (
+            <section className="rounded-xl border border-adam-neutral-800 bg-adam-background-2 p-6">
+              <h2 className="mb-5 text-sm font-medium text-adam-neutral-50">
+                Data and privacy
+              </h2>
 
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm text-adam-neutral-50">
-                  Delete account
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-adam-neutral-50">
+                    Delete account
+                  </div>
+                  <div className="mt-0.5 text-xs leading-relaxed text-adam-neutral-200">
+                    Permanently delete your account and all associated data.
+                  </div>
                 </div>
-                <div className="mt-0.5 text-xs leading-relaxed text-adam-neutral-200">
-                  Permanently delete your account and all associated data.
-                </div>
+                <DeleteAccountDialog>
+                  <Button
+                    className="flex-shrink-0 rounded-full font-light"
+                    variant="destructive"
+                  >
+                    Delete
+                  </Button>
+                </DeleteAccountDialog>
               </div>
-              <DeleteAccountDialog>
-                <Button
-                  className="flex-shrink-0 rounded-full font-light"
-                  variant="destructive"
-                >
-                  Delete
-                </Button>
-              </DeleteAccountDialog>
-            </div>
-          </section>
+            </section>
+          )}
 
           <div className="mt-2 flex items-center justify-center gap-3 text-xs text-adam-neutral-300">
             <Link
