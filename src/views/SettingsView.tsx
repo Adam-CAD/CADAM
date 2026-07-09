@@ -193,7 +193,7 @@ export default function SettingsView() {
                     </div>
                     <div className="mt-0.5 text-xs leading-relaxed text-adam-neutral-200">
                       Update your name, email, password, and account details in
-                      your Adam account.
+                      your account.
                     </div>
                   </div>
                   <a
