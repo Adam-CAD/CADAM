@@ -282,6 +282,15 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'x-ai/grok-4.5',
+    name: 'Grok 4.5',
+    description: 'Latest xAI model with frontier coding and STEM performance',
+    provider: 'xAI',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
     id: 'z-ai/glm-5.2',
     name: 'GLM 5.2',
     description: 'Z.AI model with strong agentic coding and reasoning',

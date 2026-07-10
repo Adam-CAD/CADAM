@@ -79,6 +79,9 @@ const MODEL_PRICES: Record<
     cacheWrite: 6.25,
   },
 
+  // xAI — cached input reads at 25% of input; no cache-write surcharge.
+  'x-ai/grok-4.5': { input: 2, output: 6, cacheRead: 0.5, cacheWrite: 2 },
+
   // MoonshotAI
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
 
