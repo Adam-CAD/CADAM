@@ -23,6 +23,7 @@ import {
   type ChatMessage,
 } from '@/lib/aiMessages';
 import parseParameters from '@shared/parseParameters';
+import { normalizeModelId } from '@shared/models';
 import { supabase } from '@/lib/supabase';
 import { updateParameter } from '@/lib/utils';
 import {
@@ -189,10 +190,11 @@ function ConversationEditor() {
 
   // ── Per-conversation UI state ───────────────────────────────────────────
   const [model, setModel] = useState<Model>(
-    conversation.settings?.model ??
-      (conversation.type === 'creative'
+    conversation.settings?.model
+      ? normalizeModelId(conversation.settings.model)
+      : conversation.type === 'creative'
         ? 'quality'
-        : 'google/gemini-3.1-pro-preview'),
+        : 'google/gemini-3.1-pro-preview',
   );
   const [activePreview, setActivePreview] = useState<ActivePreview>(null);
   const [parameters, setParameters] = useState<Parameter[]>([]);
