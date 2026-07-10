@@ -9,14 +9,14 @@ import { cn } from '@/lib/utils';
 const COPY = {
   headline: 'The new Adam is here',
   subtext:
-    'Adam now works inside your real CAD in Onshape and Fusion, editing models, BOMs, and drawings.',
+    'Adam now works inside your real CAD in SolidWorks, Onshape, and Fusion, editing models, BOMs, and drawings.',
   cta: 'Try now',
 } as const;
 
 // Versioned so a redesign can re-surface the banner for users who dismissed an
-// older iteration (v3: Fusion logo, pink Adam mark, white CTA, refreshed
-// motion). Un-scoped: CADAM has no team/integration concept, so one key is enough.
-const DISMISSED_KEY = 'adam-product-banner-dismissed:v3';
+// older iteration (v4: SolidWorks logo added, larger layout). Un-scoped: CADAM
+// has no team/integration concept, so one key is enough.
+const DISMISSED_KEY = 'adam-product-banner-dismissed:v4';
 
 // Dismissal lives in localStorage but is read through useSyncExternalStore so
 // same-tab writes re-render the banner immediately; the native "storage" event
@@ -129,7 +129,7 @@ export function NewProductBanner() {
   return (
     <div
       className={cn(
-        'group relative mx-auto max-w-xl rounded-xl border border-white/10 bg-adam-bg-dark shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition will-change-[transform,opacity] hover:border-white/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)]',
+        'group relative mx-auto max-w-2xl rounded-xl border border-white/10 bg-adam-bg-dark shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition will-change-[transform,opacity] hover:border-white/20 hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)]',
         // Decelerate in over 500ms; accelerate out a touch faster on dismiss.
         dismissing
           ? 'pointer-events-none duration-300 ease-in'
@@ -162,40 +162,48 @@ export function NewProductBanner() {
         <X className="size-3" />
       </button>
 
-      <div className="flex flex-col items-start gap-4 px-5 py-4 sm:flex-row sm:items-center">
-        {/* Hub-and-spoke: Adam is the centered hub (largest, on top, lifted),
-            with Onshape and Fusion a tad smaller and tucked behind it on either
-            side. The overlap reads as "Adam plugs into both your CAD tools."
-            On hover the two tools ease outward to reveal themselves. */}
-        <div className="pointer-events-none flex shrink-0 items-center -space-x-3">
-          <div className="grid size-10 translate-y-1 -rotate-6 place-items-center rounded-lg border border-white/10 bg-adam-neutral-950 transition-transform duration-300 ease-out group-hover:-translate-x-1.5 group-hover:-rotate-[9deg]">
-            <img
-              alt="Onshape"
-              className="size-6 object-contain"
-              src={`${import.meta.env.BASE_URL}/onshape.png`}
-            />
-          </div>
-          <div className="relative z-20 grid size-12 place-items-center rounded-xl border border-white/10 bg-adam-neutral-950 shadow-[0_4px_14px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out group-hover:-translate-y-0.5">
+      <div className="flex flex-col items-start gap-5 px-6 py-5 sm:flex-row sm:items-center">
+        {/* Avatar-style stack with Adam as the clear lead: a larger front
+            chip, with the CAD tools smaller and receding behind it in copy
+            order. Each chip is ringed with the card background so the
+            overlaps read as clean notches instead of borders-on-borders.
+            On hover the stack fans gently apart. */}
+        <div className="pointer-events-none flex shrink-0 items-center">
+          <div className="relative z-40 grid size-14 place-items-center rounded-full bg-adam-neutral-800 shadow-[0_4px_14px_rgba(0,0,0,0.4)] ring-[3px] ring-adam-bg-dark">
             <img
               alt="Adam"
-              className="size-7 object-contain"
+              className="size-8 object-contain"
               src={`${import.meta.env.BASE_URL}/adam-logo-pink.svg`}
             />
           </div>
-          <div className="grid size-10 translate-y-1 rotate-6 place-items-center rounded-lg border border-white/10 bg-adam-neutral-950 transition-transform duration-300 ease-out group-hover:translate-x-1.5 group-hover:rotate-[9deg]">
+          <div className="z-30 -ml-3 grid size-10 place-items-center rounded-full bg-adam-neutral-800 ring-[3px] ring-adam-bg-dark transition-[margin] duration-300 ease-out group-hover:-ml-1.5">
+            <img
+              alt="SolidWorks"
+              className="size-5 object-contain"
+              src={`${import.meta.env.BASE_URL}/solidworks.svg`}
+            />
+          </div>
+          <div className="z-20 -ml-3 grid size-10 place-items-center rounded-full bg-adam-neutral-800 ring-[3px] ring-adam-bg-dark transition-[margin] duration-300 ease-out group-hover:-ml-1.5">
+            <img
+              alt="Onshape"
+              className="size-5 object-contain"
+              src={`${import.meta.env.BASE_URL}/onshape.png`}
+            />
+          </div>
+          <div className="z-10 -ml-3 grid size-10 place-items-center rounded-full bg-adam-neutral-800 ring-[3px] ring-adam-bg-dark transition-[margin] duration-300 ease-out group-hover:-ml-1.5">
             <img
               alt="Fusion 360"
-              className="size-6 object-contain"
+              className="size-5 object-contain"
               src={`${import.meta.env.BASE_URL}/fusion.svg`}
             />
           </div>
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[13.5px] font-semibold tracking-tight text-adam-text-primary">
+          <p className="text-[15px] font-semibold tracking-tight text-adam-text-primary">
             {COPY.headline}
           </p>
-          <p className="mt-0.5 text-xs leading-snug text-adam-text-secondary">
+          <p className="mt-1 text-[13px] leading-snug text-adam-text-secondary">
             {COPY.subtext}
           </p>
         </div>

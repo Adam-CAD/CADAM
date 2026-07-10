@@ -1,5 +1,5 @@
 import { useNavigate, Link } from '@tanstack/react-router';
-import { ArrowUpRight, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,19 +30,6 @@ import { createAndCacheAiChat } from '@/hooks/useCachedAiChat';
 import type { AppUIMessage } from '@shared/chatAi';
 import { ensureInputRecords } from '@/lib/aiMessages';
 import { persistUserMessage } from '@/services/messageService';
-
-const EXTENSION_PILLS = [
-  {
-    href: 'https://cad.onshape.com/appstore/apps/Design%20&%20Documentation/690a8dc864e816c112aa66a0',
-    event: 'onshape_banner_click',
-    label: 'Onshape extension',
-  },
-  {
-    href: 'https://fusion.adam.new/install',
-    event: 'fusion_banner_click',
-    label: 'Fusion extension',
-  },
-] as const;
 
 export function PromptView() {
   const navigate = useNavigate();
@@ -359,35 +346,6 @@ export function PromptView() {
                   </div>
                 )}
               </div>
-              {!isLoading && user && !limitReached && !lowPrompts && (
-                <div className="flex flex-wrap justify-center gap-2">
-                  {EXTENSION_PILLS.map(({ href, event, label }) => (
-                    <a
-                      key={event}
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        try {
-                          posthog.capture(event, { location: 'prompt_view' });
-                        } catch {
-                          // Analytics failures (e.g. blocked by ad-blocker)
-                          // must never block the link's navigation.
-                        }
-                      }}
-                      className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-adam-text-secondary transition-colors hover:border-adam-blue/40 hover:bg-adam-blue/10 hover:text-adam-text-primary"
-                    >
-                      <span>
-                        Try our{' '}
-                        <span className="font-medium text-adam-blue">
-                          {label}
-                        </span>
-                      </span>
-                      <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                    </a>
-                  ))}
-                </div>
-              )}
               {!user && (
                 <p className="text-center text-sm text-gray-500">
                   <Link
@@ -425,7 +383,7 @@ export function PromptView() {
               composer and the bottom edge: a band over the lower third, with
               the card centered inside it, instead of glued to bottom-0. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[55%] flex items-center justify-center px-4 md:px-8">
-            <div className="pointer-events-auto w-full max-w-xl">
+            <div className="pointer-events-auto w-full max-w-2xl">
               <NewProductBanner />
             </div>
           </div>
