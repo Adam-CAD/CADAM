@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Zap } from 'lucide-react';
-import { Link } from '@tanstack/react-router';
 
 import { Button } from '@/components/ui/button';
-import { UpgradeModal } from '@/components/UpgradeModal';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { getLevel, useAuth } from '@/contexts/AuthContext';
+import { BILLING_URL, BILLING_UPGRADE_URL } from '@/config/billing';
 import { cn } from '@/lib/utils';
 
 function formatCompact(n: number): string {
@@ -47,7 +46,6 @@ export function CreditsButton() {
   // Card opened by click stays pinned — mouse-leave alone won't dismiss it.
   // Only outside-click (or an explicit close action) clears this.
   const [pinnedByClick, setPinnedByClick] = useState(false);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const openTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -95,8 +93,8 @@ export function CreditsButton() {
 
   if (isMobile) {
     return (
-      <Link
-        to="/subscription"
+      <a
+        href={BILLING_URL}
         aria-label="View credits"
         className={cn(
           'inline-flex items-center gap-1.5 rounded-full',
@@ -107,7 +105,7 @@ export function CreditsButton() {
       >
         <Zap className="h-3.5 w-3.5" fill="currentColor" />
         <span>{formatCompact(totalTokens)}</span>
-      </Link>
+      </a>
     );
   }
 
@@ -156,7 +154,6 @@ export function CreditsButton() {
 
   return (
     <>
-      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
       <div
         ref={wrapperRef}
         className="relative"
@@ -199,14 +196,10 @@ export function CreditsButton() {
               </div>
               <Button
                 size="sm"
-                onClick={() => {
-                  setOpen(false);
-                  setPinnedByClick(false);
-                  setUpgradeOpen(true);
-                }}
+                asChild
                 className="h-8 rounded-full bg-adam-neutral-10 px-4 text-xs font-medium text-adam-bg-dark [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-adam-bg-dark"
               >
-                Upgrade
+                <a href={BILLING_UPGRADE_URL}>Upgrade</a>
               </Button>
             </div>
 
@@ -258,13 +251,13 @@ export function CreditsButton() {
             <div className="h-px bg-adam-neutral-800" />
 
             {/* Footer link */}
-            <Link
-              to="/subscription"
+            <a
+              href={BILLING_URL}
               className="flex w-full items-center justify-between px-4 py-3 text-sm text-adam-neutral-10 [@media(hover:hover)]:hover:bg-adam-neutral-900"
             >
               <span>View plans</span>
               <span aria-hidden>→</span>
-            </Link>
+            </a>
           </div>
         )}
       </div>

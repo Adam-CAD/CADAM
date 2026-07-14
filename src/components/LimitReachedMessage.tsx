@@ -1,6 +1,7 @@
 import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { Link } from '@tanstack/react-router';
 import { TrialDialog } from './auth/TrialDialog';
+import { BILLING_UPGRADE_URL } from '@/config/billing';
 import { useState, useEffect } from 'react';
 
 const TRIAL_DIALOG_SHOWN_KEY = 'adam_trial_dialog_shown';
@@ -55,9 +56,12 @@ function LimitReachedSpan({ onTrialClick }: { onTrialClick?: () => void }) {
     return (
       <span>
         You've used all your tokens.{' '}
-        <Link to="/subscription" className="text-adam-blue hover:underline">
+        <a
+          href={BILLING_UPGRADE_URL}
+          className="text-adam-blue hover:underline"
+        >
           Upgrade
-        </Link>{' '}
+        </a>{' '}
         for more tokens, or{' '}
         <Link to="/settings" className="text-adam-blue hover:underline">
           buy a token pack
@@ -91,9 +95,9 @@ function LimitReachedSpan({ onTrialClick }: { onTrialClick?: () => void }) {
         Buy more tokens
       </Link>{' '}
       or{' '}
-      <Link to="/subscription" className="text-adam-blue hover:underline">
+      <a href={BILLING_UPGRADE_URL} className="text-adam-blue hover:underline">
         upgrade your plan
-      </Link>
+      </a>
       .
     </span>
   );
