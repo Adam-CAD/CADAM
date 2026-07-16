@@ -18,6 +18,7 @@ import { useProfile, useUpdateProfile } from '@/services/profileService';
 import { AvatarUpdateDialog } from '@/components/auth/AvatarUpdateDialog';
 import { useTokenPacks } from '@/hooks/useTokenPacks';
 import { PLAN_DISPLAY_NAMES } from '@/config/plan-features';
+import { BILLING_UPGRADE_URL } from '@/config/billing';
 import { accountUrl, ssoManaged } from '@/lib/supabase';
 import { UserAvatar } from '@/components/chat/UserAvatar';
 
@@ -363,14 +364,13 @@ export default function SettingsView() {
                     )}
                   </Button>
                   {level === 'free' && (
-                    <Link to="/subscription">
-                      <Button
-                        className="rounded-full font-light"
-                        variant="light"
-                      >
-                        Upgrade
-                      </Button>
-                    </Link>
+                    <Button
+                      asChild
+                      className="rounded-full font-light"
+                      variant="light"
+                    >
+                      <a href={BILLING_UPGRADE_URL}>Upgrade</a>
+                    </Button>
                   )}
                 </div>
               </div>

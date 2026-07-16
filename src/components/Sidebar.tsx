@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, ssoProvider } from '@/lib/supabase';
+import { BILLING_URL } from '@/config/billing';
 import {
   Sheet,
   SheetContent,
@@ -39,7 +40,7 @@ interface SidebarProps {
   setIsSidebarOpen: (open: boolean) => void;
 }
 
-type SidebarPath = '/' | '/history' | '/subscription';
+type SidebarPath = '/' | '/history';
 
 function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
   const navigate = useNavigate();
@@ -391,11 +392,11 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
                       <span>Settings</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => sidebarNavigate('/subscription')}
-                  >
-                    <Crown className="mr-2 h-4 w-4" />
-                    <span>Subscriptions</span>
+                  <DropdownMenuItem asChild>
+                    <a href={BILLING_URL} className="flex items-center">
+                      <Crown className="mr-2 h-4 w-4" />
+                      <span>Subscriptions</span>
+                    </a>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

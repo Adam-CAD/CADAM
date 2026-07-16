@@ -31,11 +31,11 @@ import { Route as ApiBillingStatusRouteImport } from './routes/api/billing-statu
 import { Route as ApiBillingProductsRouteImport } from './routes/api/billing-products';
 import { Route as ApiBillingPortalRouteImport } from './routes/api/billing-portal';
 import { Route as ApiBillingCheckoutRouteImport } from './routes/api/billing-checkout';
+import { Route as LayoutSubscriptionRouteImport } from './routes/_layout/subscription';
 import { Route as LayoutAuthRouteImport } from './routes/_layout/_auth';
 import { Route as LayoutSplatRouteImport } from './routes/_layout/$';
 import { Route as ApiJacksonPollockSplatRouteImport } from './routes/api/jackson-pollock/$';
 import { Route as LayoutShareIdRouteImport } from './routes/_layout/share/$id';
-import { Route as LayoutAuthSubscriptionRouteImport } from './routes/_layout/_auth/subscription';
 import { Route as LayoutAuthSettingsRouteImport } from './routes/_layout/_auth/settings';
 import { Route as LayoutAuthHistoryRouteImport } from './routes/_layout/_auth/history';
 import { Route as ApiInternalAccountDeleteRouteImport } from './routes/api/internal/account/delete';
@@ -150,6 +150,11 @@ const ApiBillingCheckoutRoute = ApiBillingCheckoutRouteImport.update({
   path: '/api/billing-checkout',
   getParentRoute: () => rootRouteImport,
 } as any);
+const LayoutSubscriptionRoute = LayoutSubscriptionRouteImport.update({
+  id: '/subscription',
+  path: '/subscription',
+  getParentRoute: () => LayoutRoute,
+} as any);
 const LayoutAuthRoute = LayoutAuthRouteImport.update({
   id: '/_auth',
   getParentRoute: () => LayoutRoute,
@@ -168,11 +173,6 @@ const LayoutShareIdRoute = LayoutShareIdRouteImport.update({
   id: '/share/$id',
   path: '/share/$id',
   getParentRoute: () => LayoutRoute,
-} as any);
-const LayoutAuthSubscriptionRoute = LayoutAuthSubscriptionRouteImport.update({
-  id: '/subscription',
-  path: '/subscription',
-  getParentRoute: () => LayoutAuthRoute,
 } as any);
 const LayoutAuthSettingsRoute = LayoutAuthSettingsRouteImport.update({
   id: '/settings',
@@ -207,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/terms-of-service': typeof TermsOfServiceRoute;
   '/update-password': typeof UpdatePasswordRoute;
   '/$': typeof LayoutSplatRoute;
+  '/subscription': typeof LayoutSubscriptionRoute;
   '/api/billing-checkout': typeof ApiBillingCheckoutRoute;
   '/api/billing-portal': typeof ApiBillingPortalRoute;
   '/api/billing-products': typeof ApiBillingProductsRoute;
@@ -221,7 +222,6 @@ export interface FileRoutesByFullPath {
   '/assets/$': typeof AssetsSplatRoute;
   '/history': typeof LayoutAuthHistoryRoute;
   '/settings': typeof LayoutAuthSettingsRoute;
-  '/subscription': typeof LayoutAuthSubscriptionRoute;
   '/share/$id': typeof LayoutShareIdRoute;
   '/api/jackson-pollock/$': typeof ApiJacksonPollockSplatRoute;
   '/editor/$id': typeof LayoutAuthEditorIdRoute;
@@ -238,6 +238,7 @@ export interface FileRoutesByTo {
   '/update-password': typeof UpdatePasswordRoute;
   '/$': typeof LayoutSplatRoute;
   '/': typeof LayoutIndexRoute;
+  '/subscription': typeof LayoutSubscriptionRoute;
   '/api/billing-checkout': typeof ApiBillingCheckoutRoute;
   '/api/billing-portal': typeof ApiBillingPortalRoute;
   '/api/billing-products': typeof ApiBillingProductsRoute;
@@ -252,7 +253,6 @@ export interface FileRoutesByTo {
   '/assets/$': typeof AssetsSplatRoute;
   '/history': typeof LayoutAuthHistoryRoute;
   '/settings': typeof LayoutAuthSettingsRoute;
-  '/subscription': typeof LayoutAuthSubscriptionRoute;
   '/share/$id': typeof LayoutShareIdRoute;
   '/api/jackson-pollock/$': typeof ApiJacksonPollockSplatRoute;
   '/editor/$id': typeof LayoutAuthEditorIdRoute;
@@ -271,6 +271,7 @@ export interface FileRoutesById {
   '/update-password': typeof UpdatePasswordRoute;
   '/_layout/$': typeof LayoutSplatRoute;
   '/_layout/_auth': typeof LayoutAuthRouteWithChildren;
+  '/_layout/subscription': typeof LayoutSubscriptionRoute;
   '/api/billing-checkout': typeof ApiBillingCheckoutRoute;
   '/api/billing-portal': typeof ApiBillingPortalRoute;
   '/api/billing-products': typeof ApiBillingProductsRoute;
@@ -286,7 +287,6 @@ export interface FileRoutesById {
   '/_layout/': typeof LayoutIndexRoute;
   '/_layout/_auth/history': typeof LayoutAuthHistoryRoute;
   '/_layout/_auth/settings': typeof LayoutAuthSettingsRoute;
-  '/_layout/_auth/subscription': typeof LayoutAuthSubscriptionRoute;
   '/_layout/share/$id': typeof LayoutShareIdRoute;
   '/api/jackson-pollock/$': typeof ApiJacksonPollockSplatRoute;
   '/_layout/_auth/editor/$id': typeof LayoutAuthEditorIdRoute;
@@ -305,6 +305,7 @@ export interface FileRouteTypes {
     | '/terms-of-service'
     | '/update-password'
     | '/$'
+    | '/subscription'
     | '/api/billing-checkout'
     | '/api/billing-portal'
     | '/api/billing-products'
@@ -319,7 +320,6 @@ export interface FileRouteTypes {
     | '/assets/$'
     | '/history'
     | '/settings'
-    | '/subscription'
     | '/share/$id'
     | '/api/jackson-pollock/$'
     | '/editor/$id'
@@ -336,6 +336,7 @@ export interface FileRouteTypes {
     | '/update-password'
     | '/$'
     | '/'
+    | '/subscription'
     | '/api/billing-checkout'
     | '/api/billing-portal'
     | '/api/billing-products'
@@ -350,7 +351,6 @@ export interface FileRouteTypes {
     | '/assets/$'
     | '/history'
     | '/settings'
-    | '/subscription'
     | '/share/$id'
     | '/api/jackson-pollock/$'
     | '/editor/$id'
@@ -368,6 +368,7 @@ export interface FileRouteTypes {
     | '/update-password'
     | '/_layout/$'
     | '/_layout/_auth'
+    | '/_layout/subscription'
     | '/api/billing-checkout'
     | '/api/billing-portal'
     | '/api/billing-products'
@@ -383,7 +384,6 @@ export interface FileRouteTypes {
     | '/_layout/'
     | '/_layout/_auth/history'
     | '/_layout/_auth/settings'
-    | '/_layout/_auth/subscription'
     | '/_layout/share/$id'
     | '/api/jackson-pollock/$'
     | '/_layout/_auth/editor/$id'
@@ -572,6 +572,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBillingCheckoutRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/_layout/subscription': {
+      id: '/_layout/subscription';
+      path: '/subscription';
+      fullPath: '/subscription';
+      preLoaderRoute: typeof LayoutSubscriptionRouteImport;
+      parentRoute: typeof LayoutRoute;
+    };
     '/_layout/_auth': {
       id: '/_layout/_auth';
       path: '';
@@ -599,13 +606,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/share/$id';
       preLoaderRoute: typeof LayoutShareIdRouteImport;
       parentRoute: typeof LayoutRoute;
-    };
-    '/_layout/_auth/subscription': {
-      id: '/_layout/_auth/subscription';
-      path: '/subscription';
-      fullPath: '/subscription';
-      preLoaderRoute: typeof LayoutAuthSubscriptionRouteImport;
-      parentRoute: typeof LayoutAuthRoute;
     };
     '/_layout/_auth/settings': {
       id: '/_layout/_auth/settings';
@@ -641,14 +641,12 @@ declare module '@tanstack/react-router' {
 interface LayoutAuthRouteChildren {
   LayoutAuthHistoryRoute: typeof LayoutAuthHistoryRoute;
   LayoutAuthSettingsRoute: typeof LayoutAuthSettingsRoute;
-  LayoutAuthSubscriptionRoute: typeof LayoutAuthSubscriptionRoute;
   LayoutAuthEditorIdRoute: typeof LayoutAuthEditorIdRoute;
 }
 
 const LayoutAuthRouteChildren: LayoutAuthRouteChildren = {
   LayoutAuthHistoryRoute: LayoutAuthHistoryRoute,
   LayoutAuthSettingsRoute: LayoutAuthSettingsRoute,
-  LayoutAuthSubscriptionRoute: LayoutAuthSubscriptionRoute,
   LayoutAuthEditorIdRoute: LayoutAuthEditorIdRoute,
 };
 
@@ -659,6 +657,7 @@ const LayoutAuthRouteWithChildren = LayoutAuthRoute._addFileChildren(
 interface LayoutRouteChildren {
   LayoutSplatRoute: typeof LayoutSplatRoute;
   LayoutAuthRoute: typeof LayoutAuthRouteWithChildren;
+  LayoutSubscriptionRoute: typeof LayoutSubscriptionRoute;
   LayoutIndexRoute: typeof LayoutIndexRoute;
   LayoutShareIdRoute: typeof LayoutShareIdRoute;
 }
@@ -666,6 +665,7 @@ interface LayoutRouteChildren {
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutSplatRoute: LayoutSplatRoute,
   LayoutAuthRoute: LayoutAuthRouteWithChildren,
+  LayoutSubscriptionRoute: LayoutSubscriptionRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutShareIdRoute: LayoutShareIdRoute,
 };
