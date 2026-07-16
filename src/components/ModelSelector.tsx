@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import {
   DropdownMenu,
@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { ProviderLogo } from '@/components/ProviderLogo';
 import { cn } from '@/lib/utils';
 import { Model } from '@shared/types';
 import { ModelConfig } from '../types/misc.ts';
@@ -174,7 +175,7 @@ export function ModelSelector({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="flex w-64 flex-col gap-1 rounded-lg bg-adam-neutral-700 p-1"
+        className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto rounded-lg bg-adam-neutral-700 p-1 [max-height:min(340px,var(--radix-dropdown-menu-content-available-height))]"
         align="end"
         // Radix fires this just before it tries to refocus the trigger.
         // We intercept the event: if the menu was opened with a pointer we
@@ -193,8 +194,7 @@ export function ModelSelector({
           <DropdownMenuItem
             key={model.id}
             className={cn(
-              'cursor-pointer rounded-md bg-adam-neutral-700 px-4 transition-colors duration-150 focus:bg-adam-bg-secondary-dark',
-              currentType === 'creative' ? 'py-3' : 'py-2',
+              'cursor-pointer rounded-md bg-adam-neutral-700 px-3 py-2.5 transition-colors duration-150 focus:bg-adam-bg-secondary-dark',
               selectedModel === model.id && 'bg-adam-neutral-800',
               !!model.disabled && 'cursor-not-allowed opacity-50',
             )}
@@ -205,27 +205,41 @@ export function ModelSelector({
             }}
             disabled={!!model.disabled}
           >
-            <div className="flex-1">
-              <span
+            <div className="flex w-full items-start gap-3">
+              <ProviderLogo
+                provider={model.provider}
                 className={cn(
-                  'text-sm font-medium',
+                  'mt-0.5',
                   focused ? 'text-white' : 'text-adam-text-primary',
                 )}
-              >
-                {model.name}
-              </span>
-              {/* Creative modes (Draft/Textureless/Max Quality) rely on the
-                  description to explain the speed/quality/texture tradeoff;
-                  parametric models show names only to keep the list compact. */}
-              {currentType === 'creative' && model.description && (
-                <p
+              />
+              <div className="min-w-0 flex-1">
+                <span
                   className={cn(
-                    'mt-0.5 text-xs',
-                    focused ? 'text-white' : 'text-gray-400',
+                    'text-sm font-medium',
+                    focused ? 'text-white' : 'text-adam-text-primary',
                   )}
                 >
-                  {model.description}
-                </p>
+                  {model.name}
+                </span>
+                {model.description && (
+                  <p
+                    className={cn(
+                      'mt-0.5 text-xs',
+                      focused ? 'text-white' : 'text-gray-400',
+                    )}
+                  >
+                    {model.description}
+                  </p>
+                )}
+              </div>
+              {selectedModel === model.id && (
+                <Check
+                  className={cn(
+                    'mt-0.5 h-4 w-4 shrink-0',
+                    focused ? 'text-white' : 'text-adam-text-primary',
+                  )}
+                />
               )}
             </div>
           </DropdownMenuItem>
