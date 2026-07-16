@@ -41,6 +41,8 @@ function LowTokensWarningContent({
         {tokensText}.{' '}
         <a
           href={BILLING_UPGRADE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="text-adam-blue hover:underline"
         >
           Upgrade
@@ -77,7 +79,12 @@ function LowTokensWarningContent({
         Buy more tokens
       </Link>{' '}
       or{' '}
-      <a href={BILLING_UPGRADE_URL} className="text-adam-blue hover:underline">
+      <a
+        href={BILLING_UPGRADE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-adam-blue hover:underline"
+      >
         upgrade
       </a>
       .

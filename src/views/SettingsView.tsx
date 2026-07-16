@@ -2,10 +2,7 @@ import { Button } from '@/components/ui/button';
 import { getLevel, useAuth } from '@/contexts/AuthContext';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
-import {
-  useManageSubscription,
-  useTokenPackPurchase,
-} from '@/services/subscriptionService';
+import { useTokenPackPurchase } from '@/services/subscriptionService';
 import { cn } from '@/lib/utils';
 import { DeleteAccountDialog } from '@/components/auth/DeleteAccountDialog';
 import { Switch } from '@/components/ui/switch';
@@ -18,7 +15,7 @@ import { useProfile, useUpdateProfile } from '@/services/profileService';
 import { AvatarUpdateDialog } from '@/components/auth/AvatarUpdateDialog';
 import { useTokenPacks } from '@/hooks/useTokenPacks';
 import { PLAN_DISPLAY_NAMES } from '@/config/plan-features';
-import { BILLING_UPGRADE_URL } from '@/config/billing';
+import { BILLING_URL, BILLING_UPGRADE_URL } from '@/config/billing';
 import { accountUrl, ssoManaged } from '@/lib/supabase';
 import { UserAvatar } from '@/components/chat/UserAvatar';
 
@@ -66,9 +63,6 @@ export default function SettingsView() {
   useEffect(() => {
     setNewName(profile?.full_name || '');
   }, [profile?.full_name]);
-
-  const { mutate: handleManageSubscription, isPending: isManageLoading } =
-    useManageSubscription();
 
   const handleUpdateName = () => {
     updateProfile(
@@ -350,18 +344,17 @@ export default function SettingsView() {
 
                 <div className="flex flex-shrink-0 items-center gap-2">
                   <Button
-                    onClick={() => handleManageSubscription()}
+                    asChild
                     className="rounded-full font-light"
                     variant="dark"
-                    disabled={isManageLoading}
                   >
-                    {isManageLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : level !== 'free' ? (
-                      'Manage'
-                    ) : (
-                      'Manage billing'
-                    )}
+                    <a
+                      href={BILLING_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {level !== 'free' ? 'Manage' : 'Manage billing'}
+                    </a>
                   </Button>
                   {level === 'free' && (
                     <Button
@@ -369,7 +362,13 @@ export default function SettingsView() {
                       className="rounded-full font-light"
                       variant="light"
                     >
-                      <a href={BILLING_UPGRADE_URL}>Upgrade</a>
+                      <a
+                        href={BILLING_UPGRADE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Upgrade
+                      </a>
                     </Button>
                   )}
                 </div>
