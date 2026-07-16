@@ -364,14 +364,13 @@ export default function SettingsView() {
                     )}
                   </Button>
                   {level === 'free' && (
-                    <a href={BILLING_UPGRADE_URL}>
-                      <Button
-                        className="rounded-full font-light"
-                        variant="light"
-                      >
-                        Upgrade
-                      </Button>
-                    </a>
+                    <Button
+                      asChild
+                      className="rounded-full font-light"
+                      variant="light"
+                    >
+                      <a href={BILLING_UPGRADE_URL}>Upgrade</a>
+                    </Button>
                   )}
                 </div>
               </div>
