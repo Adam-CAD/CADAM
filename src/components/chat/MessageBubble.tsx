@@ -2,6 +2,7 @@ import { MeshImagePreview } from '@/components/viewer/MeshImagePreview';
 import { StreamingCodeBlock } from '@/components/chat/StreamingCodeBlock';
 import { ChatReasoning } from '@/components/chat/ChatReasoning';
 import { UserAvatar } from '@/components/chat/UserAvatar';
+import { ProviderLogo } from '@/components/ProviderLogo';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -834,18 +835,34 @@ function RetryModelDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-48 rounded-lg border border-adam-neutral-700 bg-adam-neutral-800 p-1"
+        className="w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-adam-neutral-700 bg-adam-neutral-800 p-1 [max-height:min(300px,var(--radix-dropdown-menu-content-available-height))]"
       >
         {modelOptions.map((option) => (
           <DropdownMenuItem
             key={option.id}
-            className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-1.5 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
+            className="cursor-pointer rounded-md bg-adam-neutral-800 px-2 py-2 text-xs text-adam-text-primary hover:bg-adam-neutral-700 focus:bg-adam-bg-secondary-dark"
             onClick={() => {
               onRetry(option.id);
               setIsOpen(false);
             }}
           >
-            {option.name}
+            <div className="flex w-full items-start gap-2.5">
+              <ProviderLogo
+                provider={option.provider}
+                className="mt-px h-3.5 w-3.5 text-adam-text-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <span className="font-medium">{option.name}</span>
+                {option.description && (
+                  <p className="mt-0.5 text-[11px] leading-4 text-gray-400">
+                    {option.description}
+                  </p>
+                )}
+              </div>
+              {option.id === selectedModel.id && (
+                <Check className="mt-px h-3.5 w-3.5 shrink-0" />
+              )}
+            </div>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
