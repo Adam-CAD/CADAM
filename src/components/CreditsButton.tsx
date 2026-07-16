@@ -95,6 +95,8 @@ export function CreditsButton() {
     return (
       <a
         href={BILLING_URL}
+        target="_blank"
+        rel="noopener noreferrer"
         aria-label="View credits"
         className={cn(
           'inline-flex items-center gap-1.5 rounded-full',
@@ -199,7 +201,13 @@ export function CreditsButton() {
                 asChild
                 className="h-8 rounded-full bg-adam-neutral-10 px-4 text-xs font-medium text-adam-bg-dark [@media(hover:hover)]:hover:bg-white [@media(hover:hover)]:hover:text-adam-bg-dark"
               >
-                <a href={BILLING_UPGRADE_URL}>Upgrade</a>
+                <a
+                  href={BILLING_UPGRADE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Upgrade
+                </a>
               </Button>
             </div>
 
@@ -252,7 +260,9 @@ export function CreditsButton() {
 
             {/* Footer link */}
             <a
-              href={BILLING_URL}
+              href={BILLING_UPGRADE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex w-full items-center justify-between px-4 py-3 text-sm text-adam-neutral-10 [@media(hover:hover)]:hover:bg-adam-neutral-900"
             >
               <span>View plans</span>

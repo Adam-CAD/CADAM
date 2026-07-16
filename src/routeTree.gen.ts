@@ -29,7 +29,6 @@ import { Route as ApiDeleteUserRouteImport } from './routes/api/delete-user';
 import { Route as ApiCreativeChatRouteImport } from './routes/api/creative-chat';
 import { Route as ApiBillingStatusRouteImport } from './routes/api/billing-status';
 import { Route as ApiBillingProductsRouteImport } from './routes/api/billing-products';
-import { Route as ApiBillingPortalRouteImport } from './routes/api/billing-portal';
 import { Route as ApiBillingCheckoutRouteImport } from './routes/api/billing-checkout';
 import { Route as LayoutSubscriptionRouteImport } from './routes/_layout/subscription';
 import { Route as LayoutAuthRouteImport } from './routes/_layout/_auth';
@@ -140,11 +139,6 @@ const ApiBillingProductsRoute = ApiBillingProductsRouteImport.update({
   path: '/api/billing-products',
   getParentRoute: () => rootRouteImport,
 } as any);
-const ApiBillingPortalRoute = ApiBillingPortalRouteImport.update({
-  id: '/api/billing-portal',
-  path: '/api/billing-portal',
-  getParentRoute: () => rootRouteImport,
-} as any);
 const ApiBillingCheckoutRoute = ApiBillingCheckoutRouteImport.update({
   id: '/api/billing-checkout',
   path: '/api/billing-checkout',
@@ -209,7 +203,6 @@ export interface FileRoutesByFullPath {
   '/$': typeof LayoutSplatRoute;
   '/subscription': typeof LayoutSubscriptionRoute;
   '/api/billing-checkout': typeof ApiBillingCheckoutRoute;
-  '/api/billing-portal': typeof ApiBillingPortalRoute;
   '/api/billing-products': typeof ApiBillingProductsRoute;
   '/api/billing-status': typeof ApiBillingStatusRoute;
   '/api/creative-chat': typeof ApiCreativeChatRoute;
@@ -240,7 +233,6 @@ export interface FileRoutesByTo {
   '/': typeof LayoutIndexRoute;
   '/subscription': typeof LayoutSubscriptionRoute;
   '/api/billing-checkout': typeof ApiBillingCheckoutRoute;
-  '/api/billing-portal': typeof ApiBillingPortalRoute;
   '/api/billing-products': typeof ApiBillingProductsRoute;
   '/api/billing-status': typeof ApiBillingStatusRoute;
   '/api/creative-chat': typeof ApiCreativeChatRoute;
@@ -273,7 +265,6 @@ export interface FileRoutesById {
   '/_layout/_auth': typeof LayoutAuthRouteWithChildren;
   '/_layout/subscription': typeof LayoutSubscriptionRoute;
   '/api/billing-checkout': typeof ApiBillingCheckoutRoute;
-  '/api/billing-portal': typeof ApiBillingPortalRoute;
   '/api/billing-products': typeof ApiBillingProductsRoute;
   '/api/billing-status': typeof ApiBillingStatusRoute;
   '/api/creative-chat': typeof ApiCreativeChatRoute;
@@ -307,7 +298,6 @@ export interface FileRouteTypes {
     | '/$'
     | '/subscription'
     | '/api/billing-checkout'
-    | '/api/billing-portal'
     | '/api/billing-products'
     | '/api/billing-status'
     | '/api/creative-chat'
@@ -338,7 +328,6 @@ export interface FileRouteTypes {
     | '/'
     | '/subscription'
     | '/api/billing-checkout'
-    | '/api/billing-portal'
     | '/api/billing-products'
     | '/api/billing-status'
     | '/api/creative-chat'
@@ -370,7 +359,6 @@ export interface FileRouteTypes {
     | '/_layout/_auth'
     | '/_layout/subscription'
     | '/api/billing-checkout'
-    | '/api/billing-portal'
     | '/api/billing-products'
     | '/api/billing-status'
     | '/api/creative-chat'
@@ -401,7 +389,6 @@ export interface RootRouteChildren {
   TermsOfServiceRoute: typeof TermsOfServiceRoute;
   UpdatePasswordRoute: typeof UpdatePasswordRoute;
   ApiBillingCheckoutRoute: typeof ApiBillingCheckoutRoute;
-  ApiBillingPortalRoute: typeof ApiBillingPortalRoute;
   ApiBillingProductsRoute: typeof ApiBillingProductsRoute;
   ApiBillingStatusRoute: typeof ApiBillingStatusRoute;
   ApiCreativeChatRoute: typeof ApiCreativeChatRoute;
@@ -558,13 +545,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBillingProductsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    '/api/billing-portal': {
-      id: '/api/billing-portal';
-      path: '/api/billing-portal';
-      fullPath: '/api/billing-portal';
-      preLoaderRoute: typeof ApiBillingPortalRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     '/api/billing-checkout': {
       id: '/api/billing-checkout';
       path: '/api/billing-checkout';
@@ -684,7 +664,6 @@ const rootRouteChildren: RootRouteChildren = {
   TermsOfServiceRoute: TermsOfServiceRoute,
   UpdatePasswordRoute: UpdatePasswordRoute,
   ApiBillingCheckoutRoute: ApiBillingCheckoutRoute,
-  ApiBillingPortalRoute: ApiBillingPortalRoute,
   ApiBillingProductsRoute: ApiBillingProductsRoute,
   ApiBillingStatusRoute: ApiBillingStatusRoute,
   ApiCreativeChatRoute: ApiCreativeChatRoute,

@@ -58,6 +58,8 @@ function LimitReachedSpan({ onTrialClick }: { onTrialClick?: () => void }) {
         You've used all your tokens.{' '}
         <a
           href={BILLING_UPGRADE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="text-adam-blue hover:underline"
         >
           Upgrade
@@ -95,7 +97,12 @@ function LimitReachedSpan({ onTrialClick }: { onTrialClick?: () => void }) {
         Buy more tokens
       </Link>{' '}
       or{' '}
-      <a href={BILLING_UPGRADE_URL} className="text-adam-blue hover:underline">
+      <a
+        href={BILLING_UPGRADE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-adam-blue hover:underline"
+      >
         upgrade your plan
       </a>
       .

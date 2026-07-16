@@ -382,13 +382,6 @@ export const billing = {
     );
   },
 
-  createPortal(email: string, body: { returnUrl: string }) {
-    if (isBypassed()) return Promise.reject(devCheckoutError());
-    return call('POST', `/v1/users/${enc(email)}/portal`, body).then((value) =>
-      parseResponse(urlResponseSchema, value, 'portal'),
-    );
-  },
-
   cancelSubscription(email: string, body: CancelSubscriptionBody = {}) {
     if (isBypassed())
       return Promise.resolve<CancelSubscriptionResult>({ canceled: true });

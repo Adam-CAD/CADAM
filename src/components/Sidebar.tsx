@@ -393,7 +393,12 @@ function DesktopSidebar({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <a href={BILLING_URL} className="flex items-center">
+                    <a
+                      href={BILLING_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center"
+                    >
                       <Crown className="mr-2 h-4 w-4" />
                       <span>Subscriptions</span>
                     </a>

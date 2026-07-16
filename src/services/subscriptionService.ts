@@ -76,25 +76,3 @@ export const useTokenPackPurchase = () => {
     },
   });
 };
-
-export const useManageSubscription = () => {
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async () => {
-      return apiJson('billing-portal', { method: 'POST' }, urlResponseSchema);
-    },
-    onSuccess: (data) => {
-      window.location.href = data.url;
-    },
-    onError: (error, variables) => {
-      Sentry.captureException(error, { extra: { variables } });
-      toast({
-        title: 'Error',
-        description:
-          'Failed to open subscription management. Please try again.',
-        variant: 'destructive',
-      });
-    },
-  });
-};
