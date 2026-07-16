@@ -291,6 +291,16 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'moonshotai/kimi-k3',
+    name: 'Kimi K3',
+    description:
+      'Moonshot AI reasoning model for complex coding and agentic work',
+    provider: 'Moonshot AI',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
     id: 'z-ai/glm-5.2',
     name: 'GLM 5.2',
     description: 'Z.AI model with strong agentic coding and reasoning',
