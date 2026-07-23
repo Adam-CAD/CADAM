@@ -61,14 +61,21 @@ const MODEL_PRICES: Record<
   'anthropic/claude-sonnet-4.5': { input: 3, output: 15 },
   'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
 
-  // Google — cached content reads bill at ~25% of input price; there is
-  // no cache-write surcharge (cache storage is billed per-hour, which
-  // we don't track here).
+  // Google — cached content reads bill at a fraction of input price
+  // (~25% for 3.1 Pro, 10% for 3.6 Flash); there is no cache-write
+  // surcharge (cache storage is billed per-hour, which we don't track
+  // here).
   'google/gemini-3.1-pro-preview': {
     input: 1.25,
     output: 10,
     cacheRead: 0.31,
     cacheWrite: 1.25,
+  },
+  'google/gemini-3.6-flash': {
+    input: 1.5,
+    output: 7.5,
+    cacheRead: 0.15,
+    cacheWrite: 1.5,
   },
 
   // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.

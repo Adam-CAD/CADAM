@@ -246,6 +246,15 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'google/gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    description: 'Fast, token-efficient Google model for everyday tasks',
+    provider: 'Google',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
     id: 'anthropic/claude-fable-5',
     name: 'Claude Fable 5',
     description: 'Most capable Anthropic model; best reasoning at highest cost',
