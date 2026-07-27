@@ -26,6 +26,7 @@ import imageType from 'image-type';
 import { z } from 'zod';
 import { billing, BillingClientError } from './billingClient';
 import { corsHeaders, isRecord } from './api';
+import { agentPondTelemetry } from './agentpond';
 import { env, requiredEnv } from './env';
 import { logError } from './serverLog';
 import {
@@ -739,6 +740,9 @@ async function generateConversationTitle({
   try {
     const result = await generateText({
       model: anthropic('claude-haiku-4-5'),
+      experimental_telemetry: agentPondTelemetry(
+        'cadam.generate-conversation-title',
+      ),
       system:
         'Generate a short title for a 3D creation conversation. Return only the title.',
       prompt: text,
@@ -784,6 +788,9 @@ async function generateConversationSuggestions({
   try {
     const result = await generateText({
       model: anthropic('claude-haiku-4-5'),
+      experimental_telemetry: agentPondTelemetry(
+        'cadam.generate-conversation-suggestions',
+      ),
       system:
         conversationType === 'creative'
           ? 'Given a 3D mesh design conversation, return an array of exactly 2 follow-up prompts the user might want to send next. Each prompt is a concise instruction of 3 words or fewer, not a question. Return exactly 2 items — no more, no fewer.'
@@ -1253,6 +1260,7 @@ export async function handleAiChatRequest(req: Request) {
 
   const result = streamText({
     model: chatLanguageModel,
+    experimental_telemetry: agentPondTelemetry('cadam.chat'),
     providerOptions: chatProviderOptions,
     system: systemPrompt(conversation),
     messages: modelMessages,

@@ -203,6 +203,7 @@ npm run dev
   GOOGLE_API_KEY="<Test Google API Key>"
   FAL_KEY="<Test FAL API Key>"
   SUPABASE_SERVICE_ROLE_KEY="<Test Service Role Key>"
+  AGENTPOND_ENABLED="false"
   BILLING_SERVICE_URL="<Test Billing Service URL>"
   BILLING_SERVICE_KEY="<Test Billing Service Key>"
   ENVIRONMENT="local"
@@ -210,6 +211,27 @@ npm run dev
   WEBHOOK_BASE_URL="<Public TanStack App URL>" # Your app URL for /cadam/api callbacks
   NGROK_URL="<NGROK URL>" # Optional local Supabase Storage tunnel for provider-readable signed URLs
   ```
+
+### Optional AgentPond AI tracing
+
+Set `AGENTPOND_ENABLED="true"` to export OpenInference traces directly to the
+private `agentpond` bucket in this Supabase project. Apply the Supabase
+migrations first, then use a server-only `SUPABASE_SECRET_KEY` or the existing
+`SUPABASE_SERVICE_ROLE_KEY`; never expose either key to the browser.
+
+The AI SDK telemetry configuration deliberately sets `recordInputs: true` and
+`recordOutputs: true`. This records full prompts, messages, tool data, and model
+responses, which can contain user or confidential content. Review access,
+retention, and consent requirements before enabling it. See Vercel's
+[AI SDK telemetry documentation](https://ai-sdk.dev/docs/ai-sdk-core/telemetry)
+for the exact content-capture behavior.
+
+After generating a request, inspect the local cache with:
+
+```bash
+npx agentpond sync
+npx agentpond traces list
+```
 
 ## 🌐 Setting Up ngrok for Local Development
 
