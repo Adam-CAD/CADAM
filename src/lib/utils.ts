@@ -318,6 +318,33 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsThinking: true,
     supportsVision: false,
   },
+  {
+    id: 'orcarouter/openai/gpt-5.6-sol',
+    name: 'GPT-5.6 Sol',
+    description: 'Frontier OpenAI model via the OrcaRouter gateway',
+    provider: 'OrcaRouter',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
+    id: 'orcarouter/anthropic/claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    description: 'Balanced frontier Anthropic model via OrcaRouter',
+    provider: 'OrcaRouter',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
+    id: 'orcarouter/kimi/kimi-k3',
+    name: 'Kimi K3',
+    description: 'Moonshot reasoning model via OrcaRouter',
+    provider: 'OrcaRouter',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
 ];
 
 export const CREATIVE_MODELS: ModelConfig[] = [
