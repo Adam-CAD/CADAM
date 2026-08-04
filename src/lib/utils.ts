@@ -310,6 +310,15 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'qwen/qwen3.8-max',
+    name: 'Qwen3.8 Max',
+    description: 'Alibaba flagship multimodal model for complex reasoning',
+    provider: 'Qwen',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
     id: 'z-ai/glm-5.2',
     name: 'GLM 5.2',
     description: 'Z.AI model with strong agentic coding and reasoning',
