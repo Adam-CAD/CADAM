@@ -93,6 +93,15 @@ const MODEL_PRICES: Record<
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
   'moonshotai/kimi-k3': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3 },
 
+  // DeepSeek — cached input reads at $0.003625/M (per OpenRouter); no
+  // cache-write surcharge.
+  'deepseek/deepseek-v4-pro-0813': {
+    input: 0.435,
+    output: 0.87,
+    cacheRead: 0.003625,
+    cacheWrite: 0.435,
+  },
+
   // Z.AI
   'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
 };
