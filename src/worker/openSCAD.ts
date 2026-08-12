@@ -323,14 +323,22 @@ class OpenSCADWrapper {
     }
 
     for (const library of libraries) {
+      // Match a real `include <BOSL2/...>` / `use <BOSL2/...>` statement, not a
+      // bare substring: "BOSL2" contains "BOSL", so substring matching mounted
+      // BOSL alongside BOSL2 on every compile, and a library name in a comment
+      // triggered a pointless fetch.
+      const libraryStatement = new RegExp(`(include|use)\\s*<${library.name}/`);
       if (
-        code.includes(library.name) &&
+        libraryStatement.test(code) &&
         !importLibraries.includes(library.name)
       ) {
         importLibraries.push(library.name);
 
         try {
           const response = await fetch(library.url);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} fetching ${library.url}`);
+          }
 
           // Unzip the file
           const zip = await response.blob();
@@ -364,7 +372,14 @@ class OpenSCADWrapper {
               }),
           );
         } catch (error) {
-          console.error('Error importing library', library.name, error);
+          // Fail the compile rather than continuing without the library:
+          // OpenSCAD would only report "Ignoring unknown module ..." per call
+          // site, which hides the real cause from both the user and the AI
+          // build loop.
+          throw new Error(
+            `Failed to load OpenSCAD library ${library.name}: ` +
+              (error instanceof Error ? error.message : String(error)),
+          );
         }
       }
     }
@@ -384,11 +399,16 @@ class OpenSCADWrapper {
     try {
       exitCode = instance.callMain(args);
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error('Adam exited with an error: ' + error.message);
-      } else {
-        throw new Error('Adam exited with an error');
-      }
+      // Throw OpenSCADError (not plain Error) so the stderr OpenSCAD printed
+      // before dying survives the worker boundary — it usually names the real
+      // problem (syntax error, unknown module) while the thrown value is often
+      // just an opaque number from the wasm runtime.
+      throw new OpenSCADError(
+        'Adam exited with an error' +
+          (error instanceof Error ? ': ' + error.message : ''),
+        code,
+        this.log.stdErr,
+      );
     }
 
     if (exitCode === 0) {

@@ -19,6 +19,7 @@ import {
   WorkerMessage,
   WorkerMessageType,
 } from '@/worker/types';
+import { errorFromWorker } from '@/worker/workerError';
 
 type PendingRequest = {
   resolve: (value: OpenSCADWorkerResponseData) => void;
@@ -40,7 +41,9 @@ function getToolWorker(): Worker {
     if (!req) return;
     pending.delete(id);
     if (err) {
-      req.reject(new Error(err.message || 'Worker operation failed'));
+      // This rejection becomes the build tool's errorText — keep the
+      // compiler's stderr so the model can self-correct the OpenSCAD.
+      req.reject(errorFromWorker(err));
     } else {
       req.resolve(event.data.data);
     }
