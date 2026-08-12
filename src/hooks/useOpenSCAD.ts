@@ -5,6 +5,7 @@ import {
   WorkerMessageType,
 } from '@/worker/types';
 import OpenSCADError from '@/lib/OpenSCADError';
+import { errorFromWorker } from '@/worker/workerError';
 import { normalizeOpenSCADDxf } from '@/utils/dxfUtils';
 
 // Type for pending request resolvers
@@ -59,7 +60,7 @@ export function useOpenSCAD() {
       pendingRequestsRef.current.delete(id);
 
       if (err) {
-        pending.reject(new Error(err.message || 'Worker operation failed'));
+        pending.reject(errorFromWorker(err));
       } else {
         pending.resolve(event.data.data);
       }

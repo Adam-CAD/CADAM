@@ -166,9 +166,10 @@ Geometry:
 - Use modules for repeated or meaningful model parts.
 
 BOSL2 library guidance:
-- BOSL2 is available to OpenSCAD code when the generated source includes the
-  literal token \`BOSL2\`. Include \`<BOSL2/std.scad>\` plus the specific module
-  file whenever the request needs a higher-level CAD primitive.
+- BOSL2 is available to OpenSCAD code when the generated source contains an
+  \`include <BOSL2/...>\` or \`use <BOSL2/...>\` statement. Include
+  \`<BOSL2/std.scad>\` plus the specific module file whenever the request needs
+  a higher-level CAD primitive.
 - For screws, bolts, nuts, threaded rods, or tapped/threaded holes, use BOSL2
   instead of trying to build threads from \`cylinder()\`, \`linear_extrude()\`,
   or hand-rolled helices. Include \`<BOSL2/screws.scad>\` for \`screw()\`,
