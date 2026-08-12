@@ -291,8 +291,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'x-ai/grok-4.5',
-    name: 'Grok 4.5',
+    id: 'x-ai/grok-4.6',
+    name: 'Grok 4.6',
     description: 'Latest xAI model with frontier coding and STEM performance',
     provider: 'xAI',
     supportsTools: true,
