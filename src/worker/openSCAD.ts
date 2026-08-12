@@ -24,6 +24,51 @@ const EXPORT_FORMAT_FLAGS: Record<string, string> = {
   dxf: 'dxf',
 };
 
+/**
+ * Blank out string literals and comments so library detection only sees
+ * active code. Regexes can't do this reliably (a `//` inside a string, a
+ * quote inside a comment), so this is a single-pass scanner over OpenSCAD's
+ * lexical shapes: double-quoted strings with backslash escapes, `//` line
+ * comments, and slash-star block comments. Replaced spans become spaces so a
+ * detection regex can never match across a removed region; newlines are kept
+ * so nothing merges across lines.
+ *
+ * Without this, a commented-out `include <BOSL2/std.scad>` (or one quoted in
+ * an `echo()`) would trigger a library fetch — and a failed fetch is fatal to
+ * the compile, which must never happen for a library the code doesn't use.
+ */
+export function stripStringsAndComments(code: string): string {
+  let out = '';
+  let i = 0;
+  const n = code.length;
+  while (i < n) {
+    const ch = code[i];
+    if (ch === '"') {
+      i++;
+      while (i < n && code[i] !== '"') {
+        if (code[i] === '\n') out += '\n';
+        i += code[i] === '\\' ? 2 : 1;
+      }
+      i++;
+      out += ' ';
+    } else if (ch === '/' && code[i + 1] === '/') {
+      while (i < n && code[i] !== '\n') i++;
+    } else if (ch === '/' && code[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(code[i] === '*' && code[i + 1] === '/')) {
+        if (code[i] === '\n') out += '\n';
+        i++;
+      }
+      i += 2;
+      out += ' ';
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
 let defaultFont: ArrayBuffer;
 
 class OpenSCADWrapper {
@@ -322,14 +367,17 @@ class OpenSCADWrapper {
       instance.FS.mkdir('/libraries');
     }
 
+    // Detect against comment- and string-stripped source so only ACTIVE
+    // statements count — a commented-out include must not trigger a (now
+    // fatal-on-failure) library fetch.
+    const activeCode = stripStringsAndComments(code);
     for (const library of libraries) {
       // Match a real `include <BOSL2/...>` / `use <BOSL2/...>` statement, not a
       // bare substring: "BOSL2" contains "BOSL", so substring matching mounted
-      // BOSL alongside BOSL2 on every compile, and a library name in a comment
-      // triggered a pointless fetch.
+      // BOSL alongside BOSL2 on every compile.
       const libraryStatement = new RegExp(`(include|use)\\s*<${library.name}/`);
       if (
-        libraryStatement.test(code) &&
+        libraryStatement.test(activeCode) &&
         !importLibraries.includes(library.name)
       ) {
         importLibraries.push(library.name);
