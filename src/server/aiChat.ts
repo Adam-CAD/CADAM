@@ -62,7 +62,7 @@ const MODEL_PRICES: Record<
   'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
 
   // Google — cached content reads bill at a fraction of input price
-  // (~25% for 3.1 Pro, 10% for 3.6 Flash); there is no cache-write
+  // (~25% for 3.1 Pro, 10% for 3.7 Flash); there is no cache-write
   // surcharge (cache storage is billed per-hour, which we don't track
   // here).
   'google/gemini-3.1-pro-preview': {
@@ -71,11 +71,13 @@ const MODEL_PRICES: Record<
     cacheRead: 0.31,
     cacheWrite: 1.25,
   },
-  'google/gemini-3.6-flash': {
-    input: 1.5,
-    output: 7.5,
-    cacheRead: 0.15,
-    cacheWrite: 1.5,
+  // 3.7 Flash rates are Google's introductory pricing through Dec 31,
+  // 2026; they double on Jan 1, 2027 (to 1.5 / 7.5 / 0.15).
+  'google/gemini-3.7-flash': {
+    input: 0.75,
+    output: 3.75,
+    cacheRead: 0.075,
+    cacheWrite: 0.75,
   },
 
   // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.
