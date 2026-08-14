@@ -199,6 +199,7 @@ npm run dev
   ```
   ANTHROPIC_API_KEY="<Test Anthropic API Key>"
   OPENROUTER_API_KEY="<Test OpenRouter API Key>"
+  ORCAROUTER_API_KEY="<Test OrcaRouter API Key>"
   OPENAI_API_KEY="<Test OpenAI API Key>"
   GOOGLE_API_KEY="<Test Google API Key>"
   FAL_KEY="<Test FAL API Key>"

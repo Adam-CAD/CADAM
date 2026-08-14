@@ -95,6 +95,22 @@ const MODEL_PRICES: Record<
 
   // Z.AI
   'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
+
+  // OrcaRouter — same upstream models, billed at the same per-million rates
+  // as their direct counterparts above.
+  'orcarouter/openai/gpt-5.6-sol': {
+    input: 5,
+    output: 30,
+    cacheRead: 0.5,
+    cacheWrite: 6.25,
+  },
+  'orcarouter/anthropic/claude-sonnet-5': { input: 2, output: 10 },
+  'orcarouter/kimi/kimi-k3': {
+    input: 3,
+    output: 15,
+    cacheRead: 0.3,
+    cacheWrite: 3,
+  },
 };
 
 const FALLBACK_MODEL_PRICE = { input: 15, output: 75 };
@@ -327,11 +343,12 @@ function jsonResponse(body: unknown, status: number) {
 const THINKING_BUDGET_TOKENS = 9000;
 const PARAMETRIC_MAX_OUTPUT_TOKENS = 64000;
 
-type ChatProvider = 'anthropic' | 'google' | 'openrouter';
+type ChatProvider = 'anthropic' | 'google' | 'openrouter' | 'orcarouter';
 
 function providerFor(modelId: string): ChatProvider {
   if (modelId.startsWith('anthropic/')) return 'anthropic';
   if (modelId.startsWith('google/')) return 'google';
+  if (modelId.startsWith('orcarouter/')) return 'orcarouter';
   return 'openrouter';
 }
 
@@ -356,12 +373,14 @@ type ChatProviders = {
   anthropic: () => AnthropicProvider;
   google: () => GoogleProvider;
   openrouter: () => ReturnType<typeof createOpenRouter>;
+  orcarouter: () => ReturnType<typeof createOpenRouter>;
 };
 
 function createChatProviders(): ChatProviders {
   let anthropic: AnthropicProvider | undefined;
   let google: GoogleProvider | undefined;
   let openrouter: ReturnType<typeof createOpenRouter> | undefined;
+  let orcarouter: ReturnType<typeof createOpenRouter> | undefined;
   return {
     anthropic: () => {
       if (!anthropic) {
@@ -384,6 +403,20 @@ function createChatProviders(): ChatProviders {
         apiKey: requiredEnv('OPENROUTER_API_KEY'),
       });
       return openrouter;
+    },
+    orcarouter: () => {
+      orcarouter ??= createOpenRouter({
+        apiKey: requiredEnv('ORCAROUTER_API_KEY'),
+        baseURL: 'https://api.orcarouter.ai/v1',
+        // Strict mode keeps `stream_options: { include_usage: true }` on
+        // streaming calls so the gateway reports token usage for billing.
+        compatibility: 'strict',
+        headers: {
+          'HTTP-Referer': 'https://github.com/Adam-CAD/CADAM',
+          'X-Title': 'CADAM',
+        },
+      });
+      return orcarouter;
     },
   };
 }
@@ -410,6 +443,19 @@ function buildChatModel(
       model: providers.openrouter().chat(modelId, {
         ...(thinking ? { reasoning: { max_tokens: thinkingBudget } } : {}),
         usage: { include: true },
+      }),
+    };
+  }
+
+  if (providerFor(modelId) === 'orcarouter') {
+    // OrcaRouter is an OpenAI-compatible gateway; it takes OpenRouter-style
+    // model ids ("openai/gpt-5.6-sol") but rejects OpenRouter-specific body
+    // params, so thinking maps to the OpenAI `reasoning_effort` parameter
+    // instead of the `reasoning` object the OpenRouter branch sends.
+    const id = modelId.slice('orcarouter/'.length);
+    return {
+      model: providers.orcarouter().chat(id, {
+        ...(thinking ? { extraBody: { reasoning_effort: 'high' } } : {}),
       }),
     };
   }
