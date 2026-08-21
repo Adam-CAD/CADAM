@@ -310,6 +310,16 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'deepseek/deepseek-v4-pro-0813',
+    name: 'DeepSeek V4 Pro',
+    description:
+      'DeepSeek mixture-of-experts model with a 1M-token context at low cost',
+    provider: 'DeepSeek',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: false,
+  },
+  {
     id: 'qwen/qwen3.8-max',
     name: 'Qwen3.8 Max',
     description: 'Alibaba flagship multimodal model for complex reasoning',
