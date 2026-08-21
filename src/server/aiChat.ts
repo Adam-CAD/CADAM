@@ -104,6 +104,9 @@ const MODEL_PRICES: Record<
     cacheWrite: 0.435,
   },
 
+  // Qwen — cached input reads at 12.5% of input; cache writes at 1.25x.
+  'qwen/qwen3.8-max': { input: 2, output: 6, cacheRead: 0.25, cacheWrite: 2.5 },
+
   // Z.AI
   'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
 
