@@ -95,6 +95,9 @@ const MODEL_PRICES: Record<
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
   'moonshotai/kimi-k3': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3 },
 
+  // Qwen — cached input reads at 12.5% of input; cache writes at 1.25x.
+  'qwen/qwen3.8-max': { input: 2, output: 6, cacheRead: 0.25, cacheWrite: 2.5 },
+
   // Z.AI
   'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
 

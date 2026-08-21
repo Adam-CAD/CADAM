@@ -310,6 +310,15 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'qwen/qwen3.8-max',
+    name: 'Qwen3.8 Max',
+    description: 'Alibaba flagship multimodal model for complex reasoning',
+    provider: 'Qwen',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
     id: 'stealth/ox-alpha',
     name: 'Ox Alpha',
     description: 'Cloaked preview reasoning model, free while in alpha',
