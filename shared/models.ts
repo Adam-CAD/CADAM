@@ -6,6 +6,7 @@ import type { Model } from './types';
 export const LEGACY_MODEL_IDS: Record<string, Model> = {
   'openai/gpt-5.5': 'openai/gpt-5.6-sol',
   'google/gemini-3.6-flash': 'google/gemini-3.7-flash',
+  'z-ai/glm-5.2': 'z-ai/glm-5.3',
 };
 
 export function normalizeModelId(model: Model): Model {
