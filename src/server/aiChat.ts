@@ -97,6 +97,13 @@ const MODEL_PRICES: Record<
 
   // Z.AI
   'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
+
+  // Stealth (cloaked OpenRouter model) — free while in alpha preview.
+  // Listed explicitly at 0 so it doesn't fall through to
+  // FALLBACK_MODEL_PRICE; each turn still bills the 1-token minimum via
+  // billingTokensFromUsage. Revisit if/when the model de-cloaks with
+  // real pricing.
+  'stealth/ox-alpha': { input: 0, output: 0 },
 };
 
 const FALLBACK_MODEL_PRICE = { input: 15, output: 75 };
