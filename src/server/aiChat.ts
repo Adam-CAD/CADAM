@@ -62,7 +62,7 @@ const MODEL_PRICES: Record<
   'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
 
   // Google — cached content reads bill at a fraction of input price
-  // (~25% for 3.1 Pro, 10% for 3.6 Flash); there is no cache-write
+  // (~25% for 3.1 Pro, 10% for 3.7 Flash); there is no cache-write
   // surcharge (cache storage is billed per-hour, which we don't track
   // here).
   'google/gemini-3.1-pro-preview': {
@@ -71,11 +71,13 @@ const MODEL_PRICES: Record<
     cacheRead: 0.31,
     cacheWrite: 1.25,
   },
-  'google/gemini-3.6-flash': {
-    input: 1.5,
-    output: 7.5,
-    cacheRead: 0.15,
-    cacheWrite: 1.5,
+  // 3.7 Flash rates are Google's introductory pricing through Dec 31,
+  // 2026; they double on Jan 1, 2027 (to 1.5 / 7.5 / 0.15).
+  'google/gemini-3.7-flash': {
+    input: 0.75,
+    output: 3.75,
+    cacheRead: 0.075,
+    cacheWrite: 0.75,
   },
 
   // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.
@@ -87,7 +89,7 @@ const MODEL_PRICES: Record<
   },
 
   // xAI — cached input reads at 25% of input; no cache-write surcharge.
-  'x-ai/grok-4.5': { input: 2, output: 6, cacheRead: 0.5, cacheWrite: 2 },
+  'x-ai/grok-4.6': { input: 2, output: 6, cacheRead: 0.5, cacheWrite: 2 },
 
   // MoonshotAI — cached input reads at 10% of input; no cache-write surcharge.
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
@@ -104,6 +106,13 @@ const MODEL_PRICES: Record<
 
   // Z.AI
   'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
+
+  // Stealth (cloaked OpenRouter model) — free while in alpha preview.
+  // Listed explicitly at 0 so it doesn't fall through to
+  // FALLBACK_MODEL_PRICE; each turn still bills the 1-token minimum via
+  // billingTokensFromUsage. Revisit if/when the model de-cloaks with
+  // real pricing.
+  'stealth/ox-alpha': { input: 0, output: 0 },
 };
 
 const FALLBACK_MODEL_PRICE = { input: 15, output: 75 };
@@ -175,9 +184,10 @@ Geometry:
 - Use modules for repeated or meaningful model parts.
 
 BOSL2 library guidance:
-- BOSL2 is available to OpenSCAD code when the generated source includes the
-  literal token \`BOSL2\`. Include \`<BOSL2/std.scad>\` plus the specific module
-  file whenever the request needs a higher-level CAD primitive.
+- BOSL2 is available to OpenSCAD code when the generated source contains an
+  \`include <BOSL2/...>\` or \`use <BOSL2/...>\` statement. Include
+  \`<BOSL2/std.scad>\` plus the specific module file whenever the request needs
+  a higher-level CAD primitive.
 - For screws, bolts, nuts, threaded rods, or tapped/threaded holes, use BOSL2
   instead of trying to build threads from \`cylinder()\`, \`linear_extrude()\`,
   or hand-rolled helices. Include \`<BOSL2/screws.scad>\` for \`screw()\`,
