@@ -104,11 +104,14 @@ const MODEL_PRICES: Record<
     cacheWrite: 0.435,
   },
 
-  // Qwen — cached input reads at 12.5% of input; cache writes at 1.25x.
+  // Qwen — retired from the picker, kept so persisted conversations that
+  // still submit this id bill at real rates instead of FALLBACK_MODEL_PRICE.
+  // Cached input reads at 12.5% of input; cache writes at 1.25x.
   'qwen/qwen3.8-max': { input: 2, output: 6, cacheRead: 0.25, cacheWrite: 2.5 },
 
-  // Z.AI
-  'z-ai/glm-5.2': { input: 1.2, output: 4.1 },
+  // Z.AI — cached input reads at $0.26/M (per OpenRouter); no cache-write
+  // surcharge.
+  'z-ai/glm-5.3': { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4 },
 
   // Stealth (cloaked OpenRouter model) — free while in alpha preview.
   // Listed explicitly at 0 so it doesn't fall through to

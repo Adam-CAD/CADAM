@@ -320,15 +320,6 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: false,
   },
   {
-    id: 'qwen/qwen3.8-max',
-    name: 'Qwen3.8 Max',
-    description: 'Alibaba flagship multimodal model for complex reasoning',
-    provider: 'Qwen',
-    supportsTools: true,
-    supportsThinking: true,
-    supportsVision: true,
-  },
-  {
     id: 'stealth/ox-alpha',
     name: 'Ox Alpha',
     description: 'Cloaked preview reasoning model, free while in alpha',
@@ -338,8 +329,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'z-ai/glm-5.2',
-    name: 'GLM 5.2',
+    id: 'z-ai/glm-5.3',
+    name: 'GLM 5.3',
     description: 'Z.AI model with strong agentic coding and reasoning',
     provider: 'Z.AI',
     supportsTools: true,
