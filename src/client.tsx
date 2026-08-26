@@ -1,4 +1,5 @@
 import './lib/ensureRandomUUID';
+
 import * as Sentry from '@sentry/react';
 import { StartClient } from '@tanstack/react-start/client';
 import { StrictMode, startTransition } from 'react';

@@ -30,9 +30,13 @@ function installRandomUUIDPolyfill(): void {
     const hex = Array.from(bytes, (byte) =>
       byte.toString(16).padStart(2, '0'),
     ).join('');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as ReturnType<
-      Crypto['randomUUID']
-    >;
+    // A string built at runtime cannot be statically checked against the
+    // template-literal type that crypto.randomUUID() returns, so a single
+    // assertion to that exact type is unavoidable here.
+    const uuid =
+      `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
+      `${hex.slice(16, 20)}-${hex.slice(20)}`;
+    return uuid as `${string}-${string}-${string}-${string}-${string}`;
   };
 }
 
