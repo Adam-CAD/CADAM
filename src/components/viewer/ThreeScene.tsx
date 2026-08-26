@@ -1,5 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import {
+  Edges,
   Grid,
   OrbitControls,
   Stage,
@@ -8,9 +9,10 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { OrthographicPerspectiveToggle } from '@/components/viewer/OrthographicPerspectiveToggle';
 import { GridToggle } from '@/components/viewer/GridToggle';
+import { EdgesToggle } from '@/components/viewer/EdgesToggle';
 import { ViewGizmo } from '@/components/viewer/ViewGizmo';
 import { cn } from '@/lib/utils';
 
@@ -31,6 +33,7 @@ export function ThreeScene({
 }: ThreeSceneProps) {
   const [isOrthographic, setIsOrthographic] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
+  const [showEdges, setShowEdges] = useState(false);
 
   // Store the initial isMobile value to prevent position changes during resize
   const [initialIsMobile] = useState(isMobile);
@@ -49,18 +52,51 @@ export function ThreeScene({
   // and its group is rotated Z-up -> Y-up, so a point's world Y equals its
   // geometry Z; half the Z extent below the origin is the base.
   const groundY = useMemo(() => {
-    if (geometry) {
-      geometry.computeBoundingBox();
-      const b = geometry.boundingBox;
-      return b ? -(b.max.z - b.min.z) / 2 : 0;
-    }
     if (coloredGroup) {
       const box = new THREE.Box3().setFromObject(coloredGroup);
       if (box.isEmpty()) return 0;
       return -box.getSize(new THREE.Vector3()).z / 2;
     }
+    if (geometry) {
+      geometry.computeBoundingBox();
+      const b = geometry.boundingBox;
+      return b ? -(b.max.z - b.min.z) / 2 : 0;
+    }
     return 0;
   }, [geometry, coloredGroup]);
+
+  // Feature-edge overlay for the multi-mesh (coloredGroup) path: one
+  // EdgesGeometry per child mesh, kept in sync with the model's transforms.
+  const edgesObject = useMemo(() => {
+    if (!showEdges || !coloredGroup) return null;
+    coloredGroup.updateMatrixWorld(true);
+    const group = new THREE.Group();
+    const material = new THREE.LineBasicMaterial({ color: 0x1a1a1a });
+    coloredGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        const segments = new THREE.LineSegments(
+          new THREE.EdgesGeometry(child.geometry, 15),
+          material,
+        );
+        segments.applyMatrix4(child.matrixWorld);
+        group.add(segments);
+      }
+    });
+    return group;
+  }, [coloredGroup, showEdges]);
+
+  useEffect(() => {
+    const object = edgesObject;
+    if (!object) return;
+    return () => {
+      object.traverse((child) => {
+        if (child instanceof THREE.LineSegments) {
+          child.geometry.dispose();
+          if (!Array.isArray(child.material)) child.material.dispose();
+        }
+      });
+    };
+  }, [edgesObject]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -106,6 +142,12 @@ export function ThreeScene({
                   object={coloredGroup}
                   position={groupCenterOffset.toArray()}
                 />
+                {showEdges && edgesObject && (
+                  <primitive
+                    object={edgesObject}
+                    position={groupCenterOffset.toArray()}
+                  />
+                )}
               </group>
             ) : geometry ? (
               <mesh
@@ -119,6 +161,7 @@ export function ThreeScene({
                   roughness={0.3}
                   envMapIntensity={0.3}
                 />
+                {showEdges && <Edges threshold={15} color="#1a1a1a" />}
               </mesh>
             ) : null}
           </Stage>
@@ -154,6 +197,7 @@ export function ThreeScene({
       >
         <div className="flex items-center gap-2">
           <GridToggle showGrid={showGrid} onToggle={setShowGrid} />
+          <EdgesToggle showEdges={showEdges} onToggle={setShowEdges} />
           <OrthographicPerspectiveToggle
             isOrthographic={isOrthographic}
             onToggle={setIsOrthographic}
