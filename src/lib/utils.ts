@@ -320,15 +320,6 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: false,
   },
   {
-    id: 'stealth/ox-alpha',
-    name: 'Ox Alpha',
-    description: 'Cloaked preview reasoning model, free while in alpha',
-    provider: 'Stealth',
-    supportsTools: true,
-    supportsThinking: true,
-    supportsVision: true,
-  },
-  {
     id: 'z-ai/glm-5.3',
     name: 'GLM 5.3',
     description: 'Z.AI model with strong agentic coding and reasoning',
@@ -336,6 +327,15 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsTools: true,
     supportsThinking: true,
     supportsVision: false,
+  },
+  {
+    id: 'z-ai/glm-5.3-flash',
+    name: 'GLM 5.3 Flash',
+    description: 'Fast, low-cost Z.AI multimodal model for everyday tasks',
+    provider: 'Z.AI',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
   },
 ];
 

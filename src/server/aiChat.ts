@@ -112,13 +112,15 @@ const MODEL_PRICES: Record<
   // Z.AI — cached input reads at $0.26/M (per OpenRouter); no cache-write
   // surcharge.
   'z-ai/glm-5.3': { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4 },
-
-  // Stealth (cloaked OpenRouter model) — free while in alpha preview.
-  // Listed explicitly at 0 so it doesn't fall through to
-  // FALLBACK_MODEL_PRICE; each turn still bills the 1-token minimum via
-  // billingTokensFromUsage. Revisit if/when the model de-cloaks with
-  // real pricing.
-  'stealth/ox-alpha': { input: 0, output: 0 },
+  // 5.3 Flash is billed at its undiscounted base rate: OpenRouter runs a
+  // limited-time 50% ZAI promo (0.075 / 0.25 / 0.015) through Sep 9, 2026,
+  // but it also routes to non-discounted endpoints at these full rates.
+  'z-ai/glm-5.3-flash': {
+    input: 0.15,
+    output: 0.5,
+    cacheRead: 0.03,
+    cacheWrite: 0.15,
+  },
 };
 
 const FALLBACK_MODEL_PRICE = { input: 15, output: 75 };
