@@ -1,5 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import {
+  Grid,
   OrbitControls,
   Stage,
   Environment,
@@ -9,6 +10,7 @@ import {
 import * as THREE from 'three';
 import { Suspense, useMemo, useState } from 'react';
 import { OrthographicPerspectiveToggle } from '@/components/viewer/OrthographicPerspectiveToggle';
+import { GridToggle } from '@/components/viewer/GridToggle';
 import { ViewGizmo } from '@/components/viewer/ViewGizmo';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +30,7 @@ export function ThreeScene({
   coloredGroup,
 }: ThreeSceneProps) {
   const [isOrthographic, setIsOrthographic] = useState(true);
+  const [showGrid, setShowGrid] = useState(true);
 
   // Store the initial isMobile value to prevent position changes during resize
   const [initialIsMobile] = useState(isMobile);
@@ -41,6 +44,23 @@ export function ThreeScene({
     if (box.isEmpty()) return new THREE.Vector3();
     return box.getCenter(new THREE.Vector3()).negate();
   }, [coloredGroup]);
+
+  // Sit the ground grid at the model's base. The model is centered at the origin
+  // and its group is rotated Z-up -> Y-up, so a point's world Y equals its
+  // geometry Z; half the Z extent below the origin is the base.
+  const groundY = useMemo(() => {
+    if (geometry) {
+      geometry.computeBoundingBox();
+      const b = geometry.boundingBox;
+      return b ? -(b.max.z - b.min.z) / 2 : 0;
+    }
+    if (coloredGroup) {
+      const box = new THREE.Box3().setFromObject(coloredGroup);
+      if (box.isEmpty()) return 0;
+      return -box.getSize(new THREE.Vector3()).z / 2;
+    }
+    return 0;
+  }, [geometry, coloredGroup]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -102,18 +122,21 @@ export function ThreeScene({
               </mesh>
             ) : null}
           </Stage>
-          {/* <Grid
-          position={[0, 0, 0]}
-          cellSize={30}
-          cellThickness={0.5}
-          sectionSize={10}
-          sectionColor="gray"
-          sectionThickness={0.5}
-          fadeDistance={500}
-          fadeStrength={1}
-          followCamera={false}
-          infiniteGrid={true}
-        /> */}
+          {showGrid && (
+            <Grid
+              position={[0, groundY, 0]}
+              cellSize={30}
+              cellThickness={0.5}
+              cellColor="#c8c8c8"
+              sectionSize={10}
+              sectionColor="#f2f2f2"
+              sectionThickness={0.5}
+              fadeDistance={500}
+              fadeStrength={1}
+              followCamera={false}
+              infiniteGrid={true}
+            />
+          )}
           <OrbitControls
             makeDefault
             enableDamping={true}
@@ -130,6 +153,7 @@ export function ThreeScene({
         )}
       >
         <div className="flex items-center gap-2">
+          <GridToggle showGrid={showGrid} onToggle={setShowGrid} />
           <OrthographicPerspectiveToggle
             isOrthographic={isOrthographic}
             onToggle={setIsOrthographic}
