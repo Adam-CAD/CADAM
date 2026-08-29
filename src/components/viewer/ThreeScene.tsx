@@ -1,4 +1,4 @@
-import { Canvas } from '@react-three/fiber';
+import { Canvas, ThreeEvent } from '@react-three/fiber';
 import {
   OrbitControls,
   Stage,
@@ -7,7 +7,7 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { OrthographicPerspectiveToggle } from '@/components/viewer/OrthographicPerspectiveToggle';
 import { ViewGizmo } from '@/components/viewer/ViewGizmo';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,88 @@ interface ThreeSceneProps {
   isMobile?: boolean;
   backgroundColor?: string;
   coloredGroup?: THREE.Group | null;
+  partsGroup?: THREE.Group | null;
+  onSelectPart?: (name: string | null) => void;
+}
+
+const HOVER_EMISSIVE = 0x2a3542;
+const SELECT_EMISSIVE = 0x1150aa;
+const NO_EMISSIVE = 0x000000;
+
+function emissiveOf(object: THREE.Object3D | null): THREE.Color | null {
+  const material = (object as THREE.Mesh | null)?.material;
+  if (material && !Array.isArray(material) && 'emissive' in material) {
+    return (material as THREE.MeshStandardMaterial).emissive;
+  }
+  return null;
+}
+
+function paint(object: THREE.Object3D | null, hex: number): void {
+  emissiveOf(object)?.setHex(hex);
+}
+
+/**
+ * Render the per-part AMF group and let the user hover/click a part. Hover
+ * tints the hit part; clicking selects it and reports its name upward. The
+ * group is a raw THREE object (not R3F-managed), so highlighting mutates each
+ * mesh's emissive directly — cheap and reversible.
+ */
+function PickableParts({
+  group,
+  offset,
+  onSelectPart,
+}: {
+  group: THREE.Group;
+  offset: THREE.Vector3;
+  onSelectPart?: (name: string | null) => void;
+}) {
+  const hovered = useRef<THREE.Object3D | null>(null);
+  const selected = useRef<THREE.Object3D | null>(null);
+
+  const handleMove = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    const mesh = event.object;
+    if (hovered.current === mesh) return;
+    if (hovered.current && hovered.current !== selected.current) {
+      paint(hovered.current, NO_EMISSIVE);
+    }
+    hovered.current = mesh;
+    if (mesh !== selected.current) paint(mesh, HOVER_EMISSIVE);
+    document.body.style.cursor = 'pointer';
+  };
+
+  const handleOut = () => {
+    if (hovered.current && hovered.current !== selected.current) {
+      paint(hovered.current, NO_EMISSIVE);
+    }
+    hovered.current = null;
+    document.body.style.cursor = 'auto';
+  };
+
+  const handleDown = (event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    const mesh = event.object;
+    if (selected.current && selected.current !== mesh) {
+      paint(selected.current, NO_EMISSIVE);
+    }
+    selected.current = mesh;
+    paint(mesh, SELECT_EMISSIVE);
+    const name =
+      (mesh.userData.partName as string | undefined) ?? mesh.name ?? null;
+    onSelectPart?.(name);
+  };
+
+  return (
+    <group rotation={[-Math.PI / 2, 0, 0]}>
+      <primitive
+        object={group}
+        position={offset.toArray()}
+        onPointerMove={handleMove}
+        onPointerOut={handleOut}
+        onPointerDown={handleDown}
+      />
+    </group>
+  );
 }
 
 export function ThreeScene({
@@ -26,6 +108,8 @@ export function ThreeScene({
   isMobile = false,
   backgroundColor = '#3B3B3B',
   coloredGroup,
+  partsGroup,
+  onSelectPart,
 }: ThreeSceneProps) {
   const [isOrthographic, setIsOrthographic] = useState(true);
 
@@ -41,6 +125,13 @@ export function ThreeScene({
     if (box.isEmpty()) return new THREE.Vector3();
     return box.getCenter(new THREE.Vector3()).negate();
   }, [coloredGroup]);
+
+  const partsCenterOffset = useMemo(() => {
+    if (!partsGroup) return null;
+    const box = new THREE.Box3().setFromObject(partsGroup);
+    if (box.isEmpty()) return new THREE.Vector3();
+    return box.getCenter(new THREE.Vector3()).negate();
+  }, [partsGroup]);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -80,7 +171,13 @@ export function ThreeScene({
             <directionalLight position={[-5, 5, -5]} intensity={0.2} />
             <directionalLight position={[0, 5, 0]} intensity={0.2} />
             <directionalLight position={[-5, -5, -5]} intensity={0.6} />
-            {coloredGroup && groupCenterOffset ? (
+            {partsGroup && partsCenterOffset ? (
+              <PickableParts
+                group={partsGroup}
+                offset={partsCenterOffset}
+                onSelectPart={onSelectPart}
+              />
+            ) : coloredGroup && groupCenterOffset ? (
               <group rotation={[-Math.PI / 2, 0, 0]}>
                 <primitive
                   object={coloredGroup}
