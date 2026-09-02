@@ -246,8 +246,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'google/gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
+    id: 'google/gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
     description: 'Fast, token-efficient Google model for everyday tasks',
     provider: 'Google',
     supportsTools: true,
@@ -255,8 +255,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'anthropic/claude-fable-5',
-    name: 'Claude Fable 5',
+    id: 'anthropic/claude-fable-5.1',
+    name: 'Claude Fable 5.1',
     description: 'Most capable Anthropic model; best reasoning at highest cost',
     provider: 'Anthropic',
     supportsTools: true,

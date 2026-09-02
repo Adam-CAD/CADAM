@@ -53,7 +53,15 @@ const MODEL_PRICES: Record<
   { input: number; output: number; cacheRead?: number; cacheWrite?: number }
 > = {
   // Anthropic
-  'anthropic/claude-fable-5': { input: 10, output: 50 },
+  // Fable 5.1 cache reads bill at 0.025x input ($0.25/M), not the 0.1x
+  // default applied below, so they are listed explicitly; 5-min cache
+  // writes stay at the standard 1.25x.
+  'anthropic/claude-fable-5.1': {
+    input: 10,
+    output: 50,
+    cacheRead: 0.25,
+    cacheWrite: 12.5,
+  },
   'anthropic/claude-opus-4.8': { input: 5, output: 25 },
   'anthropic/claude-sonnet-5': { input: 2, output: 10 },
   'anthropic/claude-opus-4': { input: 15, output: 75 },
@@ -62,7 +70,7 @@ const MODEL_PRICES: Record<
   'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
 
   // Google — cached content reads bill at a fraction of input price
-  // (~25% for 3.1 Pro, 10% for 3.7 Flash); there is no cache-write
+  // (~25% for 3.1 Pro, 10% for 3.8 Flash); there is no cache-write
   // surcharge (cache storage is billed per-hour, which we don't track
   // here).
   'google/gemini-3.1-pro-preview': {
@@ -71,9 +79,9 @@ const MODEL_PRICES: Record<
     cacheRead: 0.31,
     cacheWrite: 1.25,
   },
-  // 3.7 Flash rates are Google's introductory pricing through Dec 31,
+  // 3.8 Flash rates are Google's introductory pricing through Dec 31,
   // 2026; they double on Jan 1, 2027 (to 1.5 / 7.5 / 0.15).
-  'google/gemini-3.7-flash': {
+  'google/gemini-3.8-flash': {
     input: 0.75,
     output: 3.75,
     cacheRead: 0.075,
