@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useCallback } from 'react';
+import { createContext, useContext, useRef, useState, useCallback } from 'react';
 
 interface MeshFilesContextType {
   // Store a mesh file by filename, optionally scoped to a conversationId
@@ -16,6 +16,8 @@ interface MeshFilesContextType {
   hasMeshFile: (filename: string, conversationId?: string) => boolean;
   // Clear all mesh files or files for a specific conversation
   clearMeshFiles: (conversationId?: string) => void;
+  // Reactive version counter incremented whenever files are updated
+  filesVersion: number;
 }
 
 export const MeshFilesContext = createContext<MeshFilesContextType | undefined>(
@@ -23,8 +25,8 @@ export const MeshFilesContext = createContext<MeshFilesContextType | undefined>(
 );
 
 export function MeshFilesProvider({ children }: { children: React.ReactNode }) {
-  // Use ref to avoid re-renders when files are added
   const meshFilesRef = useRef<Map<string, Blob>>(new Map());
+  const [filesVersion, setFilesVersion] = useState(0);
 
   const makeKey = (filename: string, conversationId?: string): string => {
     return conversationId ? `${conversationId}:${filename}` : filename;
@@ -37,10 +39,11 @@ export function MeshFilesProvider({ children }: { children: React.ReactNode }) {
           conversationId ? ` (conv: ${conversationId})` : ''
         } (${content.size} bytes)`,
       );
-      meshFilesRef.current.set(makeKey(filename, conversationId), content);
-      // Also store with plain filename as fallback if no collision
-      if (conversationId && !meshFilesRef.current.has(filename)) {
-        meshFilesRef.current.set(filename, content);
+      const key = makeKey(filename, conversationId);
+      const prev = meshFilesRef.current.get(key);
+      if (prev !== content) {
+        meshFilesRef.current.set(key, content);
+        setFilesVersion((v) => v + 1);
       }
     },
     [],
@@ -51,6 +54,17 @@ export function MeshFilesProvider({ children }: { children: React.ReactNode }) {
       if (conversationId) {
         const scoped = meshFilesRef.current.get(makeKey(filename, conversationId));
         if (scoped) return scoped;
+
+        // Check base filename without folder path under the same conversation
+        const baseName = filename.split('/').pop();
+        if (baseName && baseName !== filename) {
+          const scopedBase = meshFilesRef.current.get(
+            makeKey(baseName, conversationId),
+          );
+          if (scopedBase) return scopedBase;
+        }
+
+        return undefined;
       }
       return meshFilesRef.current.get(filename);
     },
@@ -63,6 +77,13 @@ export function MeshFilesProvider({ children }: { children: React.ReactNode }) {
         if (meshFilesRef.current.has(makeKey(filename, conversationId))) {
           return true;
         }
+        const baseName = filename.split('/').pop();
+        if (baseName && baseName !== filename) {
+          if (meshFilesRef.current.has(makeKey(baseName, conversationId))) {
+            return true;
+          }
+        }
+        return false;
       }
       return meshFilesRef.current.has(filename);
     },
@@ -72,19 +93,31 @@ export function MeshFilesProvider({ children }: { children: React.ReactNode }) {
   const clearMeshFiles = useCallback((conversationId?: string) => {
     if (!conversationId) {
       meshFilesRef.current.clear();
+      setFilesVersion((v) => v + 1);
       return;
     }
     const prefix = `${conversationId}:`;
+    let hasDeleted = false;
     for (const key of Array.from(meshFilesRef.current.keys())) {
       if (key.startsWith(prefix)) {
         meshFilesRef.current.delete(key);
+        hasDeleted = true;
       }
+    }
+    if (hasDeleted) {
+      setFilesVersion((v) => v + 1);
     }
   }, []);
 
   return (
     <MeshFilesContext.Provider
-      value={{ setMeshFile, getMeshFile, hasMeshFile, clearMeshFiles }}
+      value={{
+        setMeshFile,
+        getMeshFile,
+        hasMeshFile,
+        clearMeshFiles,
+        filesVersion,
+      }}
     >
       {children}
     </MeshFilesContext.Provider>

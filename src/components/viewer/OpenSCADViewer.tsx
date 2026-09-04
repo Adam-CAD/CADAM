@@ -16,23 +16,32 @@ import { ConversationContext } from '@/contexts/ConversationContext';
 import { createDXFProjectionCode } from '@/utils/dxfUtils';
 import { DxfExporter } from '@/utils/downloadUtils';
 
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Extract import() filenames from OpenSCAD code (supporting direct literals, variables, and unicode filenames)
 function extractImportFilenames(code: string): string[] {
   const filenames = new Set<string>();
 
   // 1. Direct string literals in import: import("...") or import('...')
-  const directImportRegex = /import\s*\(\s*["']([^"']+)["']\s*\)/g;
+  const directImportRegex = /import\s*\(\s*["']([^"']+)["']/g;
   let match;
   while ((match = directImportRegex.exec(code)) !== null) {
     filenames.add(match[1]);
   }
 
   // 2. Variable passed to import: import(var_name)
-  const varImportRegex = /import\s*\(\s*([a-zA-Z0-9_$]+)\s*\)/g;
+  const varImportRegex = /import\s*\(\s*([a-zA-Z0-9_$]+)/g;
   while ((match = varImportRegex.exec(code)) !== null) {
     const varName = match[1];
     // Find assignment to this variable: varName = "filename.stl";
-    const assignRegex = new RegExp(`${varName}\\s*=\\s*["']([^"']+)["']`, 'g');
+    // Require identifier boundaries and escape variable name to prevent substring collisions
+    const escapedVar = escapeRegExp(varName);
+    const assignRegex = new RegExp(
+      `(?:^|[^a-zA-Z0-9_$])${escapedVar}\\s*=\\s*["']([^"']+)["']`,
+      'g',
+    );
     let assignMatch;
     while ((assignMatch = assignRegex.exec(code)) !== null) {
       filenames.add(assignMatch[1]);
@@ -142,7 +151,7 @@ export function OpenSCADPreview({
     [writeFile, meshFilesCtx, conversationId],
   );
 
-  // Recompile the preview whenever the current SCAD code changes.
+  // Recompile the preview whenever the current SCAD code changes or hydrated files update.
   useEffect(() => {
     if (!scadCode) return;
 
@@ -156,7 +165,7 @@ export function OpenSCADPreview({
     };
 
     compileWithMeshFiles();
-  }, [scadCode, compileScad, prepareMeshFiles]);
+  }, [scadCode, compileScad, prepareMeshFiles, meshFilesCtx?.filesVersion]);
 
   // Register a parent-owned DXF exporter for the current SCAD code. The export
   // runs only when the user chooses DXF from the download menu.
