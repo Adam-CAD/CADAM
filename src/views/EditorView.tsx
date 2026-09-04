@@ -14,9 +14,9 @@ import { OpenSCADPreview } from '@/components/viewer/OpenSCADViewer';
 import { MeshPreview } from '@/components/viewer/MeshPreview';
 import Loader from '@/components/viewer/Loader';
 import { useAuth } from '@/contexts/AuthContext';
-import { ConversationContext } from '@/contexts/ConversationContext';
+import { ConversationContext, useConversation } from '@/contexts/ConversationContext';
 import { SelectedItemsContext } from '@/contexts/SelectedItemsContext';
-import { useConversation } from '@/contexts/ConversationContext';
+import { useMeshFiles } from '@/contexts/MeshFilesContext';
 import {
   ensureInputRecords,
   messageRowToChatMessage,
@@ -32,6 +32,10 @@ import {
   useChangeRatingMutation,
   useMessagesQuery,
 } from '@/services/messageService';
+import {
+  extractMeshAttachments,
+  downloadMeshAttachment,
+} from '@/services/meshService';
 import type { DxfExporter } from '@/utils/downloadUtils';
 import type { AppUIMessage } from '@shared/chatAi';
 import {
@@ -244,6 +248,34 @@ function ConversationEditor() {
     () => branchForLeaf(leafId),
     [branchForLeaf, leafId],
   );
+
+  const meshFiles = useMeshFiles();
+
+  // Automatically hydrate mesh files from conversation attachments into memory (scoped to conversation)
+  useEffect(() => {
+    if (!dbMessages || dbMessages.length === 0 || !conversation?.user_id || !conversation?.id) return;
+
+    const attachments = extractMeshAttachments(dbMessages);
+    for (const attachment of attachments) {
+      if (attachment.filename && !meshFiles.hasMeshFile(attachment.filename, conversation.id)) {
+        downloadMeshAttachment({
+          userId: conversation.user_id,
+          conversationId: conversation.id,
+          meshId: attachment.meshId,
+          fileType: attachment.fileType,
+        }).then((blob) => {
+          if (blob) {
+            meshFiles.setMeshFile(attachment.filename, blob, conversation.id);
+            meshFiles.setMeshFile(
+              `${attachment.meshId}.${attachment.fileType}`,
+              blob,
+              conversation.id,
+            );
+          }
+        });
+      }
+    }
+  }, [dbMessages, conversation?.user_id, conversation?.id, meshFiles]);
 
   const updateSelectedModel = useCallback(
     (nextModel: Model) => {

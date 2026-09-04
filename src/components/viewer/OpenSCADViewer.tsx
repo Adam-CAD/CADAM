@@ -12,18 +12,49 @@ import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
 import { MeshFilesContext } from '@/contexts/MeshFilesContext';
+import { ConversationContext } from '@/contexts/ConversationContext';
 import { createDXFProjectionCode } from '@/utils/dxfUtils';
 import { DxfExporter } from '@/utils/downloadUtils';
 
-// Extract import() filenames from OpenSCAD code
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Extract import() filenames from OpenSCAD code (supporting direct literals, variables, and unicode filenames)
 function extractImportFilenames(code: string): string[] {
-  const importRegex = /import\s*\(\s*"([^"]+)"\s*\)/g;
-  const filenames: string[] = [];
+  const filenames = new Set<string>();
+
+  // 1. Direct string literals in import: import("...") or import('...')
+  const directImportRegex = /import\s*\(\s*["']([^"']+)["']/g;
   let match;
-  while ((match = importRegex.exec(code)) !== null) {
-    filenames.push(match[1]);
+  while ((match = directImportRegex.exec(code)) !== null) {
+    filenames.add(match[1]);
   }
-  return filenames;
+
+  // 2. Variable passed to import: import(var_name)
+  const varImportRegex = /import\s*\(\s*([a-zA-Z0-9_$]+)/g;
+  while ((match = varImportRegex.exec(code)) !== null) {
+    const varName = match[1];
+    // Find assignment to this variable: varName = "filename.stl";
+    // Require identifier boundaries and escape variable name to prevent substring collisions
+    const escapedVar = escapeRegExp(varName);
+    const assignRegex = new RegExp(
+      `(?:^|[^a-zA-Z0-9_$])${escapedVar}\\s*=\\s*["']([^"']+)["']`,
+      'g',
+    );
+    let assignMatch;
+    while ((assignMatch = assignRegex.exec(code)) !== null) {
+      filenames.add(assignMatch[1]);
+    }
+  }
+
+  // 3. Fallback: Any quoted filename with mesh/drawing extension (.stl, .obj, .3mf, .dxf, .svg, .png)
+  const anyFileRegex = /["']([^"']+\.(?:stl|obj|3mf|dxf|svg|png))["']/gi;
+  while ((match = anyFileRegex.exec(code)) !== null) {
+    filenames.add(match[1]);
+  }
+
+  return Array.from(filenames);
 }
 
 // Brand-fallback `color` arrives as a CSS hex string (e.g. "#00A6FF") since
@@ -86,18 +117,30 @@ export function OpenSCADPreview({
     fallbackColorRef.current = color;
   }, [color]);
 
+  const convCtx = useContext(ConversationContext);
+  const conversationId = convCtx?.conversation?.id;
+
+  const lastCompiledCodeRef = useRef<string | null>(null);
+
   // Shared by preview compilation and on-demand exports so import() files are
   // available in the OpenSCAD worker before either operation runs.
+  // Returns true if any new or modified mesh file was written to WASM filesystem.
   const prepareMeshFiles = useCallback(
-    async (code: string) => {
+    async (code: string): Promise<boolean> => {
       // Extract any import() filenames from the code
       const importedFiles = extractImportFilenames(code);
+      if (importedFiles.length === 0 || !meshFilesCtx) return false;
 
-      // Write any mesh files that haven't been written yet
-      if (!meshFilesCtx) return;
-
+      let hasNewWrites = false;
       for (const filename of importedFiles) {
-        const meshContent = meshFilesCtx.getMeshFile(filename);
+        let meshContent = meshFilesCtx.getMeshFile(filename, conversationId);
+
+        // Fallback: check base filename without folder path
+        if (!meshContent) {
+          const baseName = filename.split('/').pop() || filename;
+          meshContent = meshFilesCtx.getMeshFile(baseName, conversationId);
+        }
+
         const writtenBlob = writtenFilesRef.current.get(filename);
         const needsWrite =
           meshContent && (!writtenBlob || writtenBlob !== meshContent);
@@ -105,27 +148,40 @@ export function OpenSCADPreview({
         if (needsWrite && meshContent) {
           await writeFile(filename, meshContent);
           writtenFilesRef.current.set(filename, meshContent);
+          hasNewWrites = true;
+          console.log(`[OpenSCAD] Prepared mesh file for WASM FS: "${filename}"`);
         }
       }
+      return hasNewWrites;
     },
-    [writeFile, meshFilesCtx],
+    [writeFile, meshFilesCtx, conversationId],
   );
 
-  // Recompile the preview whenever the current SCAD code changes.
+  // Recompile the preview whenever the current SCAD code changes,
+  // or when an imported mesh file is newly hydrated into the WASM filesystem.
   useEffect(() => {
-    if (!scadCode) return;
+    if (!scadCode) {
+      lastCompiledCodeRef.current = null;
+      return;
+    }
 
     const compileWithMeshFiles = async () => {
       try {
-        await prepareMeshFiles(scadCode);
-        compileScad(scadCode);
+        const isCodeChange = lastCompiledCodeRef.current !== scadCode;
+        const hasNewWrites = await prepareMeshFiles(scadCode);
+
+        // Only compile if the code itself changed, or if a required mesh file was newly written
+        if (isCodeChange || hasNewWrites) {
+          lastCompiledCodeRef.current = scadCode;
+          compileScad(scadCode);
+        }
       } catch (err) {
         console.error('[OpenSCAD] Error preparing files for compilation:', err);
       }
     };
 
     compileWithMeshFiles();
-  }, [scadCode, compileScad, prepareMeshFiles]);
+  }, [scadCode, compileScad, prepareMeshFiles, meshFilesCtx?.filesVersion]);
 
   // Register a parent-owned DXF exporter for the current SCAD code. The export
   // runs only when the user chooses DXF from the download menu.
