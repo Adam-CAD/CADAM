@@ -13,7 +13,6 @@ import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
 import { MeshFilesContext } from '@/contexts/MeshFilesContext';
 import { ConversationContext } from '@/contexts/ConversationContext';
-import { supabase } from '@/lib/supabase';
 import { createDXFProjectionCode } from '@/utils/dxfUtils';
 import { DxfExporter } from '@/utils/downloadUtils';
 
@@ -110,6 +109,7 @@ export function OpenSCADPreview({
   }, [color]);
 
   const convCtx = useContext(ConversationContext);
+  const conversationId = convCtx?.conversation?.id;
 
   // Shared by preview compilation and on-demand exports so import() files are
   // available in the OpenSCAD worker before either operation runs.
@@ -117,110 +117,15 @@ export function OpenSCADPreview({
     async (code: string) => {
       // Extract any import() filenames from the code
       const importedFiles = extractImportFilenames(code);
-      if (importedFiles.length === 0) return;
+      if (importedFiles.length === 0 || !meshFilesCtx) return;
 
       for (const filename of importedFiles) {
-        let meshContent = meshFilesCtx?.getMeshFile(filename);
+        let meshContent = meshFilesCtx.getMeshFile(filename, conversationId);
 
-        // Fallback 1: check base filename without folder path
-        if (!meshContent && meshFilesCtx) {
+        // Fallback: check base filename without folder path
+        if (!meshContent) {
           const baseName = filename.split('/').pop() || filename;
-          meshContent = meshFilesCtx.getMeshFile(baseName);
-        }
-
-        // Fallback 2: download from Supabase Storage for this conversation if not in memory
-        if (!meshContent && convCtx?.conversation?.id) {
-          try {
-            const userId = convCtx.conversation.user_id;
-            const convId = convCtx.conversation.id;
-
-            // Look up messages in this conversation for matching data-mesh-context
-            const { data: messages } = await supabase
-              .from('messages')
-              .select('parts')
-              .eq('conversation_id', convId);
-
-            let targetMeshId: string | null = null;
-            let targetExt: string = 'stl';
-
-            if (messages) {
-              for (const m of messages) {
-                if (Array.isArray(m.parts)) {
-                  for (const rawPart of m.parts) {
-                    const p = rawPart as {
-                      type?: string;
-                      data?: {
-                        filename?: string;
-                        meshId?: string;
-                        fileType?: string;
-                      };
-                    } | null;
-                    if (
-                      p &&
-                      typeof p === 'object' &&
-                      p.type === 'data-mesh-context' &&
-                      p.data
-                    ) {
-                      const mFilename = p.data.filename;
-                      const mId = p.data.meshId;
-                      const mExt = p.data.fileType || 'stl';
-                      if (
-                        mFilename === filename ||
-                        mFilename?.toLowerCase() === filename.toLowerCase() ||
-                        (mId && filename.includes(mId))
-                      ) {
-                        targetMeshId = mId ?? null;
-                        targetExt = mExt;
-                        break;
-                      } else if (!targetMeshId && mId) {
-                        targetMeshId = mId;
-                        targetExt = mExt;
-                      }
-                    }
-                  }
-                }
-                if (targetMeshId) break;
-              }
-            }
-
-            if (targetMeshId && userId) {
-              const storagePath = `${userId}/${convId}/${targetMeshId}.${targetExt}`;
-              const { data: blob, error } = await supabase.storage
-                .from('meshes')
-                .download(storagePath);
-              if (blob && !error) {
-                meshContent = blob;
-                if (meshFilesCtx) {
-                  meshFilesCtx.setMeshFile(filename, blob);
-                  meshFilesCtx.setMeshFile(`${targetMeshId}.${targetExt}`, blob);
-                }
-              }
-            } else if (userId) {
-              const { data: files } = await supabase.storage
-                .from('meshes')
-                .list(`${userId}/${convId}`);
-              if (files && files.length > 0) {
-                const matchedFile =
-                  files.find(
-                    (f) => f.name.includes(filename) || f.name.endsWith('.stl'),
-                  ) || files[0];
-                if (matchedFile) {
-                  const { data: blob } = await supabase.storage
-                    .from('meshes')
-                    .download(`${userId}/${convId}/${matchedFile.name}`);
-                  if (blob) {
-                    meshContent = blob;
-                    if (meshFilesCtx) {
-                      meshFilesCtx.setMeshFile(filename, blob);
-                      meshFilesCtx.setMeshFile(matchedFile.name, blob);
-                    }
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error('[OpenSCAD] Failed to download mesh from storage:', e);
-          }
+          meshContent = meshFilesCtx.getMeshFile(baseName, conversationId);
         }
 
         const writtenBlob = writtenFilesRef.current.get(filename);
@@ -230,10 +135,11 @@ export function OpenSCADPreview({
         if (needsWrite && meshContent) {
           await writeFile(filename, meshContent);
           writtenFilesRef.current.set(filename, meshContent);
+          console.log(`[OpenSCAD] Prepared mesh file for WASM FS: "${filename}"`);
         }
       }
     },
-    [writeFile, meshFilesCtx, convCtx?.conversation?.id, convCtx?.conversation?.user_id],
+    [writeFile, meshFilesCtx, conversationId],
   );
 
   // Recompile the preview whenever the current SCAD code changes.
