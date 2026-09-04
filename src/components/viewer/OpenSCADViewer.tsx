@@ -120,14 +120,18 @@ export function OpenSCADPreview({
   const convCtx = useContext(ConversationContext);
   const conversationId = convCtx?.conversation?.id;
 
+  const lastCompiledCodeRef = useRef<string | null>(null);
+
   // Shared by preview compilation and on-demand exports so import() files are
   // available in the OpenSCAD worker before either operation runs.
+  // Returns true if any new or modified mesh file was written to WASM filesystem.
   const prepareMeshFiles = useCallback(
-    async (code: string) => {
+    async (code: string): Promise<boolean> => {
       // Extract any import() filenames from the code
       const importedFiles = extractImportFilenames(code);
-      if (importedFiles.length === 0 || !meshFilesCtx) return;
+      if (importedFiles.length === 0 || !meshFilesCtx) return false;
 
+      let hasNewWrites = false;
       for (const filename of importedFiles) {
         let meshContent = meshFilesCtx.getMeshFile(filename, conversationId);
 
@@ -144,21 +148,33 @@ export function OpenSCADPreview({
         if (needsWrite && meshContent) {
           await writeFile(filename, meshContent);
           writtenFilesRef.current.set(filename, meshContent);
+          hasNewWrites = true;
           console.log(`[OpenSCAD] Prepared mesh file for WASM FS: "${filename}"`);
         }
       }
+      return hasNewWrites;
     },
     [writeFile, meshFilesCtx, conversationId],
   );
 
-  // Recompile the preview whenever the current SCAD code changes or hydrated files update.
+  // Recompile the preview whenever the current SCAD code changes,
+  // or when an imported mesh file is newly hydrated into the WASM filesystem.
   useEffect(() => {
-    if (!scadCode) return;
+    if (!scadCode) {
+      lastCompiledCodeRef.current = null;
+      return;
+    }
 
     const compileWithMeshFiles = async () => {
       try {
-        await prepareMeshFiles(scadCode);
-        compileScad(scadCode);
+        const isCodeChange = lastCompiledCodeRef.current !== scadCode;
+        const hasNewWrites = await prepareMeshFiles(scadCode);
+
+        // Only compile if the code itself changed, or if a required mesh file was newly written
+        if (isCodeChange || hasNewWrites) {
+          lastCompiledCodeRef.current = scadCode;
+          compileScad(scadCode);
+        }
       } catch (err) {
         console.error('[OpenSCAD] Error preparing files for compilation:', err);
       }
