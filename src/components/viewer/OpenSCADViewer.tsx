@@ -12,18 +12,41 @@ import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
 import { MeshFilesContext } from '@/contexts/MeshFilesContext';
+import { ConversationContext } from '@/contexts/ConversationContext';
+import { supabase } from '@/lib/supabase';
 import { createDXFProjectionCode } from '@/utils/dxfUtils';
 import { DxfExporter } from '@/utils/downloadUtils';
 
-// Extract import() filenames from OpenSCAD code
+// Extract import() filenames from OpenSCAD code (supporting direct literals, variables, and unicode filenames)
 function extractImportFilenames(code: string): string[] {
-  const importRegex = /import\s*\(\s*"([^"]+)"\s*\)/g;
-  const filenames: string[] = [];
+  const filenames = new Set<string>();
+
+  // 1. Direct string literals in import: import("...") or import('...')
+  const directImportRegex = /import\s*\(\s*["']([^"']+)["']\s*\)/g;
   let match;
-  while ((match = importRegex.exec(code)) !== null) {
-    filenames.push(match[1]);
+  while ((match = directImportRegex.exec(code)) !== null) {
+    filenames.add(match[1]);
   }
-  return filenames;
+
+  // 2. Variable passed to import: import(var_name)
+  const varImportRegex = /import\s*\(\s*([a-zA-Z0-9_$]+)\s*\)/g;
+  while ((match = varImportRegex.exec(code)) !== null) {
+    const varName = match[1];
+    // Find assignment to this variable: varName = "filename.stl";
+    const assignRegex = new RegExp(`${varName}\\s*=\\s*["']([^"']+)["']`, 'g');
+    let assignMatch;
+    while ((assignMatch = assignRegex.exec(code)) !== null) {
+      filenames.add(assignMatch[1]);
+    }
+  }
+
+  // 3. Fallback: Any quoted filename with mesh/drawing extension (.stl, .obj, .3mf, .dxf, .svg, .png)
+  const anyFileRegex = /["']([^"']+\.(?:stl|obj|3mf|dxf|svg|png))["']/gi;
+  while ((match = anyFileRegex.exec(code)) !== null) {
+    filenames.add(match[1]);
+  }
+
+  return Array.from(filenames);
 }
 
 // Brand-fallback `color` arrives as a CSS hex string (e.g. "#00A6FF") since
@@ -86,18 +109,120 @@ export function OpenSCADPreview({
     fallbackColorRef.current = color;
   }, [color]);
 
+  const convCtx = useContext(ConversationContext);
+
   // Shared by preview compilation and on-demand exports so import() files are
   // available in the OpenSCAD worker before either operation runs.
   const prepareMeshFiles = useCallback(
     async (code: string) => {
       // Extract any import() filenames from the code
       const importedFiles = extractImportFilenames(code);
-
-      // Write any mesh files that haven't been written yet
-      if (!meshFilesCtx) return;
+      if (importedFiles.length === 0) return;
 
       for (const filename of importedFiles) {
-        const meshContent = meshFilesCtx.getMeshFile(filename);
+        let meshContent = meshFilesCtx?.getMeshFile(filename);
+
+        // Fallback 1: check base filename without folder path
+        if (!meshContent && meshFilesCtx) {
+          const baseName = filename.split('/').pop() || filename;
+          meshContent = meshFilesCtx.getMeshFile(baseName);
+        }
+
+        // Fallback 2: download from Supabase Storage for this conversation if not in memory
+        if (!meshContent && convCtx?.conversation?.id) {
+          try {
+            const userId = convCtx.conversation.user_id;
+            const convId = convCtx.conversation.id;
+
+            // Look up messages in this conversation for matching data-mesh-context
+            const { data: messages } = await supabase
+              .from('messages')
+              .select('parts')
+              .eq('conversation_id', convId);
+
+            let targetMeshId: string | null = null;
+            let targetExt: string = 'stl';
+
+            if (messages) {
+              for (const m of messages) {
+                if (Array.isArray(m.parts)) {
+                  for (const rawPart of m.parts) {
+                    const p = rawPart as {
+                      type?: string;
+                      data?: {
+                        filename?: string;
+                        meshId?: string;
+                        fileType?: string;
+                      };
+                    } | null;
+                    if (
+                      p &&
+                      typeof p === 'object' &&
+                      p.type === 'data-mesh-context' &&
+                      p.data
+                    ) {
+                      const mFilename = p.data.filename;
+                      const mId = p.data.meshId;
+                      const mExt = p.data.fileType || 'stl';
+                      if (
+                        mFilename === filename ||
+                        mFilename?.toLowerCase() === filename.toLowerCase() ||
+                        (mId && filename.includes(mId))
+                      ) {
+                        targetMeshId = mId ?? null;
+                        targetExt = mExt;
+                        break;
+                      } else if (!targetMeshId && mId) {
+                        targetMeshId = mId;
+                        targetExt = mExt;
+                      }
+                    }
+                  }
+                }
+                if (targetMeshId) break;
+              }
+            }
+
+            if (targetMeshId && userId) {
+              const storagePath = `${userId}/${convId}/${targetMeshId}.${targetExt}`;
+              const { data: blob, error } = await supabase.storage
+                .from('meshes')
+                .download(storagePath);
+              if (blob && !error) {
+                meshContent = blob;
+                if (meshFilesCtx) {
+                  meshFilesCtx.setMeshFile(filename, blob);
+                  meshFilesCtx.setMeshFile(`${targetMeshId}.${targetExt}`, blob);
+                }
+              }
+            } else if (userId) {
+              const { data: files } = await supabase.storage
+                .from('meshes')
+                .list(`${userId}/${convId}`);
+              if (files && files.length > 0) {
+                const matchedFile =
+                  files.find(
+                    (f) => f.name.includes(filename) || f.name.endsWith('.stl'),
+                  ) || files[0];
+                if (matchedFile) {
+                  const { data: blob } = await supabase.storage
+                    .from('meshes')
+                    .download(`${userId}/${convId}/${matchedFile.name}`);
+                  if (blob) {
+                    meshContent = blob;
+                    if (meshFilesCtx) {
+                      meshFilesCtx.setMeshFile(filename, blob);
+                      meshFilesCtx.setMeshFile(matchedFile.name, blob);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.error('[OpenSCAD] Failed to download mesh from storage:', e);
+          }
+        }
+
         const writtenBlob = writtenFilesRef.current.get(filename);
         const needsWrite =
           meshContent && (!writtenBlob || writtenBlob !== meshContent);
@@ -108,7 +233,7 @@ export function OpenSCADPreview({
         }
       }
     },
-    [writeFile, meshFilesCtx],
+    [writeFile, meshFilesCtx, convCtx?.conversation?.id, convCtx?.conversation?.user_id],
   );
 
   // Recompile the preview whenever the current SCAD code changes.
