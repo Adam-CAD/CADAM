@@ -7,9 +7,10 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { OrthographicPerspectiveToggle } from '@/components/viewer/OrthographicPerspectiveToggle';
 import { ViewGizmo } from '@/components/viewer/ViewGizmo';
+import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 
 interface ThreeSceneProps {
@@ -78,14 +79,43 @@ function clearHighlight(object: THREE.Object3D | null): void {
 function PickableParts({
   group,
   offset,
+  explode,
   onSelectPart,
 }: {
   group: THREE.Group;
   offset: THREE.Vector3;
+  explode: number;
   onSelectPart?: (name: string | null) => void;
 }) {
   const hovered = useRef<THREE.Object3D | null>(null);
   const selected = useRef<THREE.Object3D | null>(null);
+
+  // Exploded view: push each part outward along the vector from the parts'
+  // collective centre to the part's own centre (group-local frame).
+  const spreadDirections = useMemo(() => {
+    const combined = new THREE.Box3();
+    const centres: { mesh: THREE.Object3D; centre: THREE.Vector3 }[] = [];
+    for (const child of group.children) {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.geometry) continue;
+      mesh.geometry.computeBoundingBox();
+      const box = mesh.geometry.boundingBox;
+      if (!box) continue;
+      combined.union(box);
+      centres.push({ mesh, centre: box.getCenter(new THREE.Vector3()) });
+    }
+    const origin = combined.getCenter(new THREE.Vector3());
+    return centres.map(({ mesh, centre }) => ({
+      mesh,
+      dir: centre.clone().sub(origin),
+    }));
+  }, [group]);
+
+  useEffect(() => {
+    for (const { mesh, dir } of spreadDirections) {
+      mesh.position.copy(dir).multiplyScalar(explode);
+    }
+  }, [spreadDirections, explode]);
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
@@ -143,6 +173,7 @@ export function ThreeScene({
   onSelectPart,
 }: ThreeSceneProps) {
   const [isOrthographic, setIsOrthographic] = useState(true);
+  const [explode, setExplode] = useState(0);
 
   // Store the initial isMobile value to prevent position changes during resize
   const [initialIsMobile] = useState(isMobile);
@@ -206,6 +237,7 @@ export function ThreeScene({
               <PickableParts
                 group={partsGroup}
                 offset={partsCenterOffset}
+                explode={explode}
                 onSelectPart={onSelectPart}
               />
             ) : coloredGroup && groupCenterOffset ? (
@@ -250,6 +282,22 @@ export function ThreeScene({
           {!initialIsMobile && <ViewGizmo />}
         </Canvas>
       </Suspense>
+
+      {partsGroup && partsGroup.children.length > 1 && (
+        <div className="absolute bottom-2 left-2 flex w-44 items-center gap-2 rounded-md bg-adam-neutral-800/80 px-3 py-2">
+          <span className="whitespace-nowrap text-xs text-adam-text-primary/80">
+            Éclaté
+          </span>
+          <Slider
+            value={[explode]}
+            onValueChange={(v) => setExplode(v[0] ?? 0)}
+            min={0}
+            max={1.5}
+            step={0.05}
+            aria-label="Vue éclatée"
+          />
+        </div>
+      )}
 
       <div
         className={cn(
