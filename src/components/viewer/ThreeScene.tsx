@@ -22,8 +22,9 @@ interface ThreeSceneProps {
   onSelectPart?: (name: string | null) => void;
 }
 
-const HOVER_EMISSIVE = 0x2a3542;
-const SELECT_EMISSIVE = 0x1150aa;
+const HOVER_EMISSIVE = 0x3a4a5c;
+const SELECT_COLOR = 0x00a6ff;
+const SELECT_EMISSIVE = 0x0a4a8f;
 const NO_EMISSIVE = 0x000000;
 
 function emissiveOf(object: THREE.Object3D | null): THREE.Color | null {
@@ -36,6 +37,36 @@ function emissiveOf(object: THREE.Object3D | null): THREE.Color | null {
 
 function paint(object: THREE.Object3D | null, hex: number): void {
   emissiveOf(object)?.setHex(hex);
+}
+
+function materialOf(
+  object: THREE.Object3D | null,
+): THREE.MeshStandardMaterial | null {
+  const material = (object as THREE.Mesh | null)?.material;
+  if (material && !Array.isArray(material) && 'emissive' in material) {
+    return material as THREE.MeshStandardMaterial;
+  }
+  return null;
+}
+
+// A selected part is recolored to a clear accent — an emissive tint alone reads
+// weakly on light models. The part's own color is stored so it can be restored.
+function selectHighlight(object: THREE.Object3D | null): void {
+  const material = materialOf(object);
+  if (!material || !object) return;
+  if (object.userData.baseColorHex === undefined) {
+    object.userData.baseColorHex = material.color.getHex();
+  }
+  material.color.setHex(SELECT_COLOR);
+  material.emissive.setHex(SELECT_EMISSIVE);
+}
+
+function clearHighlight(object: THREE.Object3D | null): void {
+  const material = materialOf(object);
+  if (!material || !object) return;
+  const base = object.userData.baseColorHex;
+  if (typeof base === 'number') material.color.setHex(base);
+  material.emissive.setHex(NO_EMISSIVE);
 }
 
 /**
@@ -80,10 +111,10 @@ function PickableParts({
     event.stopPropagation();
     const mesh = event.object;
     if (selected.current && selected.current !== mesh) {
-      paint(selected.current, NO_EMISSIVE);
+      clearHighlight(selected.current);
     }
     selected.current = mesh;
-    paint(mesh, SELECT_EMISSIVE);
+    selectHighlight(mesh);
     const name =
       (mesh.userData.partName as string | undefined) ?? mesh.name ?? null;
     onSelectPart?.(name);
