@@ -9,6 +9,7 @@ import {
   disposeColoredGroup,
 } from '@/utils/coloredOffMesh';
 import { buildPartsGroup, partsFromScad } from '@/utils/partsFromAmf';
+import { emitPartMention } from '@/lib/partMention';
 import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
@@ -308,7 +309,10 @@ export function OpenSCADPreview({
               geometry={geometry}
               coloredGroup={coloredGroup}
               partsGroup={partsGroup}
-              onSelectPart={setSelectedPart}
+              onSelectPart={(name) => {
+                setSelectedPart(name);
+                if (name) emitPartMention(name);
+              }}
               color={color}
               isMobile={isMobile}
               backgroundColor={backgroundColor}
