@@ -1,4 +1,4 @@
-import { Canvas, ThreeEvent } from '@react-three/fiber';
+import { Canvas, ThreeEvent, useFrame } from '@react-three/fiber';
 import {
   OrbitControls,
   Stage,
@@ -7,7 +7,7 @@ import {
   PerspectiveCamera,
 } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { OrthographicPerspectiveToggle } from '@/components/viewer/OrthographicPerspectiveToggle';
 import { ViewGizmo } from '@/components/viewer/ViewGizmo';
 import { Slider } from '@/components/ui/slider';
@@ -111,11 +111,28 @@ function PickableParts({
     }));
   }, [group]);
 
-  useEffect(() => {
-    for (const { mesh, dir } of spreadDirections) {
-      mesh.position.copy(dir).multiplyScalar(explode);
+  // Exploded view animation: ease the applied offset toward the slider
+  // target every frame (frame-rate independent) so dragging looks smooth
+  // instead of stepping through the discrete slider values.
+  const appliedExplodeRef = useRef(0);
+  useFrame((_, delta) => {
+    const current = appliedExplodeRef.current;
+    const diff = explode - current;
+    if (Math.abs(diff) < 0.0005) {
+      if (current !== explode) {
+        appliedExplodeRef.current = explode;
+        for (const { mesh, dir } of spreadDirections) {
+          mesh.position.copy(dir).multiplyScalar(explode);
+        }
+      }
+      return;
     }
-  }, [spreadDirections, explode]);
+    const next = current + diff * (1 - Math.exp(-delta * 12));
+    appliedExplodeRef.current = next;
+    for (const { mesh, dir } of spreadDirections) {
+      mesh.position.copy(dir).multiplyScalar(next);
+    }
+  });
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
