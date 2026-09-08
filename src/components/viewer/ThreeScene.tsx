@@ -170,6 +170,7 @@ function PickableParts({
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
       <primitive
+        key={group.uuid}
         object={group}
         position={offset.toArray()}
         onPointerMove={handleMove}
