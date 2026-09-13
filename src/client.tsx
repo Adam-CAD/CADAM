@@ -1,3 +1,4 @@
+// Side-effect import: must run before any module that may call randomUUID.
 import './lib/ensureRandomUUID';
 
 import * as Sentry from '@sentry/react';
