@@ -1,3 +1,6 @@
+/** The UUID shape `crypto.randomUUID()` is declared to return. */
+type UuidString = ReturnType<Crypto['randomUUID']>;
+
 /**
  * Ensures `crypto.randomUUID()` exists, even in insecure browsing contexts.
  *
@@ -23,20 +26,19 @@ function installRandomUUIDPolyfill(): void {
     return;
   }
 
-  crypto.randomUUID = function randomUUID() {
+  crypto.randomUUID = function randomUUID(): UuidString {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
     bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
     const hex = Array.from(bytes, (byte) =>
       byte.toString(16).padStart(2, '0'),
     ).join('');
-    // A string built at runtime cannot be statically checked against the
-    // template-literal type that crypto.randomUUID() returns, so a single
-    // assertion to that exact type is unavoidable here.
-    const uuid =
-      `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
-      `${hex.slice(16, 20)}-${hex.slice(20)}`;
-    return uuid as `${string}-${string}-${string}-${string}-${string}`;
+    const a = hex.slice(0, 8);
+    const b = hex.slice(8, 12);
+    const c = hex.slice(12, 16);
+    const d = hex.slice(16, 20);
+    const e = hex.slice(20);
+    return `${a}-${b}-${c}-${d}-${e}`;
   };
 }
 
