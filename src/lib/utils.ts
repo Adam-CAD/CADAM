@@ -282,9 +282,19 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
+    id: 'openai/gpt-6-astra',
+    name: 'GPT-6 Astra',
+    description:
+      'OpenAI flagship model for long-horizon engineering and analysis',
+    provider: 'OpenAI',
+    supportsTools: true,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+  {
     id: 'openai/gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
-    description: 'Latest OpenAI model for reliable CAD generation',
+    description: 'OpenAI model for reliable CAD generation',
     provider: 'OpenAI',
     supportsTools: true,
     supportsThinking: true,
