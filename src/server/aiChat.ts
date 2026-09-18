@@ -89,6 +89,15 @@ const MODEL_PRICES: Record<
   },
 
   // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.
+  // GPT-6 Astra also has a long-context tier (2x input / 1.5x output once a
+  // request's prompt passes 272k tokens) that this flat table can't express;
+  // we bill every request at the base rates.
+  'openai/gpt-6-astra': {
+    input: 10,
+    output: 50,
+    cacheRead: 1,
+    cacheWrite: 12.5,
+  },
   'openai/gpt-5.6-sol': {
     input: 5,
     output: 30,
