@@ -294,7 +294,7 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
   {
     id: 'openai/gpt-5.6-sol',
     name: 'GPT-5.6 Sol',
-    description: 'Latest OpenAI model for reliable CAD generation',
+    description: 'OpenAI model for reliable CAD generation',
     provider: 'OpenAI',
     supportsTools: true,
     supportsThinking: true,

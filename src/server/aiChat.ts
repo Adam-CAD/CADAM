@@ -43,15 +43,27 @@ import { getAnonSupabaseClient } from './supabaseClient';
  * for cached input — when omitted we apply provider-typical defaults:
  *   - Anthropic: read = input × 0.10, write = input × 1.25 (5-min cache)
  *
+ * `longContext` holds a second rate card for providers that re-price a
+ * request once its prompt crosses a token threshold; see
+ * {@link priceFor}.
+ *
  * Keep this in sync with each provider's pricing page. Any model that
  * isn't listed here falls through to {@link FALLBACK_MODEL_PRICE}, which
  * is intentionally set to the most expensive entry so an unrecognized
  * model never free-bills the platform.
  */
-const MODEL_PRICES: Record<
-  string,
-  { input: number; output: number; cacheRead?: number; cacheWrite?: number }
-> = {
+type RateCard = {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+};
+
+type ModelPrice = RateCard & {
+  longContext?: RateCard & { minInputTokens: number };
+};
+
+const MODEL_PRICES: Record<string, ModelPrice> = {
   // Anthropic
   // Fable 5.1 cache reads bill at 0.025x input ($0.25/M), not the 0.1x
   // default applied below, so they are listed explicitly; 5-min cache
@@ -89,14 +101,20 @@ const MODEL_PRICES: Record<
   },
 
   // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.
-  // GPT-6 Astra also has a long-context tier (2x input / 1.5x output once a
-  // request's prompt passes 272k tokens) that this flat table can't express;
-  // we bill every request at the base rates.
+  // GPT-6 Astra re-prices a request once its prompt passes 272k tokens:
+  // input and cached input double, output goes to $75/M.
   'openai/gpt-6-astra': {
     input: 10,
     output: 50,
     cacheRead: 1,
     cacheWrite: 12.5,
+    longContext: {
+      minInputTokens: 272_000,
+      input: 20,
+      output: 75,
+      cacheRead: 2,
+      cacheWrite: 25,
+    },
   },
   'openai/gpt-5.6-sol': {
     input: 5,
@@ -550,13 +568,25 @@ function supportsForcedToolChoice(modelId: string): boolean {
   return !rejectsForcedToolChoice(modelId);
 }
 
-function priceFor(modelId: string) {
-  const entry = MODEL_PRICES[modelId] ?? FALLBACK_MODEL_PRICE;
+/**
+ * Resolve the rate card a request bills at.
+ *
+ * `inputTokens` is the request's **whole** prompt (cached tokens
+ * included), which is what providers measure their long-context
+ * threshold against. A model without a `longContext` card, or a prompt
+ * under the threshold, bills at the base card.
+ */
+function priceFor(modelId: string, inputTokens = 0) {
+  const entry: ModelPrice = MODEL_PRICES[modelId] ?? FALLBACK_MODEL_PRICE;
+  const tier =
+    entry.longContext && inputTokens >= entry.longContext.minInputTokens
+      ? entry.longContext
+      : entry;
   return {
-    input: entry.input,
-    output: entry.output,
-    cacheRead: entry.cacheRead ?? entry.input * 0.1,
-    cacheWrite: entry.cacheWrite ?? entry.input * 1.25,
+    input: tier.input,
+    output: tier.output,
+    cacheRead: tier.cacheRead ?? tier.input * 0.1,
+    cacheWrite: tier.cacheWrite ?? tier.input * 1.25,
   };
 }
 
@@ -577,10 +607,10 @@ function priceFor(modelId: string) {
  * value as uncached so we don't under-bill on a missing field.
  */
 function usdCostFromUsage(modelId: string, usage: LanguageModelUsage): number {
-  const price = priceFor(modelId);
   const cacheRead = usage.inputTokenDetails.cacheReadTokens ?? 0;
   const cacheWrite = usage.inputTokenDetails.cacheWriteTokens ?? 0;
   const inputTotal = usage.inputTokens ?? 0;
+  const price = priceFor(modelId, inputTotal);
   const noCacheInput =
     usage.inputTokenDetails.noCacheTokens ??
     Math.max(0, inputTotal - cacheRead - cacheWrite);
