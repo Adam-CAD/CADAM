@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useCallback,
 } from 'react';
+import { onPartMention } from '@/lib/partMention';
 import {
   ArrowUp,
   ImagePlus,
@@ -477,6 +478,19 @@ function TextAreaChat({
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [input, setInput] = useState('');
+
+  // When the user clicks a part in the 3D viewer, append an @mention to the
+  // prompt. The viewer emits via the partMention bus, decoupled from this
+  // component's private input state.
+  useEffect(() => {
+    return onPartMention((name) => {
+      setInput((prev) => {
+        const needsSpace = prev.length > 0 && !prev.endsWith(' ');
+        return `${prev}${needsSpace ? ' ' : ''}@${name} `;
+      });
+      textareaRef.current?.focus();
+    });
+  }, []);
   const [isDragging, setIsDragging] = useState(false);
   const [isDragHover, setIsDragHover] = useState(false);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
