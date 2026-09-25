@@ -1,3 +1,6 @@
+// Side-effect import: must run before any module that may call randomUUID.
+import './lib/ensureRandomUUID';
+
 import * as Sentry from '@sentry/react';
 import { StartClient } from '@tanstack/react-start/client';
 import { StrictMode, startTransition } from 'react';
