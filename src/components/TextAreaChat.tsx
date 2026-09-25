@@ -1001,7 +1001,8 @@ function TextAreaChat({
           setMeshFilename(file.name);
 
           // Store STL blob in context for WASM filesystem access
-          meshFiles.setMeshFile(file.name, file);
+          meshFiles.setMeshFile(file.name, file, conversation?.id);
+          meshFiles.setMeshFile(`${tempId}.stl`, file, conversation?.id);
 
           // Generate multi-angle renders and upload as images
           const renders = await renderMultipleAngles(geometry, boundingBox);
