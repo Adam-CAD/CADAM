@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Parameter } from '@shared/types';
-import { ModelConfig } from '../types/misc.ts';
+import type { Parameter } from '@shared/types';
+import type { ModelConfig } from '../types/misc.ts';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -104,7 +104,31 @@ export function validateRedirectUrlServer(
   }
 }
 
+// `parseParameters` flattens `size = [10, 20, 30];` into the sliders
+// `size[0]`, `size[1]`, `size[2]`. Writing one back means replacing a single
+// element of the array literal, not looking for a `size[1] = ...` line.
+function updateArrayItem(code: string, param: Parameter): string | undefined {
+  const item = /^(.+)\[(\d+)\]$/.exec(param.name);
+  if (!item) return undefined;
+  const index = Number(item[2]);
+  const regex = new RegExp(
+    `^(\\s*${escapeRegExp(item[1])}\\s*=\\s*\\[)([^\\];]*)(\\];)`,
+    'm',
+  );
+  return code.replace(regex, (match, prefix, body, suffix) => {
+    const elements = (body as string).split(',');
+    if (index >= elements.length) return match;
+    const [, lead, , tail] = /^(\s*)(.*?)(\s*)$/s.exec(elements[index])!;
+    elements[index] = `${lead}${param.value}${tail}`;
+    return `${prefix}${elements.join(',')}${suffix}`;
+  });
+}
+
 export function updateParameter(code: string, param: Parameter): string {
+  if (param.type === 'number' || !param.type) {
+    const updated = updateArrayItem(code, param);
+    if (updated !== undefined) return updated;
+  }
   const escapedName = escapeRegExp(param.name);
   const regex = new RegExp(
     `^\\s*(${escapedName}\\s*=\\s*)[^;]+;([\\t\\f\\cK ]*\\/\\/[^\n]*)?`,
