@@ -74,8 +74,15 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
     cacheRead: 0.25,
     cacheWrite: 12.5,
   },
-  'anthropic/claude-opus-4.8': { input: 5, output: 25 },
-  'anthropic/claude-sonnet-5': { input: 2, output: 10 },
+  // Opus 5.5 cache reads bill at 0.05x input ($0.20/M), not the 0.1x
+  // default; 5-min cache writes stay at the standard 1.25x.
+  'anthropic/claude-opus-5.5': {
+    input: 4,
+    output: 20,
+    cacheRead: 0.2,
+    cacheWrite: 5,
+  },
+  'anthropic/claude-sonnet-5.5': { input: 2, output: 10 },
   'anthropic/claude-opus-4': { input: 15, output: 75 },
   'anthropic/claude-sonnet-4.6': { input: 3, output: 15 },
   'anthropic/claude-sonnet-4.5': { input: 3, output: 15 },
@@ -100,7 +107,8 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
     cacheWrite: 0.75,
   },
 
-  // OpenAI — prompt-cache reads at 10% of input, cache writes at 1.25x.
+  // OpenAI — prompt-cache reads at 10% of input (5% on GPT-6.1 Sol), cache
+  // writes at 1.25x.
   // GPT-6 Astra re-prices a request once its prompt passes 272k tokens:
   // input and cached input double, output goes to $75/M.
   'openai/gpt-6-astra': {
@@ -116,15 +124,38 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
       cacheWrite: 25,
     },
   },
-  'openai/gpt-5.6-sol': {
-    input: 5,
-    output: 30,
-    cacheRead: 0.5,
-    cacheWrite: 6.25,
+  // GPT-6.1 Sol has the same 272k tier: input and cached input double,
+  // output goes to $15/M.
+  'openai/gpt-6.1-sol': {
+    input: 2,
+    output: 10,
+    cacheRead: 0.1,
+    cacheWrite: 2.5,
+    longContext: {
+      minInputTokens: 272_000,
+      input: 4,
+      output: 15,
+      cacheRead: 0.2,
+      cacheWrite: 5,
+    },
   },
 
   // xAI — cached input reads at 25% of input; no cache-write surcharge.
-  'x-ai/grok-4.6': { input: 2, output: 6, cacheRead: 0.5, cacheWrite: 2 },
+  // Grok 4.7 re-prices a request once its prompt passes 200k tokens:
+  // input, cached input, and output all double.
+  'x-ai/grok-4.7': {
+    input: 2,
+    output: 6,
+    cacheRead: 0.5,
+    cacheWrite: 2,
+    longContext: {
+      minInputTokens: 200_000,
+      input: 4,
+      output: 12,
+      cacheRead: 1,
+      cacheWrite: 4,
+    },
+  },
 
   // MoonshotAI — cached input reads at 10% of input; no cache-write surcharge.
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
@@ -556,11 +587,18 @@ function usesAdaptiveAnthropicThinking(modelId: string) {
 
 // The reasoning-tier Claude 5 models (Fable, Mythos) reject a forced
 // `tool_choice` outright ("tool_choice forces tool use is not compatible with
-// this model"). Other Claude 5 tiers — notably Sonnet 5 — accept a forced
-// tool_choice on the first-party API, provided thinking is disabled for that
-// step (see the per-step override in the parametric flow).
+// this model"), and so do Opus 5.5 and Sonnet 5.5 ("tool_choice: type "tool"
+// and "any" are not supported for this model"), which also 400 on the
+// disabled thinking a forced step needs. Opus 5 and Sonnet 5 still accept a
+// forced tool_choice on the first-party API, provided thinking is disabled for
+// that step (see the per-step override in the parametric flow). Opus/Sonnet
+// are matched from 5.5 up so a later point release inherits the auto-choice
+// fallback instead of failing every parametric turn.
 function rejectsForcedToolChoice(modelId: string): boolean {
-  return /^claude-(?:fable|mythos)\b/.test(bareModelId(modelId));
+  const id = bareModelId(modelId);
+  if (/^claude-(?:fable|mythos)\b/.test(id)) return true;
+  const match = /^claude-(?:opus|sonnet)-5-(\d+)/.exec(id);
+  return match ? Number(match[1]) >= 5 : false;
 }
 
 // Whether a model accepts a forced `tool_choice` (type: "tool" / "any").
@@ -1312,8 +1350,8 @@ export async function handleAiChatRequest(req: Request) {
   // while thinking is on ("Thinking may not be enabled when tool_choice forces
   // tool use"), so for thinking-enabled Anthropic models we disable thinking
   // for just that first step (see `prepareStep` below); later steps keep their
-  // adaptive thinking. Only the reasoning-tier Claude 5 models (Fable/Mythos),
-  // which reject forced tool use outright, fall back to auto tool choice and
+  // adaptive thinking. Only the Claude models that reject forced tool use
+  // outright (Fable/Mythos, Opus/Sonnet 5.5+) fall back to auto tool choice and
   // rely on the system prompt to steer the build call — a fragile path where
   // the model *might* answer with text instead of building. Track that fallback
   // so we can detect — and log — a turn that finished without building.
@@ -1338,8 +1376,8 @@ export async function handleAiChatRequest(req: Request) {
         stepNumber === 0
       ) {
         // Restrict the toolset to the build tool on the first step. Models that
-        // accept a forced tool_choice get it pinned; the reasoning-tier Claude 5
-        // models (Fable/Mythos) reject forced tool use and fall back to auto,
+        // accept a forced tool_choice get it pinned; Fable/Mythos and
+        // Opus/Sonnet 5.5+ reject forced tool use and fall back to auto,
         // relying on the system prompt to call build_parametric_model.
         // When pinning the tool on a thinking-enabled Anthropic model, thinking
         // must be off for this step (Anthropic rejects forced tool use while
