@@ -35,6 +35,12 @@ import {
   resolveDanglingToolParts,
 } from './chatToolPersistence';
 import { handleMeshRequest } from './mesh';
+import {
+  buildStepToolChoice,
+  providerFor,
+  thinkingEnabledFor,
+  usesAdaptiveAnthropicThinking,
+} from './modelCapabilities';
 import { getAnonSupabaseClient } from './supabaseClient';
 
 /**
@@ -419,14 +425,6 @@ function jsonResponse(body: unknown, status: number) {
 const THINKING_BUDGET_TOKENS = 9000;
 const PARAMETRIC_MAX_OUTPUT_TOKENS = 64000;
 
-type ChatProvider = 'anthropic' | 'google' | 'openrouter';
-
-function providerFor(modelId: string): ChatProvider {
-  if (modelId.startsWith('anthropic/')) return 'anthropic';
-  if (modelId.startsWith('google/')) return 'google';
-  return 'openrouter';
-}
-
 type AnthropicProvider = ReturnType<typeof createAnthropic>;
 type GoogleProvider = ReturnType<typeof createGoogleGenerativeAI>;
 
@@ -551,59 +549,6 @@ function buildChatModel(
   }
 
   throw new Error(`Unsupported chat model ${modelId}`);
-}
-
-// Capability gates below accept either the OpenRouter alias (`anthropic/claude-…`)
-// or the bare Anthropic ID — strip the prefix here so every gate is called the
-// same way regardless of which form the caller has on hand. Drop *any* provider
-// prefix (everything up to the last "/"), not just "anthropic/", so a model
-// routed through another provider (e.g. "openrouter/anthropic/claude-fable-5")
-// still matches the `^claude-…` regexes instead of silently slipping past them.
-function bareModelId(modelId: string): string {
-  const id = modelId.slice(modelId.lastIndexOf('/') + 1);
-  // Anthropic's API uses dashes ("claude-opus-4-6"); the OpenRouter alias
-  // uses dots ("claude-opus-4.6"). Normalize so the version regexes match
-  // either form.
-  return id.replace(/\./g, '-');
-}
-
-// The Claude 5 generation swaps the opus/sonnet/haiku tiers for code names
-// ("claude-fable-5", "claude-mythos-5", …). Match the `claude-<codename>-5`
-// shape rather than enumerating code names so future Claude 5 variants
-// inherit the same capability gates without a list update. Versioned 4.x ids
-// ("claude-opus-4-5", "claude-haiku-4-5") don't match: their tier name is
-// followed by "-4", not "-5".
-function isClaude5Model(modelId: string): boolean {
-  return /^claude-[a-z]+-5\b/.test(bareModelId(modelId));
-}
-
-function usesAdaptiveAnthropicThinking(modelId: string) {
-  // The Claude 5 generation uses adaptive thinking, as do Claude Opus/Sonnet
-  // 4.6+. Older 4.x models take the fixed-budget path.
-  if (isClaude5Model(modelId)) return true;
-  const match = /^claude-(?:opus|sonnet)-4-(\d+)/.exec(bareModelId(modelId));
-  return match ? Number(match[1]) >= 6 : false;
-}
-
-// The reasoning-tier Claude 5 models (Fable, Mythos) reject a forced
-// `tool_choice` outright ("tool_choice forces tool use is not compatible with
-// this model"), and so do Opus 5.5 and Sonnet 5.5 ("tool_choice: type "tool"
-// and "any" are not supported for this model"), which also 400 on the
-// disabled thinking a forced step needs. Opus 5 and Sonnet 5 still accept a
-// forced tool_choice on the first-party API, provided thinking is disabled for
-// that step (see the per-step override in the parametric flow). Opus/Sonnet
-// are matched from 5.5 up so a later point release inherits the auto-choice
-// fallback instead of failing every parametric turn.
-function rejectsForcedToolChoice(modelId: string): boolean {
-  const id = bareModelId(modelId);
-  if (/^claude-(?:fable|mythos)\b/.test(id)) return true;
-  const match = /^claude-(?:opus|sonnet)-5-(\d+)/.exec(id);
-  return match ? Number(match[1]) >= 5 : false;
-}
-
-// Whether a model accepts a forced `tool_choice` (type: "tool" / "any").
-function supportsForcedToolChoice(modelId: string): boolean {
-  return !rejectsForcedToolChoice(modelId);
 }
 
 /**
@@ -1305,17 +1250,7 @@ export async function handleAiChatRequest(req: Request) {
     provider: resolvedProvider,
   };
 
-  // Adaptive-thinking Anthropic models (Claude 5 — Fable/Mythos — and
-  // Opus/Sonnet 4.6+) get thinking enabled unconditionally: adaptive thinking
-  // lets the model decide when and how much to think, and on Fable 5 omitting
-  // it disables thinking entirely — no reasoning ever streams, and complex
-  // parametric turns degrade (especially combined with the auto tool-choice
-  // fallback). The client never sends `thinking: true` today, so without this
-  // the Anthropic thinking branch is dead code.
-  const thinkingEnabled =
-    (rawBody.thinking ?? false) ||
-    (resolvedProvider === 'anthropic' &&
-      usesAdaptiveAnthropicThinking(actualModelId));
+  const thinkingEnabled = thinkingEnabledFor(actualModelId, rawBody.thinking);
 
   let chatLanguageModel: LanguageModel;
   let chatProviderOptions: ProviderOptions | undefined;
@@ -1355,9 +1290,8 @@ export async function handleAiChatRequest(req: Request) {
   // rely on the system prompt to steer the build call — a fragile path where
   // the model *might* answer with text instead of building. Track that fallback
   // so we can detect — and log — a turn that finished without building.
-  const forceBuildToolChoice = supportsForcedToolChoice(actualModelId);
-  const disableThinkingForBuildStep =
-    forceBuildToolChoice && thinkingEnabled && resolvedProvider === 'anthropic';
+  const { forceBuildToolChoice, disableThinkingForBuildStep } =
+    buildStepToolChoice(actualModelId, thinkingEnabled);
   const usingAutoToolChoiceFallback =
     conversation.type === 'parametric' &&
     leafRole === 'user' &&
