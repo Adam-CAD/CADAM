@@ -264,8 +264,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'anthropic/claude-opus-4.8',
-    name: 'Claude Opus 4.8',
+    id: 'anthropic/claude-opus-5.5',
+    name: 'Claude Opus 5.5',
     description: 'Powerful Anthropic model for complex reasoning',
     provider: 'Anthropic',
     supportsTools: true,
@@ -273,8 +273,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'anthropic/claude-sonnet-5',
-    name: 'Claude Sonnet 5',
+    id: 'anthropic/claude-sonnet-5.5',
+    name: 'Claude Sonnet 5.5',
     description: 'Frontier Anthropic model balancing speed and reasoning',
     provider: 'Anthropic',
     supportsTools: true,
@@ -292,8 +292,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'openai/gpt-5.6-sol',
-    name: 'GPT-5.6 Sol',
+    id: 'openai/gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
     description: 'OpenAI model for reliable CAD generation',
     provider: 'OpenAI',
     supportsTools: true,
@@ -301,8 +301,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'x-ai/grok-4.6',
-    name: 'Grok 4.6',
+    id: 'x-ai/grok-4.7',
+    name: 'Grok 4.7',
     description: 'Latest xAI model with frontier coding and STEM performance',
     provider: 'xAI',
     supportsTools: true,
