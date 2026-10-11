@@ -8,6 +8,8 @@ import {
   buildColoredGroupFromOff,
   disposeColoredGroup,
 } from '@/utils/coloredOffMesh';
+import { buildPartsGroup, partsFromScad } from '@/utils/partsFromAmf';
+import { emitPartMention } from '@/lib/partMention';
 import { Button } from '@/components/ui/button';
 import OpenSCADError from '@/lib/OpenSCADError';
 import { cn } from '@/lib/utils';
@@ -61,11 +63,14 @@ export function OpenSCADPreview({
     isCompiling,
     output,
     offOutput,
+    amfOutput,
     isError,
     error,
   } = useOpenSCAD();
   const [geometry, setGeometry] = useState<BufferGeometry | null>(null);
   const [coloredGroup, setColoredGroup] = useState<Group | null>(null);
+  const [partsGroup, setPartsGroup] = useState<Group | null>(null);
+  const [selectedPart, setSelectedPart] = useState<string | null>(null);
   // Use context directly to avoid throwing if provider is not mounted (e.g. VisualCard)
   const meshFilesCtx = useContext(MeshFilesContext);
   // Track which files we've written to avoid re-writing unchanged blobs
@@ -73,6 +78,7 @@ export function OpenSCADPreview({
   // Hold on to the last colored group so its meshes' GPU resources can be
   // released when a new compile replaces it (or the component unmounts).
   const mountedGroupRef = useRef<Group | null>(null);
+  const mountedPartsGroupRef = useRef<Group | null>(null);
   // Same story for the STL-path BufferGeometry — every compile produces a
   // fresh one, and even when OFF wins the render the STL still parses, so
   // the previous geometry's VRAM must be released on replacement.
@@ -232,12 +238,60 @@ export function OpenSCADPreview({
     };
   }, [offOutput]);
 
+  // Build the per-part group from the AMF companion + the source code. AMF
+  // keeps lazy-union top-level parts as separate objects; partsFromScad maps
+  // their source order to names and colors. This is what click-to-select uses.
+  useEffect(() => {
+    let cancelled = false;
+
+    const clearPartsGroup = () => {
+      if (mountedPartsGroupRef.current) {
+        disposeColoredGroup(mountedPartsGroupRef.current);
+        mountedPartsGroupRef.current = null;
+      }
+      setPartsGroup(null);
+      setSelectedPart(null);
+    };
+
+    if (!(amfOutput instanceof Blob) || !scadCode) {
+      clearPartsGroup();
+      return;
+    }
+
+    amfOutput
+      .text()
+      .then((text) => {
+        if (cancelled) return;
+        const group = buildPartsGroup(text, partsFromScad(scadCode));
+        if (group.children.length === 0) {
+          if (!cancelled) clearPartsGroup();
+          return;
+        }
+        if (mountedPartsGroupRef.current)
+          disposeColoredGroup(mountedPartsGroupRef.current);
+        mountedPartsGroupRef.current = group;
+        setPartsGroup(group);
+      })
+      .catch((err) => {
+        console.error('[OpenSCAD] Failed to parse AMF parts:', err);
+        if (!cancelled) clearPartsGroup();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [amfOutput, scadCode]);
+
   // Release the last mounted group's and geometry's GPU resources on unmount.
   useEffect(() => {
     return () => {
       if (mountedGroupRef.current) {
         disposeColoredGroup(mountedGroupRef.current);
         mountedGroupRef.current = null;
+      }
+      if (mountedPartsGroupRef.current) {
+        disposeColoredGroup(mountedPartsGroupRef.current);
+        mountedPartsGroupRef.current = null;
       }
       if (mountedGeometryRef.current) {
         mountedGeometryRef.current.dispose();
@@ -249,15 +303,25 @@ export function OpenSCADPreview({
   return (
     <div className="relative h-full w-full bg-adam-neutral-700/50 transition-all duration-300 ease-in-out">
       <div className="h-full w-full">
-        {geometry || coloredGroup ? (
+        {geometry || coloredGroup || partsGroup ? (
           <div className="h-full w-full">
             <ThreeScene
               geometry={geometry}
               coloredGroup={coloredGroup}
+              partsGroup={partsGroup}
+              onSelectPart={(name) => {
+                setSelectedPart(name);
+                if (name) emitPartMention(name);
+              }}
               color={color}
               isMobile={isMobile}
               backgroundColor={backgroundColor}
             />
+            {selectedPart && (
+              <div className="pointer-events-none absolute left-2 top-2 rounded bg-adam-neutral-800/80 px-2 py-1 text-xs text-adam-text-primary">
+                {selectedPart}
+              </div>
+            )}
           </div>
         ) : (
           <>
