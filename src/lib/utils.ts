@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Parameter } from '@shared/types';
-import { ModelConfig } from '../types/misc.ts';
+import type { Parameter } from '@shared/types';
+import type { ModelConfig } from '../types/misc.ts';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -104,7 +104,48 @@ export function validateRedirectUrlServer(
   }
 }
 
+// `parseParameters` flattens `size = [10, 20, 30];` into the sliders
+// `size[0]`, `size[1]`, `size[2]`. Writing one back means replacing a single
+// element of the array literal, not looking for a `size[1] = ...` line.
+function updateArrayItem(code: string, param: Parameter): string | undefined {
+  const item = /^(.+)\[(\d+)\]$/.exec(param.name);
+  if (!item) return undefined;
+  const index = Number(item[2]);
+  // parseParameters only reads unindented declarations above the first
+  // module or function. Edit the last numeric declaration of the name that
+  // has this element.
+  const limit = code.search(/^(module |function )/m);
+  const regex = new RegExp(
+    `^(${escapeRegExp(item[1])}\\s*=\\s*\\[)([^\\];\\n]*)(\\];)`,
+    'gm',
+  );
+  let last: RegExpMatchArray | undefined;
+  for (const match of code.matchAll(regex)) {
+    if (limit !== -1 && (match.index ?? 0) >= limit) break;
+    const elements = match[2].split(',');
+    if (
+      index < elements.length &&
+      elements.every((element) => /^\s*-?\d+(\.\d+)?\s*$/.test(element))
+    )
+      last = match;
+  }
+  if (!last) return code;
+  const [whole, prefix, body, suffix] = last;
+  const start = last.index ?? 0;
+  const elements = body.split(',');
+  const element = elements[index];
+  const lead = element.slice(0, element.length - element.trimStart().length);
+  const tail = element.slice(element.trimEnd().length);
+  elements[index] = `${lead}${param.value}${tail}`;
+  const edited = `${prefix}${elements.join(',')}${suffix}`;
+  return code.slice(0, start) + edited + code.slice(start + whole.length);
+}
+
 export function updateParameter(code: string, param: Parameter): string {
+  if (param.type === 'number' || !param.type) {
+    const updated = updateArrayItem(code, param);
+    if (updated !== undefined) return updated;
+  }
   const escapedName = escapeRegExp(param.name);
   const regex = new RegExp(
     `^\\s*(${escapedName}\\s*=\\s*)[^;]+;([\\t\\f\\cK ]*\\/\\/[^\n]*)?`,
