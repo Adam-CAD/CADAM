@@ -6,8 +6,12 @@ import type { Model } from './types';
 export const LEGACY_MODEL_IDS: Record<string, Model> = {
   'openai/gpt-5.5': 'openai/gpt-6.1-sol',
   'openai/gpt-5.6-sol': 'openai/gpt-6.1-sol',
+  'google/gemini-3-flash-preview': 'google/gemini-3.8-flash',
+  'google/gemini-3.5-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.6-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.7-flash': 'google/gemini-3.8-flash',
+  'google/gemini-3-pro-preview': 'google/gemini-4-argon',
+  'google/gemini-3.1-pro-preview': 'google/gemini-4-argon',
   'anthropic/claude-fable-5': 'anthropic/claude-fable-5.1',
   'anthropic/claude-opus-4.8': 'anthropic/claude-opus-5.5',
   'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5.5',
