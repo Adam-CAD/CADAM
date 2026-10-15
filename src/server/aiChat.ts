@@ -95,14 +95,16 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
   'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
 
   // Google — cached content reads bill at a fraction of input price
-  // (~25% for 3.1 Pro, 10% for 3.8 Flash); there is no cache-write
+  // (5% for 4 Argon, 10% for 3.8 Flash); there is no cache-write
   // surcharge (cache storage is billed per-hour, which we don't track
   // here).
-  'google/gemini-3.1-pro-preview': {
-    input: 1.25,
+  // 4 Argon rates are Google's introductory pricing through Nov 30,
+  // 2026; they double on Dec 1, 2026 (to 4 / 20 / 0.2).
+  'google/gemini-4-argon': {
+    input: 2,
     output: 10,
-    cacheRead: 0.31,
-    cacheWrite: 1.25,
+    cacheRead: 0.1,
+    cacheWrite: 2,
   },
   // 3.8 Flash rates are Google's introductory pricing through Dec 31,
   // 2026; they double on Jan 1, 2027 (to 1.5 / 7.5 / 0.15).

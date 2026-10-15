@@ -237,8 +237,8 @@ export function getInitials(fullName: string | null) {
 
 export const PARAMETRIC_MODELS: ModelConfig[] = [
   {
-    id: 'google/gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro',
+    id: 'google/gemini-4-argon',
+    name: 'Gemini 4 Argon',
     description: 'Latest Google model with excellent multi-modal capabilities',
     provider: 'Google',
     supportsTools: true,
