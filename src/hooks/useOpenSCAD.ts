@@ -20,6 +20,7 @@ export function useOpenSCAD() {
   const [isError, setIsError] = useState(false);
   const [output, setOutput] = useState<Blob | undefined>();
   const [offOutput, setOffOutput] = useState<Blob | undefined>();
+  const [amfOutput, setAmfOutput] = useState<Blob | undefined>();
   // Per-instance worker. Each useOpenSCAD() call owns its own Web Worker so
   // listeners only see their own compile/export results — sharing a single
   // worker across multiple useOpenSCAD() consumers means every listener fires
@@ -77,6 +78,7 @@ export function useOpenSCAD() {
         setIsError(true);
         setOutput(undefined);
         setOffOutput(undefined);
+        setAmfOutput(undefined);
       } else if (event.data.data?.output) {
         const blob = new Blob([event.data.data.output], {
           type:
@@ -87,6 +89,11 @@ export function useOpenSCAD() {
         const offBytes = event.data.data.extraOutputs?.off;
         setOffOutput(
           offBytes ? new Blob([offBytes], { type: 'text/plain' }) : undefined,
+        );
+
+        const amfBytes = event.data.data.extraOutputs?.amf;
+        setAmfOutput(
+          amfBytes ? new Blob([amfBytes], { type: 'text/plain' }) : undefined,
         );
       }
       setIsCompiling(false);
@@ -283,6 +290,7 @@ export function useOpenSCAD() {
     isCompiling,
     output,
     offOutput,
+    amfOutput,
     error,
     isError,
   };
