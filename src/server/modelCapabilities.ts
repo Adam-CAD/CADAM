@@ -64,6 +64,19 @@ export function supportsForcedToolChoice(modelId: string): boolean {
 }
 
 /**
+ * Whether the API rejects (400) a replayed thinking block once the system
+ * prompt, tools, or earlier messages differ from when it was produced.
+ * Fable/Mythos enforce this on every account from 5.2 up. Stored branches are
+ * not byte-stable (assistant text is trimmed or dropped on persist, and
+ * inspection images can go missing), so these models need the API to drop
+ * stale blocks instead of failing the turn.
+ */
+export function enforcesThinkingHistory(modelId: string): boolean {
+  const match = /^claude-(?:fable|mythos)-5-(\d+)/.exec(bareModelId(modelId));
+  return match ? Number(match[1]) >= 2 : false;
+}
+
+/**
  * Whether a chat request runs with thinking on.
  *
  * Adaptive-thinking Anthropic models (Claude 5 — Fable/Mythos — and

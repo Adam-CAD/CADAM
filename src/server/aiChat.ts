@@ -37,6 +37,7 @@ import {
 import { handleMeshRequest } from './mesh';
 import {
   buildStepToolChoice,
+  enforcesThinkingHistory,
   providerFor,
   thinkingEnabledFor,
   usesAdaptiveAnthropicThinking,
@@ -71,70 +72,71 @@ type ModelPrice = RateCard & {
 
 const MODEL_PRICES: Record<string, ModelPrice> = {
   // Anthropic
-  // Fable 5.1 cache reads bill at 0.025x input ($0.25/M), not the 0.1x
+  // Fable 5.2 cache reads bill at 0.025x input ($0.20/M), not the 0.1x
   // default applied below, so they are listed explicitly; 5-min cache
   // writes stay at the standard 1.25x.
-  'anthropic/claude-fable-5.1': {
-    input: 10,
-    output: 50,
-    cacheRead: 0.25,
-    cacheWrite: 12.5,
+  'anthropic/claude-fable-5.2': {
+    input: 8,
+    output: 40,
+    cacheRead: 0.2,
+    cacheWrite: 10,
   },
-  // Opus 5.5 cache reads bill at 0.05x input ($0.20/M), not the 0.1x
-  // default; 5-min cache writes stay at the standard 1.25x.
+  // Opus 5.5 and Sonnet 5.5 cache reads bill at 0.05x input ($0.20/M and
+  // $0.10/M), not the 0.1x default; 5-min cache writes stay at the
+  // standard 1.25x.
   'anthropic/claude-opus-5.5': {
     input: 4,
     output: 20,
     cacheRead: 0.2,
     cacheWrite: 5,
   },
-  'anthropic/claude-sonnet-5.5': { input: 2, output: 10 },
+  'anthropic/claude-sonnet-5.5': {
+    input: 2,
+    output: 10,
+    cacheRead: 0.1,
+    cacheWrite: 2.5,
+  },
   'anthropic/claude-opus-4': { input: 15, output: 75 },
   'anthropic/claude-sonnet-4.6': { input: 3, output: 15 },
   'anthropic/claude-sonnet-4.5': { input: 3, output: 15 },
   'anthropic/claude-haiku-4.5': { input: 1, output: 5 },
 
-  // Google — cached content reads bill at a fraction of input price
-  // (5% for 4 Argon, 10% for 3.8 Flash); there is no cache-write
-  // surcharge (cache storage is billed per-hour, which we don't track
-  // here).
-  // 4 Argon rates are Google's introductory pricing through Nov 30,
+  // Google — cached content reads bill at 5% of input price; caching is
+  // implicit only, with no cache-write surcharge.
+  // 4 Carbon rates are Google's introductory pricing through Nov 30,
   // 2026; they double on Dec 1, 2026 (to 4 / 20 / 0.2).
-  'google/gemini-4-argon': {
+  'google/gemini-4-carbon': {
     input: 2,
     output: 10,
     cacheRead: 0.1,
     cacheWrite: 2,
   },
-  // 3.8 Flash rates are Google's introductory pricing through Dec 31,
-  // 2026; they double on Jan 1, 2027 (to 1.5 / 7.5 / 0.15).
-  'google/gemini-3.8-flash': {
-    input: 0.75,
-    output: 3.75,
+  'google/gemini-4-hydrogen': {
+    input: 1.5,
+    output: 7.5,
     cacheRead: 0.075,
-    cacheWrite: 0.75,
+    cacheWrite: 1.5,
   },
 
-  // OpenAI — prompt-cache reads at 10% of input (5% on GPT-6.1 Sol), cache
-  // writes at 1.25x.
-  // GPT-6 Astra re-prices a request once its prompt passes 272k tokens:
-  // input and cached input double, output goes to $75/M.
-  'openai/gpt-6-astra': {
-    input: 10,
-    output: 50,
-    cacheRead: 1,
-    cacheWrite: 12.5,
+  // OpenAI — prompt-cache reads at 5% of input, cache writes at 1.25x.
+  // GPT-6.2 Astra re-prices a request once its prompt passes 272k tokens:
+  // input and cached input double, output goes to $60/M.
+  'openai/gpt-6.2-astra': {
+    input: 8,
+    output: 40,
+    cacheRead: 0.4,
+    cacheWrite: 10,
     longContext: {
       minInputTokens: 272_000,
-      input: 20,
-      output: 75,
-      cacheRead: 2,
-      cacheWrite: 25,
+      input: 16,
+      output: 60,
+      cacheRead: 0.8,
+      cacheWrite: 20,
     },
   },
-  // GPT-6.1 Sol has the same 272k tier: input and cached input double,
+  // GPT-6.2 Sol has the same 272k tier: input and cached input double,
   // output goes to $15/M.
-  'openai/gpt-6.1-sol': {
+  'openai/gpt-6.2-sol': {
     input: 2,
     output: 10,
     cacheRead: 0.1,
@@ -166,8 +168,15 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
   },
 
   // MoonshotAI — cached input reads at 10% of input; no cache-write surcharge.
+  // K3.1 Pro is billed at Moonshot's own list price, which most OpenRouter
+  // endpoints match; the catalog headline is its cheapest third-party host.
   'moonshotai/kimi-k2.6': { input: 0.6, output: 2.5 },
-  'moonshotai/kimi-k3': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3 },
+  'moonshotai/kimi-k3.1-pro': {
+    input: 2,
+    output: 10,
+    cacheRead: 0.2,
+    cacheWrite: 2,
+  },
 
   // DeepSeek — cached input reads at $0.003625/M (per OpenRouter); no
   // cache-write surcharge.
@@ -507,8 +516,8 @@ function buildChatModel(
   }
 
   if (modelId.startsWith('anthropic/')) {
-    // Anthropic's API uses dashes everywhere ("claude-haiku-4-5"), while the
-    // OpenRouter alias uses dots ("claude-haiku-4.5"). Normalize both.
+    // Anthropic's API uses dashes everywhere ("claude-haiku-5-5"), while the
+    // OpenRouter alias uses dots ("claude-haiku-5.5"). Normalize both.
     const id = modelId.slice('anthropic/'.length).replace(/\./g, '-');
     const adaptiveThinking = usesAdaptiveAnthropicThinking(id);
     return {
@@ -521,6 +530,13 @@ function buildChatModel(
                     thinking: {
                       type: 'adaptive' as const,
                       display: 'summarized' as const,
+                      ...(enforcesThinkingHistory(id)
+                        ? {
+                            blockBinding: {
+                              prefixMismatchBehavior: 'drop_block' as const,
+                            },
+                          }
+                        : {}),
                     },
                     effort: hasCappedThinkingBudget ? 'low' : 'high',
                   }
@@ -797,7 +813,9 @@ async function generateConversationTitle({
   const text = getParametricText(firstMessage.parts) || 'New conversation';
   try {
     const result = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model: anthropic('claude-haiku-5-5'),
+      // Haiku 5.5 thinks by default; skip it for these short outputs.
+      providerOptions: { anthropic: { thinking: { type: 'disabled' } } },
       system:
         'Generate a short title for a 3D creation conversation. Return only the title.',
       prompt: text,
@@ -842,7 +860,9 @@ async function generateConversationSuggestions({
   const summary = `User request: ${firstUserText.slice(0, 400)}\n\nMost recent assistant reply: ${lastAssistantText.slice(0, 400)}`;
   try {
     const result = await generateText({
-      model: anthropic('claude-haiku-4-5'),
+      model: anthropic('claude-haiku-5-5'),
+      // Haiku 5.5 thinks by default; skip it for these short outputs.
+      providerOptions: { anthropic: { thinking: { type: 'disabled' } } },
       system:
         conversationType === 'creative'
           ? 'Given a 3D mesh design conversation, return an array of exactly 2 follow-up prompts the user might want to send next. Each prompt is a concise instruction of 3 words or fewer, not a question. Return exactly 2 items — no more, no fewer.'
@@ -1023,7 +1043,7 @@ function parametricTools({
 
 function chatModel(conversation: ConversationAccess, model: Model) {
   if (conversation.type === 'creative') {
-    return 'anthropic/claude-sonnet-4.5';
+    return 'anthropic/claude-sonnet-5.5';
   }
   return normalizeModelId(model);
 }
@@ -1311,29 +1331,28 @@ export async function handleAiChatRequest(req: Request) {
         leafRole === 'user' &&
         stepNumber === 0
       ) {
-        // Restrict the toolset to the build tool on the first step. Models that
-        // accept a forced tool_choice get it pinned; Fable/Mythos and
-        // Opus/Sonnet 5.5+ reject forced tool use and fall back to auto,
-        // relying on the system prompt to call build_parametric_model.
+        // Fable/Mythos and Opus/Sonnet 5.5+ reject forced tool use and fall
+        // back to auto, relying on the system prompt to call
+        // build_parametric_model. Leave their toolset alone: they bind each
+        // thinking block to the request's tools, so a step-0-only toolset
+        // would invalidate that reasoning on the very next request.
+        if (!forceBuildToolChoice) return {};
+        // Models that accept a forced tool_choice get the build tool pinned.
         // When pinning the tool on a thinking-enabled Anthropic model, thinking
         // must be off for this step (Anthropic rejects forced tool use while
         // thinking is on) — disable it here only; later steps keep the adaptive
         // thinking configured in buildChatModel.
         return {
           activeTools: ['build_parametric_model' as never],
-          ...(forceBuildToolChoice
+          toolChoice: {
+            type: 'tool' as const,
+            toolName: 'build_parametric_model' as never,
+          },
+          ...(disableThinkingForBuildStep
             ? {
-                toolChoice: {
-                  type: 'tool' as const,
-                  toolName: 'build_parametric_model' as never,
+                providerOptions: {
+                  anthropic: { thinking: { type: 'disabled' as const } },
                 },
-                ...(disableThinkingForBuildStep
-                  ? {
-                      providerOptions: {
-                        anthropic: { thinking: { type: 'disabled' as const } },
-                      },
-                    }
-                  : {}),
               }
             : {}),
         };

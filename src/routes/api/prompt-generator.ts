@@ -41,8 +41,8 @@ export const Route = createFileRoute('/api/prompt-generator')({
             ? `${base}\n\nImprove this existing prompt while preserving its intent:\n${existingText}`
             : base;
           const prompt = await createAnthropicText({
-            model: 'claude-haiku-4-5-20251001',
-            maxTokens: 200,
+            model: 'claude-haiku-5-5',
+            maxTokens: 300,
             system:
               'You write concise 3D generation prompts. Return only the prompt text, no quotes or explanation.',
             content,

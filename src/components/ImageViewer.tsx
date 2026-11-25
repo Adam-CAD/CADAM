@@ -29,7 +29,7 @@ export function ImageViewer({
   const handleDownload = () => {
     const url = imageUrl?.url || '';
     // Parse MIME from the data URL (e.g. "data:image/jpeg;base64,...") so
-    // the downloaded file's extension matches the actual bytes. gpt-image-2
+    // the downloaded file's extension matches the actual bytes. GPT Image
     // generates jpeg, Gemini/Flux fallbacks generate png — hardcoding .png
     // would mislabel jpeg downloads and some viewers reject the mismatch.
     const mimeMatch = url.match(/^data:(image\/\w+);/);

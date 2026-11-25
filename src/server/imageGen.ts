@@ -110,17 +110,19 @@ export const generateImageWithGemini = async (
 
 export type GptImageQuality = 'low' | 'medium' | 'high';
 
-export type GptImage2Result = {
+export type GptImageModel = 'gpt-image-2.6-flare' | 'gpt-image-2.6-sunburst';
+
+export type GptImageResult = {
   imageBytes: Buffer;
   imageCallId: string | null;
-  // MIME of the returned bytes — gpt-image-2 returns jpeg per our tool
+  // MIME of the returned bytes — GPT Image returns jpeg per our tool
   // config. Callers must use this when persisting to storage so the
   // Content-Type header matches the actual bytes.
   contentType: 'image/jpeg';
 };
 
 /**
- * Generates an image with gpt-image-2 via the OpenAI Responses API.
+ * Generates an image with GPT Image via the OpenAI Responses API.
  * This is the default image model for mesh mode.
  *
  * Multi-turn: when `priorImageCallId` is provided, the prior
@@ -132,7 +134,7 @@ export type GptImage2Result = {
  * the image_generation tool, and our downstream 3D pipelines don't need
  * alpha (we also set background=opaque). Latency win.
  */
-export const generateImageWithGptImage2 = async (
+export const generateImageWithGptImage = async (
   supabaseClient: SupabaseClient,
   openAI: OpenAI,
   userId: string,
@@ -140,11 +142,12 @@ export const generateImageWithGptImage2 = async (
   prompt: string,
   images: string[],
   priorImageCallId: string | null,
-  // 'low' (~$0.006) for fast/draft use, 'high' (~$0.21) for final mesh
-  // seeds. 'medium' also available (~$0.053).
+  // Flare for fast/draft use, Sunburst for final mesh seeds.
+  imageModel: GptImageModel,
   quality: GptImageQuality,
-): Promise<GptImage2Result> => {
-  debugLog('Generating image with gpt-image-2 via Responses API', {
+): Promise<GptImageResult> => {
+  debugLog('Generating image with GPT Image via Responses API', {
+    imageModel,
     userId,
     conversationId,
     prompt,
@@ -157,7 +160,7 @@ export const generateImageWithGptImage2 = async (
     | { type: 'input_image'; image_url: string; detail: 'auto' }
   > = [{ type: 'input_text', text: prompt || 'Generate an image' }];
 
-  // Base64 path is only used when we have no prior gpt-image-2 call to
+  // Base64 path is only used when we have no prior GPT Image call to
   // reference (e.g. a freshly uploaded user image).
   const shouldEncodeReference = !priorImageCallId && images.length > 0;
 
@@ -208,16 +211,17 @@ export const generateImageWithGptImage2 = async (
 
   input.push({ role: 'user', content });
 
-  // gpt-5.4 is the canonical orchestrator for the Responses API
-  // image_generation tool per OpenAI's docs; gpt-image-2 is the actual
-  // image model invoked via the tool.
+  // The mainline model only orchestrates the image_generation tool call;
+  // imageModel does the rendering. GPT-6.2 Sol rejects effort `none`, so
+  // `low` keeps the orchestration step fast.
   const response = await openAI.responses.create({
-    model: 'gpt-5.4',
+    model: 'gpt-6.2-sol',
+    reasoning: { effort: 'low' },
     input,
     tools: [
       {
         type: 'image_generation',
-        model: 'gpt-image-2',
+        model: imageModel,
         quality,
         size: '1024x1024',
         output_format: 'jpeg',
@@ -233,10 +237,10 @@ export const generateImageWithGptImage2 = async (
   const latestCall = imageCalls[imageCalls.length - 1];
 
   if (!latestCall?.result) {
-    throw new Error('No generated image data from gpt-image-2');
+    throw new Error('No generated image data from GPT Image');
   }
 
-  debugLog('Successfully generated image with gpt-image-2', {
+  debugLog('Successfully generated image with GPT Image', {
     imageCallId: latestCall.id,
     status: latestCall.status,
   });
@@ -280,7 +284,7 @@ export const generateImageWithGeminiMultiTurn = async (
     const buffer = Buffer.from(imageArrayBuffer);
     const base64Image = buffer.toString('base64');
     // Derive mimeType from the blob rather than hardcoding png —
-    // gpt-image-2 stores jpeg, so a Gemini fallback on a later turn
+    // GPT Image stores jpeg, so a Gemini fallback on a later turn
     // would otherwise send jpeg bytes declared as png and get rejected
     // (or produce corrupt output).
     const mimeType =
@@ -296,12 +300,12 @@ export const generateImageWithGeminiMultiTurn = async (
     };
   }
 
-  // Initialize chat with the new Gemini 3 Pro Image Preview model
+  // Initialize chat with the Gemini 3 Pro Image model
   const chat = googleGenAI.chats.create({
-    model: 'gemini-3-pro-image-preview',
+    model: 'gemini-3-pro-image',
     config: {
       responseModalities: [Modality.TEXT, Modality.IMAGE],
-      // Note: Google Search grounding is built into gemini-3-pro-image-preview
+      // Note: Google Search grounding is built into gemini-3-pro-image
       // and doesn't need to be explicitly enabled as a tool for image generation
     },
   });

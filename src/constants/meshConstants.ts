@@ -10,7 +10,7 @@ export const POLYGON_COUNTS = {
 
   // Model-specific maximums
   STANDARD_MAX: 0, // SAM 3D doesn't support polygon limits
-  ULTRA_MAX: 300000, // Meshy v6 API limit is 300k
+  ULTRA_MAX: 300000, // Meshy v7.1 API limit is 300k
   TEXTURELESS_MAX: 50000,
 
   // Model-specific defaults
@@ -79,7 +79,7 @@ export const MODEL_CONFIGS: Record<CreativeModel, ModelConfig> = {
     },
     showPolygonControls: true,
     showNormalIntensity: true,
-    maxPolygonCount: POLYGON_COUNTS.ULTRA_MAX, // Meshy v6 limit is 300k
+    maxPolygonCount: POLYGON_COUNTS.ULTRA_MAX, // Meshy v7.1 limit is 300k
   },
 };
 
