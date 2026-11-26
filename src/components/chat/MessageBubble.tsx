@@ -34,6 +34,7 @@ import {
   isParametricArtifact,
 } from '@shared/parametricParts';
 import { imageIdFromFilename } from '@shared/imageRefs';
+import { normalizeModelId } from '@shared/models';
 import type React from 'react';
 import {
   Box,
@@ -809,8 +810,10 @@ function RetryModelDropdown({
   disabled: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  // Saved replies can carry retired ids; resolve them to their successor.
+  const resolvedModelId = selectedModelId && normalizeModelId(selectedModelId);
   const selectedModel =
-    modelOptions.find((option) => option.id === selectedModelId) ??
+    modelOptions.find((option) => option.id === resolvedModelId) ??
     modelOptions[0];
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>

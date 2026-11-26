@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   buildStepToolChoice,
+  enforcesThinkingHistory,
   providerFor,
   supportsForcedToolChoice,
   thinkingEnabledFor,
@@ -30,6 +31,7 @@ describe('supportsForcedToolChoice', () => {
 
   it('rejects it on Fable/Mythos and later Opus/Sonnet 5.x releases', () => {
     for (const id of [
+      'anthropic/claude-fable-5.2',
       'anthropic/claude-fable-5.1',
       'claude-mythos-5-1',
       'anthropic/claude-opus-5.6',
@@ -46,9 +48,9 @@ describe('supportsForcedToolChoice', () => {
       'anthropic/claude-opus-4.8',
       'claude-opus-4-8',
       'anthropic/claude-sonnet-4.5',
-      'openai/gpt-6.1-sol',
+      'openai/gpt-6.2-sol',
       'x-ai/grok-4.7',
-      'google/gemini-3.8-flash',
+      'google/gemini-4-hydrogen',
     ]) {
       assert.equal(supportsForcedToolChoice(id), true, id);
     }
@@ -88,9 +90,9 @@ describe('buildStepToolChoice', () => {
 
   it('forces the build tool without touching thinking on other providers', () => {
     for (const id of [
-      'openai/gpt-6.1-sol',
+      'openai/gpt-6.2-sol',
       'x-ai/grok-4.7',
-      'google/gemini-3.8-flash',
+      'google/gemini-4-hydrogen',
     ]) {
       for (const thinking of [false, true]) {
         assert.deepEqual(
@@ -103,12 +105,37 @@ describe('buildStepToolChoice', () => {
   });
 });
 
+describe('enforcesThinkingHistory', () => {
+  it('matches Fable/Mythos from 5.2 up in dotted and dashed ids', () => {
+    for (const id of [
+      'anthropic/claude-fable-5.2',
+      'claude-fable-5-2',
+      'claude-mythos-5-2',
+      'anthropic/claude-fable-5.3',
+    ]) {
+      assert.equal(enforcesThinkingHistory(id), true, id);
+    }
+  });
+
+  it('leaves models that only enforce it on newer accounts alone', () => {
+    for (const id of [
+      'anthropic/claude-fable-5',
+      'anthropic/claude-fable-5.1',
+      'anthropic/claude-opus-5.5',
+      'anthropic/claude-sonnet-5.5',
+      'openai/gpt-6.2-sol',
+    ]) {
+      assert.equal(enforcesThinkingHistory(id), false, id);
+    }
+  });
+});
+
 describe('thinkingEnabledFor', () => {
   it('turns thinking on for adaptive Anthropic models without a request', () => {
     for (const id of [
       'anthropic/claude-opus-5.5',
       'anthropic/claude-sonnet-5.5',
-      'anthropic/claude-fable-5.1',
+      'anthropic/claude-fable-5.2',
       'anthropic/claude-opus-4.8',
     ]) {
       assert.equal(thinkingEnabledFor(id), true, id);
@@ -117,8 +144,8 @@ describe('thinkingEnabledFor', () => {
 
   it('follows the request for everything else', () => {
     assert.equal(thinkingEnabledFor('anthropic/claude-sonnet-4.5'), false);
-    assert.equal(thinkingEnabledFor('openai/gpt-6.1-sol'), false);
-    assert.equal(thinkingEnabledFor('openai/gpt-6.1-sol', true), true);
+    assert.equal(thinkingEnabledFor('openai/gpt-6.2-sol'), false);
+    assert.equal(thinkingEnabledFor('openai/gpt-6.2-sol', true), true);
   });
 });
 
@@ -134,8 +161,8 @@ describe('usesAdaptiveAnthropicThinking', () => {
 describe('providerFor', () => {
   it('routes by id prefix', () => {
     assert.equal(providerFor('anthropic/claude-opus-5.5'), 'anthropic');
-    assert.equal(providerFor('google/gemini-3.8-flash'), 'google');
-    assert.equal(providerFor('openai/gpt-6.1-sol'), 'openrouter');
+    assert.equal(providerFor('google/gemini-4-hydrogen'), 'google');
+    assert.equal(providerFor('openai/gpt-6.2-sol'), 'openrouter');
     assert.equal(providerFor('x-ai/grok-4.7'), 'openrouter');
   });
 });

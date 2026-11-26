@@ -163,11 +163,11 @@ export async function handleFalWebhookRequest(request: Request) {
 
     // Handle different model response formats
     if (payload.model_glb?.url) {
-      // SAM 3D Objects, Meshy v6, Hunyuan v3.1 Pro format
+      // SAM 3D Objects, Meshy v7.1, Hunyuan v3.1 Pro format
       debugLog('Using model_glb.url:', payload.model_glb.url);
       modelUrl = payload.model_glb.url;
     } else if (payload.model_urls?.glb?.url) {
-      // Meshy v6 / Hunyuan v3.1 Pro alternative format
+      // Meshy v7.1 / Hunyuan v3.1 Pro alternative format
       debugLog('Using model_urls.glb.url:', payload.model_urls.glb.url);
       modelUrl = payload.model_urls.glb.url;
     } else if (payload.textured_glb?.url) {

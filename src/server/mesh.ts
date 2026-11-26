@@ -5,8 +5,9 @@ import OpenAI from 'openai';
 import {
   generateImageWithFalFlux,
   generateImageWithGeminiMultiTurn,
-  generateImageWithGptImage2,
+  generateImageWithGptImage,
   INSTRUCTIONS_3D as instructions3D,
+  type GptImageModel,
   type GptImageQuality,
 } from './imageGen';
 import { Model, MeshFileType } from '@shared/types';
@@ -55,20 +56,20 @@ function runBackgroundTask(task: Promise<unknown>) {
   void loggedTask;
 }
 
-// Returns the image_generation_call_id to thread into the next gpt-image-2
+// Returns the image_generation_call_id to thread into the next GPT Image
 // call, or null when the prior image was produced by a fallback (Gemini/Flux)
 // and has no call ID.
 //
 // Branch-aware: when the user is editing a specific mesh (via the `mesh`
 // request param), we prefer that mesh's latest image — otherwise a global
 // "most recent in conversation" lookup would grab a sibling-branch image the
-// user isn't looking at, and gpt-image-2 would silently edit the wrong
+// user isn't looking at, and GPT Image would silently edit the wrong
 // output. Without a specific mesh in focus, fall back to conversation-wide
 // latest (linear editing flow).
 //
 // We do NOT filter for non-null call IDs: if the last turn fell back,
-// skipping its null row and surfacing an older gpt-image-2 call ID would
-// make gpt-image-2 edit an image two turns ago while the user is looking
+// skipping its null row and surfacing an older GPT Image call ID would
+// make GPT Image edit an image two turns ago while the user is looking
 // at the fallback output.
 async function getPriorImageCallId(
   supabaseClient: SupabaseClient,
@@ -81,7 +82,7 @@ async function getPriorImageCallId(
     // from the untrusted request body, and the service-role client bypasses
     // RLS. Without this filter, a user could pass another user's mesh UUID
     // to thread the victim's OpenAI multi-turn continuity ID into their own
-    // gpt-image-2 call.
+    // GPT Image call.
     const { data: meshRow } = await supabaseClient
       .from('meshes')
       .select('images')
@@ -121,25 +122,24 @@ async function getPriorImageCallId(
 }
 
 // Unified mesh-image generation. Every mesh mode goes through this helper:
-//   1. Primary: gpt-image-2 via OpenAI Responses API (canonical per OpenAI
+//   1. Primary: GPT Image via OpenAI Responses API (canonical per OpenAI
 //      docs, supports multi-turn via image_generation_call id)
-//   2. Fallback 1: Gemini 3 Pro Image Preview (nano banana pro)
+//   2. Fallback 1: Gemini 3 Pro Image (nano banana pro)
 //   3. Fallback 2: Flux (fal-ai)
 //
 // Flux is also the sole provider for mesh previews (see submitPreviewJob),
 // which intentionally does not go through this chain.
-// Per-mode gpt-image-2 quality. fast mode defaults to `low` ($0.006/image,
-// cheaper than the Flux it replaced) since fast-mode output is inherently
-// draft quality. quality/ultra use `high` ($0.21/image) for final seed
-// fidelity. See https://developers.openai.com/api/docs/guides/image-generation
+// Per-mode GPT Image model and quality. fast mode uses Flare at `low` since
+// fast-mode output is inherently draft quality. quality/ultra use Sunburst at
+// `high` for final seed fidelity. See https://developers.openai.com/api/docs/guides/image-generation
 // for pricing tiers.
-const QUALITY_BY_MESH_MODEL: Record<
+const GPT_IMAGE_BY_MESH_MODEL: Record<
   'fast' | 'quality' | 'ultra',
-  GptImageQuality
+  { imageModel: GptImageModel; quality: GptImageQuality }
 > = {
-  fast: 'low',
-  quality: 'high',
-  ultra: 'high',
+  fast: { imageModel: 'gpt-image-2.6-flare', quality: 'low' },
+  quality: { imageModel: 'gpt-image-2.6-sunburst', quality: 'high' },
+  ultra: { imageModel: 'gpt-image-2.6-sunburst', quality: 'high' },
 };
 
 async function generateMeshImage(
@@ -163,7 +163,7 @@ async function generateMeshImage(
   const supabaseClient = getSupabaseClient();
   const hasFreshUserImages = freshUserImages.length > 0;
   // Skip the call-id lookup when the user is providing fresh reference
-  // material — we want gpt-image-2 to anchor on the new upload, not a
+  // material — we want GPT Image to anchor on the new upload, not a
   // prior turn's output.
   let priorImageCallId: string | null;
   // Tri-state for observability so Sentry breadcrumbs distinguish
@@ -191,6 +191,9 @@ async function generateMeshImage(
     ? freshUserImages
     : allImages;
 
+  const { imageModel, quality } =
+    GPT_IMAGE_BY_MESH_MODEL[sentryStage.meshModel];
+
   const sentryContext = {
     functionName: 'mesh' as const,
     statusCode: 500,
@@ -198,7 +201,7 @@ async function generateMeshImage(
     conversationId,
   };
 
-  let provider: 'gpt-image-2' | 'nano-banana-pro' | 'flux';
+  let provider: 'gpt-image' | 'nano-banana-pro' | 'flux';
   let result: {
     imageBytes: Buffer;
     imageCallId: string | null;
@@ -206,7 +209,7 @@ async function generateMeshImage(
   };
 
   try {
-    result = await generateImageWithGptImage2(
+    result = await generateImageWithGptImage(
       supabaseClient,
       getOpenAI(),
       userId,
@@ -214,9 +217,10 @@ async function generateMeshImage(
       prompt,
       gptImageReferenceImages,
       priorImageCallId,
-      QUALITY_BY_MESH_MODEL[sentryStage.meshModel],
+      imageModel,
+      quality,
     );
-    provider = 'gpt-image-2';
+    provider = 'gpt-image';
   } catch (gptImageError) {
     logError(gptImageError, {
       ...sentryContext,
@@ -276,15 +280,15 @@ async function generateMeshImage(
   }
 
   // Diagnostic log — gated on DEBUG_LOGS. In prod, ground truth comes from:
-  //   - images.image_generation_call_id (null = fallback ran, non-null = gpt-image-2)
+  //   - images.image_generation_call_id (null = fallback ran, non-null = GPT Image)
   //   - Sentry events tagged stage=gpt_image_2_fallback / nano_banana_pro_fallback
   //     / flux_fallback with full meshModel + subStage context
   // This line stays opt-in for live debugging without polluting prod logs.
   debugLog(
     `[mesh] image_gen provider=${provider} meshModel=${sentryStage.meshModel}` +
       (sentryStage.subStage ? ` subStage=${sentryStage.subStage}` : '') +
-      (provider === 'gpt-image-2'
-        ? ` quality=${QUALITY_BY_MESH_MODEL[sentryStage.meshModel]}`
+      (provider === 'gpt-image'
+        ? ` model=${imageModel} quality=${quality}`
         : '') +
       ` contentType=${result.contentType}` +
       ` callId=${result.imageCallId ?? 'none'}`,
@@ -951,7 +955,7 @@ async function submitMeshJob(
     debugLog('model value:', model);
 
     if (model === 'ultra') {
-      debugLog('=== ENTERING ULTRA MODEL PATH (MESHY V6 PREVIEW) ===');
+      debugLog('=== ENTERING ULTRA MODEL PATH (MESHY V7.1) ===');
 
       // Check if this is first generation or conversational edit by looking for COMPLETED meshes (not images)
       // This properly handles branching - a branch won't have completed meshes
@@ -1080,12 +1084,12 @@ async function submitMeshJob(
       // Topology: default to triangle (Meshy standard), but respect quad if requested
       const meshyTopology = meshTopology === 'quads' ? 'quad' : 'triangle';
 
-      // Polycount: default 30000, clamp between 200 and 300000 (Meshy v6 API limit)
+      // Polycount: default 30000, clamp between 200 and 300000 (Meshy v7.1 API limit)
       const safePolycount = polygonCount
         ? Math.max(200, Math.min(300000, polygonCount))
         : 30000;
 
-      debugLog('Submitting to Meshy v6 Preview', {
+      debugLog('Submitting to Meshy v7.1', {
         topology: meshyTopology,
         polycount: safePolycount,
       });
@@ -1100,17 +1104,17 @@ async function submitMeshJob(
         enable_pbr: true, // Max quality feature
       };
 
-      await fal.queue.submit('fal-ai/meshy/v6-preview/image-to-3d', {
+      await fal.queue.submit('meshy/v7.1/image-to-3d', {
         input: meshyInput,
         webhookUrl: `${appBaseUrl}/cadam/api/fal-webhook?id=${meshId}`,
       });
 
-      debugLog('Successfully submitted to Meshy v6 Preview');
+      debugLog('Successfully submitted to Meshy v7.1');
 
       // Create preview using the base image
       await createHunyuanPreview(
         baseImageUrl,
-        'ultra meshy v6 preview',
+        'ultra meshy v7.1',
         userId,
         conversationId,
         meshId,
@@ -1176,7 +1180,7 @@ Output:`;
           try {
             const genericResult = await getGoogleGenAI().models.generateContent(
               {
-                model: 'gemini-2.5-flash-lite',
+                model: 'gemini-3.5-flash-lite',
                 contents: [
                   { role: 'user', parts: [{ text: genericizePrompt }] },
                 ],

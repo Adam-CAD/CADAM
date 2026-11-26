@@ -237,8 +237,8 @@ export function getInitials(fullName: string | null) {
 
 export const PARAMETRIC_MODELS: ModelConfig[] = [
   {
-    id: 'google/gemini-4-argon',
-    name: 'Gemini 4 Argon',
+    id: 'google/gemini-4-carbon',
+    name: 'Gemini 4 Carbon',
     description: 'Latest Google model with excellent multi-modal capabilities',
     provider: 'Google',
     supportsTools: true,
@@ -246,8 +246,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'google/gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
+    id: 'google/gemini-4-hydrogen',
+    name: 'Gemini 4 Hydrogen',
     description: 'Fast, token-efficient Google model for everyday tasks',
     provider: 'Google',
     supportsTools: true,
@@ -255,8 +255,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'anthropic/claude-fable-5.1',
-    name: 'Claude Fable 5.1',
+    id: 'anthropic/claude-fable-5.2',
+    name: 'Claude Fable 5.2',
     description: 'Most capable Anthropic model; best reasoning at highest cost',
     provider: 'Anthropic',
     supportsTools: true,
@@ -282,8 +282,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'openai/gpt-6-astra',
-    name: 'GPT-6 Astra',
+    id: 'openai/gpt-6.2-astra',
+    name: 'GPT-6.2 Astra',
     description:
       'OpenAI flagship model for long-horizon engineering and analysis',
     provider: 'OpenAI',
@@ -292,8 +292,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'openai/gpt-6.1-sol',
-    name: 'GPT-6.1 Sol',
+    id: 'openai/gpt-6.2-sol',
+    name: 'GPT-6.2 Sol',
     description: 'OpenAI model for reliable CAD generation',
     provider: 'OpenAI',
     supportsTools: true,
@@ -310,8 +310,8 @@ export const PARAMETRIC_MODELS: ModelConfig[] = [
     supportsVision: true,
   },
   {
-    id: 'moonshotai/kimi-k3',
-    name: 'Kimi K3',
+    id: 'moonshotai/kimi-k3.1-pro',
+    name: 'Kimi K3.1 Pro',
     description:
       'Moonshot AI reasoning model for complex coding and agentic work',
     provider: 'Moonshot AI',

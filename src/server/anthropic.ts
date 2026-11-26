@@ -64,6 +64,9 @@ export async function createAnthropicText({
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
+      // Claude 5 models think by default, and thinking counts toward
+      // max_tokens; callers here cap it for short text-only replies.
+      thinking: { type: 'disabled' },
       system,
       messages: [{ role: 'user', content }],
     }),
